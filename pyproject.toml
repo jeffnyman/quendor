@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "quendor"
+version = "0.1.0"
+description = "A Specification-Accurate Z-Machine Implementation"
+authors = ["Jeff Nyman <quendor.app@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/jeffnyman/quendor"
+keywords = ["z-machine", "interpreter", "emulator", "infocom"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: End Users/Desktop",
+  "Topic :: Games/Entertainment",
+]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
