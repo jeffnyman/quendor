@@ -29,6 +29,7 @@ python = "^3.9"
 black = "^23.7.0"
 mypy = "^1.4.1"
 flake8 = "^6.1.0"
+invoke = "^2.2.0"
 
 [build-system]
 requires = ["poetry-core"]
