@@ -19,6 +19,9 @@ classifiers = [
   "Topic :: Games/Entertainment",
 ]
 
+[tool.poetry.scripts]
+quendor = "quendor.__main__:main"
+
 [tool.poetry.dependencies]
 python = "^3.9"
 
