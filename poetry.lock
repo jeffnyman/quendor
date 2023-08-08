@@ -298,6 +298,31 @@ tomli = {version = ">=1.0.0", markers = "python_version < \"3.11\""}
 testing = ["argcomplete", "attrs (>=19.2.0)", "hypothesis (>=3.56)", "mock", "nose", "pygments (>=2.7.2)", "requests", "setuptools", "xmlschema"]
 
 [[package]]
+name = "pytest-spec"
+version = "3.2.0"
+description = "Library pytest-spec is a pytest plugin to display test execution output like a SPECIFICATION."
+optional = false
+python-versions = "*"
+files = [
+    {file = "pytest-spec-3.2.0.tar.gz", hash = "sha256:4af154588195f4bb6c62d6ca030a20218db7d80b675a08897d9a99239ea3d087"},
+    {file = "pytest_spec-3.2.0-py2.py3-none-any.whl", hash = "sha256:128dd1e133c72d6a18b28ed96d0af0fc43aece8f796ebcfcd81c850f0094b62e"},
+]
+
+[package.dependencies]
+six = "*"
+
+[[package]]
+name = "six"
+version = "1.16.0"
+description = "Python 2 and 3 compatibility utilities"
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
+files = [
+    {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
+    {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
+]
+
+[[package]]
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
@@ -322,4 +347,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "6f005bcba5d4e950526894aa121fea706400cdd07dd158385c67d96a39adbd41"
+content-hash = "90aa03ba58c148926ecce15e7f1c2aea88d4650187f39d66683e871fdc90e9a3"
