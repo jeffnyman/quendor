@@ -19,6 +19,12 @@ def typing(c):
     c.run("poetry run mypy src")
 
 
-@task(formatting, linting, typing)
+@task
+def testing(c):
+    print("\n*** Testing (with pytest) ***")
+    c.run("poetry run pytest")
+
+
+@task(formatting, linting, typing, testing)
 def check(_):
     print("\n CODE QUALITY CHECKS COMPLETED\n")
