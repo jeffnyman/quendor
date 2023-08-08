@@ -27,7 +27,7 @@ addopts = "--spec"
 spec_test_format = "{result} {docstring_summary}"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.8.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.7.0"
