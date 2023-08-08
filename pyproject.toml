@@ -26,6 +26,12 @@ quendor = "quendor.__main__:main"
 addopts = "--spec"
 spec_test_format = "{result} {docstring_summary}"
 
+[tool.mypy]
+
+[[tool.mypy.overrides]]
+module = "expects.*"
+ignore_missing_imports = "true"
+
 [tool.poetry.dependencies]
 python = "^3.8.2"
 
