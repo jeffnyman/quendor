@@ -1,12 +1,16 @@
 import sys
+from typing import Optional
 
 from quendor import __version__
 
 
-def main() -> int:
+def main(args: Optional[list] = None) -> int:
     print(f"\nQuendor Z-Machine Interpreter (version: {__version__})\n")
 
     check_python_version()
+
+    if not args:
+        args = sys.argv[1:]
 
     return 0
 
