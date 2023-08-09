@@ -42,3 +42,18 @@ def test_bad_python_version(monkeypatch, capsys) -> None:
 
     error_text = "Quendor requires Python 3.8.2 or later."
     expect(result).to(contain(error_text))
+
+
+def test_version_display(capsys) -> None:
+    """Reports its version."""
+
+    from quendor.cli import process_arguments
+
+    with pytest.raises(SystemExit):
+        process_arguments(["-v"])
+
+    captured = capsys.readouterr()
+    result = captured.out
+
+    verison_text = "Version: 0.1.0"
+    expect(result).to(contain(verison_text))
