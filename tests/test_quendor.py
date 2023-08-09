@@ -57,3 +57,18 @@ def test_version_display(capsys) -> None:
 
     verison_text = "Version: 0.1.0"
     expect(result).to(contain(verison_text))
+
+
+def test_handle_invalid_log_level(capsys) -> None:
+    """Indicates when an invalid log level is specified."""
+
+    from quendor.__main__ import main
+
+    with pytest.raises(SystemExit):
+        main(["--log", "LOTS"])
+
+    captured = capsys.readouterr()
+    result = captured.err
+
+    error_text = "invalid choice: 'LOTS'"
+    expect(result).to(contain(error_text))
