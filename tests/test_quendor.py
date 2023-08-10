@@ -87,3 +87,16 @@ def test_handle_invalid_arguments(capsys) -> None:
 
     error_text = "unrecognized arguments: --invalid"
     expect(result).to(contain(error_text))
+
+
+def test_generate_logs(caplog) -> None:
+    """Displays logs based on log levels."""
+
+    import logging
+    from quendor.startup import setup_logging, display_arguments
+
+    with caplog.at_level(logging.DEBUG):
+        setup_logging("DEBUG")
+        display_arguments({"log": "DEBUG"})
+
+    expect(caplog.text).to(contain("Argument count", "Parsed arguments"))

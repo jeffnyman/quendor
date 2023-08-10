@@ -1,4 +1,5 @@
 import sys
+import logging
 from typing import Optional
 
 from quendor import __version__
@@ -13,9 +14,28 @@ def main(args: Optional[list] = None) -> int:
     if not args:
         args = sys.argv[1:]
 
-    process_arguments(args)
+    cli = process_arguments(args)
+    setup_logging(cli["log"])
+    display_arguments(cli)
 
     return 0
+
+
+def setup_logging(log_level: str) -> None:
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M",
+    )
+
+
+def display_arguments(args: dict) -> None:
+    logging.debug(f"Argument count: {'':>4}" + str(len(args)))
+
+    for i, arg in enumerate(args):
+        logging.debug(f"Argument {i}: {'':>8}" + arg)
+
+    logging.debug(f"Parsed arguments: {'':>2}" + f"{args}")
 
 
 def check_python_version() -> None:
