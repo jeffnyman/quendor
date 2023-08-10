@@ -36,6 +36,9 @@ max-line-length = 88
 # ANN001: Missing type annotation for function argument.
 per-file-ignores = ["tests/*:ANN001"]
 
+# ANN101: Missing type annotation for self in method.
+extend-ignore = ["ANN101"]
+
 [tool.mypy]
 
 [[tool.mypy.overrides]]

@@ -4,6 +4,7 @@ from typing import Optional
 
 from quendor import __version__
 from quendor.cli import process_arguments
+from quendor.program import Program
 
 
 def main(args: Optional[list] = None) -> int:
@@ -17,8 +18,13 @@ def main(args: Optional[list] = None) -> int:
     cli = process_arguments(args)
     setup_logging(cli["log"])
     display_arguments(cli)
+    setup_quendor(cli["program"])
 
     return 0
+
+
+def setup_quendor(program: str) -> None:
+    Program(program)
 
 
 def setup_logging(log_level: str) -> None:
