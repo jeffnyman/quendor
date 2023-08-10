@@ -11,13 +11,13 @@ def test_package_version() -> None:
     expect(__version__).to(equal("0.1.0"))
 
 
-def test_startup_banner(capsys) -> None:
+def test_startup_banner(capsys, zork1_z3) -> None:
     """Provides a minimal banner on startup."""
 
     from quendor import __version__
     from quendor.__main__ import main
 
-    main(["program.z3"])
+    main([str(zork1_z3)])
 
     captured = capsys.readouterr()
     result = captured.out
@@ -115,3 +115,16 @@ def test_no_program_provided(capsys) -> None:
 
     error_text = "the following arguments are required: program"
     expect(result).to(contain(error_text))
+
+
+def test_unable_to_locate_program() -> None:
+    """Raises an exception when a program can't be located."""
+
+    from quendor.__main__ import main
+    from quendor.errors import UnableToLocateProgramError
+
+    with pytest.raises(UnableToLocateProgramError) as exc_info:
+        main(["program.z3"])
+
+    error_text = "Unable to locate the program: program.z3"
+    expect(str(exc_info.value)).to(contain(error_text))
