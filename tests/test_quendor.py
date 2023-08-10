@@ -17,7 +17,7 @@ def test_startup_banner(capsys) -> None:
     from quendor import __version__
     from quendor.__main__ import main
 
-    main()
+    main(["program.z3"])
 
     captured = capsys.readouterr()
     result = captured.out
@@ -80,7 +80,7 @@ def test_handle_invalid_arguments(capsys) -> None:
     from quendor.__main__ import main
 
     with pytest.raises(SystemExit):
-        main(["--invalid"])
+        main(["program.z3", "--invalid"])
 
     captured = capsys.readouterr()
     result = captured.err
@@ -100,3 +100,18 @@ def test_generate_logs(caplog) -> None:
         display_arguments({"log": "DEBUG"})
 
     expect(caplog.text).to(contain("Argument count", "Parsed arguments"))
+
+
+def test_no_program_provided(capsys) -> None:
+    """Indicates when a program has not been provided."""
+
+    from quendor.__main__ import main
+
+    with pytest.raises(SystemExit):
+        main()
+
+    captured = capsys.readouterr()
+    result = captured.err
+
+    error_text = "the following arguments are required: program"
+    expect(result).to(contain(error_text))
