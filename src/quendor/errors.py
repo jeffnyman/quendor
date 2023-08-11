@@ -2,6 +2,10 @@ class UnableToAccessProgramError(Exception):
     """Raise for a zcode program file that cannot be opened or read from."""
 
 
+class UnableToDetermineProgramFormatError(Exception):
+    """Raise when a program is not zcode or blorb."""
+
+
 class UnableToLocateProgramError(Exception):
     """Raise for a zcode program file that cannot be located."""
 

@@ -16,3 +16,8 @@ def glulx_program(pytestconfig) -> Path:
 @pytest.fixture()
 def aif_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "resource.aif"
+
+
+@pytest.fixture()
+def invalid_program(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "invalid.z1"

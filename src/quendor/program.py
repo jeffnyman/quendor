@@ -5,6 +5,7 @@ from pathlib import Path
 
 from quendor.errors import (
     UnableToAccessProgramError,
+    UnableToDetermineProgramFormatError,
     UnableToLocateProgramError,
     UnableToSupportGlulxProgramError,
     UnableToSupportNonIfrsResource,
@@ -34,6 +35,11 @@ class Program:
         self._check_for_glulx(format_id)
         self._check_for_blorb(format_id)
         self._check_for_zcode(format_id)
+
+        if self._format.name == "UNKNOWN":
+            raise UnableToDetermineProgramFormatError(
+                f"\nQuendor cannot determine the file format of {self._file.name}"
+            )
 
     def _read_data(self) -> None:
         try:

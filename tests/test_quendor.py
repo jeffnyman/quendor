@@ -178,3 +178,17 @@ def test_unable_to_read_non_ifrs_resource(aif_program) -> None:
     error_text = "Quendor did not find an IFRS format type"
 
     expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_unable_to_determine_format(invalid_program) -> None:
+    """Raises an exception if a program format is not zcode or blorb."""
+
+    from quendor.errors import UnableToDetermineProgramFormatError
+    from quendor.program import Program
+
+    with pytest.raises(UnableToDetermineProgramFormatError) as exc_info:
+        Program(invalid_program)
+
+    error_text = "Quendor cannot determine the file format"
+
+    expect(str(exc_info.value)).to(contain(error_text))
