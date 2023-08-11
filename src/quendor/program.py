@@ -26,6 +26,11 @@ class Program:
         self._read_data()
         self._read_format()
 
+    def details(self) -> None:
+        logging.info(f"{self._file.stem} ({self._file.suffix.lstrip('.')})")
+        logging.info(f"Program location: {self._file.parent}")
+        logging.info(f"Program format: {self._format.name}")
+
     def _read_format(self) -> None:
         # Reading the first four bytes is enough to get the format
         # for any valid program file.

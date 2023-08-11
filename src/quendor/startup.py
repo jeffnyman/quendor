@@ -24,7 +24,8 @@ def main(args: Optional[list] = None) -> int:
 
 
 def setup_quendor(program: str) -> None:
-    Program(program)
+    prg = Program(program)
+    prg.details()
 
 
 def setup_logging(log_level: str) -> None:
