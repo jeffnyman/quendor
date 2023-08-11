@@ -11,7 +11,7 @@ from quendor.errors import (
 )
 
 
-FORMAT = Enum("Format", "UNKNOWN BLORB")
+FORMAT = Enum("Format", "UNKNOWN BLORB ZCODE")
 
 
 class Program:
@@ -33,6 +33,7 @@ class Program:
 
         self._check_for_glulx(format_id)
         self._check_for_blorb(format_id)
+        self._check_for_zcode(format_id)
 
     def _read_data(self) -> None:
         try:
@@ -42,6 +43,15 @@ class Program:
                 f"\nUnable to access the program: {self._file.name}"
                 f"\nFile location: {self._file.parent}"
             )
+
+    def _check_for_zcode(self, format_id: bytes) -> None:
+        # If the program is an unblorbed zcode program then the first
+        # byte will indicate a Z-Machine version. Thus if the format ID
+        # is a version number, it can be assumed the program file is a
+        # zcode program.
+
+        if format_id[0] >= 1 and format_id[0] <= 8:
+            self._format = FORMAT.ZCODE
 
     def _check_for_blorb(self, format_id: bytes) -> None:
         # If the file is a blorb file then the first four bytes will
