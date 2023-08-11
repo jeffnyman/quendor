@@ -11,3 +11,8 @@ def zork1_z3(pytestconfig) -> Path:
 @pytest.fixture()
 def glulx_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "adventure.ulx"
+
+
+@pytest.fixture()
+def aif_program(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "resource.aif"

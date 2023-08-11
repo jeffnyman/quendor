@@ -164,3 +164,17 @@ def test_unable_to_interpret_glulx(glulx_program) -> None:
     error_text = "Quendor cannot interpret Glulx files:"
 
     expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_unable_to_read_non_ifrs_resource(aif_program) -> None:
+    """Raises an exception if an IFF form resource is not an IFRS type."""
+
+    from quendor.errors import UnableToSupportNonIfrsResource
+    from quendor.program import Program
+
+    with pytest.raises(UnableToSupportNonIfrsResource) as exc_info:
+        Program(aif_program)
+
+    error_text = "Quendor did not find an IFRS format type"
+
+    expect(str(exc_info.value)).to(contain(error_text))

@@ -1,12 +1,17 @@
 import os
 import logging
+from enum import Enum
 from pathlib import Path
 
 from quendor.errors import (
     UnableToAccessProgramError,
     UnableToLocateProgramError,
     UnableToSupportGlulxProgramError,
+    UnableToSupportNonIfrsResource,
 )
+
+
+FORMAT = Enum("Format", "BLORB")
 
 
 class Program:
@@ -26,6 +31,7 @@ class Program:
         format_id = self._data[0:4]
 
         self._check_for_glulx(format_id)
+        self._check_for_blorb(format_id)
 
     def _read_data(self) -> None:
         try:
@@ -35,6 +41,23 @@ class Program:
                 f"\nUnable to access the program: {self._file.name}"
                 f"\nFile location: {self._file.parent}"
             )
+
+    def _check_for_blorb(self, format_id: bytes) -> None:
+        # If the file is a blorb file then the first four bytes will
+        # indicate a group ID. In that case it's necessary to determine
+        # if the file is an IFF file and, if so, see if the file has an
+        # interactive fiction type.
+
+        if self._decode_bytes(format_id) == "FORM":
+            ifrs_id = self._data[8:12]
+
+            if self._decode_bytes(ifrs_id) != "IFRS":
+                raise UnableToSupportNonIfrsResource(
+                    f"\nQuendor did not find an IFRS format type in {self._file.name!r}"
+                    f"\nFormat found was: {ifrs_id!r}"
+                )
+
+            self.format = FORMAT.BLORB
 
     def _check_for_glulx(self, format_id: bytes) -> None:
         if self._decode_bytes(format_id) == "GLUL":

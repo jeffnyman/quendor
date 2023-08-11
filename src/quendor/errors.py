@@ -8,3 +8,7 @@ class UnableToLocateProgramError(Exception):
 
 class UnableToSupportGlulxProgramError(Exception):
     """Raise when a program file is determined to be Glulx."""
+
+
+class UnableToSupportNonIfrsResource(Exception):
+    """Raise when an IFF file is not an IFRS type."""
