@@ -150,3 +150,17 @@ def test_unable_to_access_program(tmp_path, zork1_z3) -> None:
         program._read_data()
 
     shutil.rmtree(inaccessible)
+
+
+def test_unable_to_interpret_glulx(glulx_program) -> None:
+    """Raises an exception when a program is in the Glulx format."""
+
+    from quendor.errors import UnableToSupportGlulxProgramError
+    from quendor.program import Program
+
+    with pytest.raises(UnableToSupportGlulxProgramError) as exc_info:
+        Program(glulx_program)
+
+    error_text = "Quendor cannot interpret Glulx files:"
+
+    expect(str(exc_info.value)).to(contain(error_text))
