@@ -37,7 +37,8 @@ max-line-length = 88
 per-file-ignores = ["tests/*:ANN001"]
 
 # ANN101: Missing type annotation for self in method.
-extend-ignore = ["ANN101"]
+# E203: whitespace before ':'
+extend-ignore = ["ANN101", "E203"]
 
 [tool.mypy]
 

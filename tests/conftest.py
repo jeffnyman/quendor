@@ -14,6 +14,11 @@ def zork1_blorb(pytestconfig) -> Path:
 
 
 @pytest.fixture()
+def zork1_blorb_bytes(zork1_blorb: Path) -> bytes:
+    return Path(zork1_blorb).read_bytes()
+
+
+@pytest.fixture()
 def glulx_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "adventure.ulx"
 

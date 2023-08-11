@@ -1,3 +1,70 @@
+import logging
+
+
 class Blorb:
     def __init__(self, data: bytes) -> None:
         self._data: bytes = data
+
+        self._read_data()
+
+    def _read_data(self) -> None:
+        logging.debug("(Blorb Handling)")
+
+        # The first chunk in the FORM must be a resource index (chunk type
+        # 'RIdx'.) This lists all the resources stored in the IFRS FORM.
+
+        offset = self._locate_chunk(b"RIdx")
+
+        # NOTE: A check for a 0 offset should likely cause either a warning
+        # or possibly exiting the reading of data.
+        print(offset)
+
+    def _locate_chunk(self, chunk_name: bytes) -> int:
+        logging.debug(f"\tSearching for chunk name: {str(chunk_name)}")
+
+        chunk_id: bytes = b""
+
+        # Every IFF file has a 12 byte header. By this point, Quendor
+        # already knows it has a FORM. This refers to the group ID and
+        # is the first four bytes of the header. Quendor also knows that
+        # it has an IFRS type. This refers to the type ID and is the last
+        # four bytes of the header. The middle four bytes are the byte
+        # count of the file itself and not needed. So the logic here
+        # starts by mmoving past the header.
+
+        position: int = 12
+
+        while (chunk_id != chunk_name) and (position < len(self._data)):
+            # After the header, all data is organized into chunks. A chunk
+            # consists of an ID, a value indicating how many bytes are in the
+            # chunk, and then all the actual data bytes. In the IFRS type, the
+            # first chunk should always be a resource index chunk.
+            chunk_id = self._data[position : position + 4]
+
+            chunk_length = int.from_bytes(
+                self._data[position + 4 : position + 8],
+                byteorder="big",
+            )
+
+            # If a chunk has an odd length, it must be followed by a single
+            # padding byte whose value is zero. This allows all chunks to be
+            # aligned on even byte boundaries.
+
+            if chunk_length % 2 == 1:
+                chunk_length += 1
+
+            logging.debug(f"\tChunk ID: {str(chunk_id)}")
+            logging.debug(f"\tChunk length: {chunk_length}")
+
+            if chunk_id == chunk_name:
+                logging.debug(f"\tFound chunk ID: {str(chunk_id)}")
+                break
+
+        # If the chunk wasn't found, zero is returned. This is never a valid
+        # offset for a chunk so can be used for error checking.
+        if chunk_id != chunk_name:
+            return 0
+
+        logging.debug(f"\t{chunk_name!r} Offset: {position}")
+
+        return position
