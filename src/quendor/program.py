@@ -3,6 +3,7 @@ import logging
 from enum import Enum
 from pathlib import Path
 
+from quendor.blorb import Blorb
 from quendor.errors import (
     UnableToAccessProgramError,
     UnableToDetermineProgramFormatError,
@@ -25,6 +26,9 @@ class Program:
         self._locate()
         self._read_data()
         self._read_format()
+
+        if self._format.name == "BLORB":
+            self._read_blorb_data()
 
     def details(self) -> None:
         logging.info(f"{self._file.stem} ({self._file.suffix.lstrip('.')})")
@@ -54,6 +58,9 @@ class Program:
                 f"\nUnable to access the program: {self._file.name}"
                 f"\nFile location: {self._file.parent}"
             )
+
+    def _read_blorb_data(self) -> None:
+        Blorb(self._data)
 
     def _check_for_zcode(self, format_id: bytes) -> None:
         # If the program is an unblorbed zcode program then the first
