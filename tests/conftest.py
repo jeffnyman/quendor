@@ -9,6 +9,11 @@ def zork1_z3(pytestconfig) -> Path:
 
 
 @pytest.fixture()
+def zork1_blorb(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "zork1.zblorb"
+
+
+@pytest.fixture()
 def glulx_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "adventure.ulx"
 
