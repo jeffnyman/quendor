@@ -128,3 +128,25 @@ def test_unable_to_locate_program() -> None:
 
     error_text = "Unable to locate the program: program.z3"
     expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_unable_to_access_program(tmp_path, zork1_z3) -> None:
+    """Raises an exception when a program can't be accessed."""
+
+    import shutil
+    from quendor.program import Program
+    from quendor.errors import UnableToAccessProgramError
+
+    program = Program(zork1_z3)
+
+    inaccessible = tmp_path / "inaccessible"
+    program._file = inaccessible
+
+    inaccessible.mkdir()
+
+    error_text = f"Unable to access the program: {inaccessible.name}"
+
+    with pytest.raises(UnableToAccessProgramError, match=error_text):
+        program._read_data()
+
+    shutil.rmtree(inaccessible)

@@ -2,15 +2,26 @@ import os
 import logging
 from pathlib import Path
 
-from quendor.errors import UnableToLocateProgramError
+from quendor.errors import UnableToAccessProgramError, UnableToLocateProgramError
 
 
 class Program:
     def __init__(self, program: str) -> None:
         self._program: str = program
         self._file: Path
+        self._data: bytes = b""
 
         self._locate()
+        self._read_data()
+
+    def _read_data(self) -> None:
+        try:
+            self._data = self._file.read_bytes()
+        except OSError:
+            raise UnableToAccessProgramError(
+                f"\nUnable to access the program: {self._file.name}"
+                f"\nFile location: {self._file.parent}"
+            )
 
     def _locate(self) -> None:
         paths = [
