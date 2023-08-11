@@ -18,14 +18,14 @@ def main(args: Optional[list] = None) -> int:
     cli = process_arguments(args)
     setup_logging(cli["log"])
     display_arguments(cli)
-    setup_quendor(cli["program"])
+    setup_quendor(cli)
 
     return 0
 
 
-def setup_quendor(program: str) -> None:
-    prg = Program(program)
-    prg.details()
+def setup_quendor(cli: dict) -> None:
+    program = Program(cli["program"])
+    program.details()
 
 
 def setup_logging(log_level: str) -> None:
