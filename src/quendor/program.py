@@ -11,7 +11,7 @@ from quendor.errors import (
 )
 
 
-FORMAT = Enum("Format", "BLORB")
+FORMAT = Enum("Format", "UNKNOWN BLORB")
 
 
 class Program:
@@ -19,6 +19,7 @@ class Program:
         self._program: str = program
         self._file: Path
         self._data: bytes = b""
+        self._format: FORMAT = FORMAT.UNKNOWN
 
         self._locate()
         self._read_data()
@@ -57,7 +58,7 @@ class Program:
                     f"\nFormat found was: {ifrs_id!r}"
                 )
 
-            self.format = FORMAT.BLORB
+            self._format = FORMAT.BLORB
 
     def _check_for_glulx(self, format_id: bytes) -> None:
         if self._decode_bytes(format_id) == "GLUL":
