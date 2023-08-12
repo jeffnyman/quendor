@@ -92,3 +92,24 @@ def test_get_blorb_resource_number(zork1_blorb_bytes) -> None:
 
     expect(resources[0]).to(equal(0))
     expect(resources[1]).to(equal(1))
+
+
+def test_get_blorb_resource_start(zork1_blorb_bytes) -> None:
+    """Reads the resource start from a blorb."""
+
+    from quendor.blorb import Blorb
+
+    blorb = Blorb(zork1_blorb_bytes)
+    position = blorb._locate_chunk(b"RIdx")
+
+    resource_count = blorb._get_resource_count(position + 8)
+
+    resources = []
+
+    for resource in range(resource_count):
+        start = blorb._get_start(position + 12, resource)
+        resources.append(start)
+
+    print(hex(resources[0]))
+    expect(hex(resources[0])).to(equal("0x30"))
+    expect(hex(resources[1])).to(equal("0x149e6"))

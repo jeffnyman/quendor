@@ -58,6 +58,11 @@ class Blorb:
             number = self._get_number(offset, resource)
             logging.debug(f"\t\tNumber: {number}")
 
+            # The start field tells where the resource chunk begins.
+
+            start = self._get_start(offset, resource)
+            logging.debug(f"\t\tStart: {hex(start)}")
+
     def _get_resource_count(self, offset: int) -> int:
         count = int.from_bytes(
             self._data[offset : offset + 4],
@@ -74,6 +79,12 @@ class Blorb:
     def _get_number(self, offset: int, resource: int) -> int:
         return int.from_bytes(
             self._data[offset + (resource * 12) + 4 : offset + (resource * 12) + 8],
+            byteorder="big",
+        )
+
+    def _get_start(self, offset: int, resource: int) -> int:
+        return int.from_bytes(
+            self._data[offset + (resource * 12) + 8 : offset + (resource * 12) + 12],
             byteorder="big",
         )
 
