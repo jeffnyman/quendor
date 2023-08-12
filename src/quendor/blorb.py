@@ -22,6 +22,23 @@ class Blorb:
                 "\nQuendor did not find an RIdx chunk in the blorb."
             )
 
+        # Need to set the offset to the point where the number
+        # of resources are stored.
+
+        offset += 8
+
+        _ = self._get_resource_count(offset)
+
+    def _get_resource_count(self, offset: int) -> int:
+        count = int.from_bytes(
+            self._data[offset : offset + 4],
+            byteorder="big",
+        )
+
+        logging.debug(f"\tResource Count: {count}")
+
+        return count
+
     def _locate_chunk(self, chunk_name: bytes) -> int:
         logging.debug(f"\tSearching for chunk name: {str(chunk_name)}")
 

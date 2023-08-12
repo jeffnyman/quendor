@@ -39,3 +39,16 @@ def test_blorb_chunk_not_found(zork1_blorb_bytes) -> None:
     position = blorb._locate_chunk(b"RInvalid")
 
     expect(position).to(equal(0))
+
+
+def test_get_blorb_resource_count(zork1_blorb_bytes) -> None:
+    """Reads the resource count from a blorb."""
+
+    from quendor.blorb import Blorb
+
+    blorb = Blorb(zork1_blorb_bytes)
+    position = blorb._locate_chunk(b"RIdx")
+
+    resource_count = blorb._get_resource_count(position + 8)
+
+    expect(resource_count).to(equal(2))
