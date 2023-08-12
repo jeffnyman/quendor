@@ -110,6 +110,20 @@ def test_get_blorb_resource_start(zork1_blorb_bytes) -> None:
         start = blorb._get_start(position + 12, resource)
         resources.append(start)
 
-    print(hex(resources[0]))
     expect(hex(resources[0])).to(equal("0x30"))
     expect(hex(resources[1])).to(equal("0x149e6"))
+
+
+def test_get_blorb_resources(zork1_blorb_bytes) -> None:
+    """Reads the resources from a blorb."""
+
+    from quendor.blorb import Blorb
+
+    blorb = Blorb(zork1_blorb_bytes)
+    position = blorb._locate_chunk(b"RIdx")
+
+    resource_count = blorb._get_resource_count(position + 8)
+    blorb._get_resources(position + 12, resource_count)
+
+    expect(blorb._resource_index[b"Exec"][0]).to(equal("0x30"))
+    expect(blorb._resource_index[b"Pict"][1]).to(equal("0x149e6"))

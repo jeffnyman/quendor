@@ -1,4 +1,5 @@
 import logging
+from typing import Dict
 
 from quendor.errors import UnableToLocateRIdxChunkError
 
@@ -6,6 +7,7 @@ from quendor.errors import UnableToLocateRIdxChunkError
 class Blorb:
     def __init__(self, data: bytes) -> None:
         self._data: bytes = data
+        self._resource_index: Dict[bytes, dict] = {}
 
         self._read_data()
 
@@ -62,6 +64,16 @@ class Blorb:
 
             start = self._get_start(offset, resource)
             logging.debug(f"\t\tStart: {hex(start)}")
+
+            # Ensure the 'usage' key exists in the resource index before
+            # trying to store anything under that key.
+
+            if usage not in self._resource_index:
+                self._resource_index[usage] = {}
+
+            self._resource_index[usage][number] = hex(start)
+
+            logging.debug(f"\tResource Index: {self._resource_index}")
 
     def _get_resource_count(self, offset: int) -> int:
         count = int.from_bytes(
