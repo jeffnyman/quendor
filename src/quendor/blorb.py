@@ -1,7 +1,11 @@
 import logging
 from typing import Dict
 
-from quendor.errors import UnableToLocateRIdxChunkError, UnableToLocateExecChunkError
+from quendor.errors import (
+    UnableToLocateRIdxChunkError,
+    UnableToLocateExecChunkError,
+    UnsupportedBlorbFormatError,
+)
 
 
 class Blorb:
@@ -12,6 +16,9 @@ class Blorb:
         self._read_data()
 
     def read_exec_chunk(self, number: int = 0) -> bytes:
+        # There should at most one chunk with usage 'Exec'. Its content is an
+        # executable.
+
         try:
             exec_start = self._resource_index[b"Exec"][number]
         except KeyError:
@@ -19,7 +26,25 @@ class Blorb:
                 "\nThe blorb file does not contain an executable chunk of data."
             )
 
+        # The chunk type describes its format. The format is taken from the
+        # Babel format agreement. Since Quendor is only supporting zcode
+        # programs, any other Babel format is invalid.
+
+        chunk_type = self._data[int(exec_start, 16) : int(exec_start, 16) + 4]
+
+        if chunk_type.decode("latin-1") != "ZCOD":
+            raise UnsupportedBlorbFormatError(
+                f"\nThe blorb file does not have a zcode executable."
+                f"\nExecutable format found was: {chunk_type.decode('latin-1')}."
+            )
+
         size = self._get_chunk_size(exec_start)
+
+        # A resource file that provides an executable chunk contains all
+        # that's needed to run the excutable. An interpreter can begin
+        # interpreting when provided this kind of resource. Thus the data
+        # returned will be exactly the zcode data that would have been
+        # prseent in an unblorbed program.
 
         return self._data[int(exec_start, 16) + 8 : int(exec_start, 16) + 8 + size]
 

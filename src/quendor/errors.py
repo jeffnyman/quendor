@@ -24,3 +24,7 @@ class UnableToSupportGlulxProgramError(Exception):
 
 class UnableToSupportNonIfrsResource(Exception):
     """Raise when an IFF file is not an IFRS type."""
+
+
+class UnsupportedBlorbFormatError(Exception):
+    """Raise for a blorb format that cannot be interpreted."""

@@ -143,3 +143,19 @@ def test_blorb_no_exec_chunk(zenspeak_blorb_bytes) -> None:
     error_text = "The blorb file does not contain an executable chunk of data"
 
     expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_blorb_invalid_exec_chunk(airport_blorb_bytes) -> None:
+    """Raises an exception if an executable chunk from a blorb is invalid."""
+
+    from quendor.blorb import Blorb
+    from quendor.errors import UnsupportedBlorbFormatError
+
+    blorb = Blorb(airport_blorb_bytes)
+
+    with pytest.raises(UnsupportedBlorbFormatError) as exc_info:
+        blorb.read_exec_chunk()
+
+    error_text = "The blorb file does not have a zcode executable"
+
+    expect(str(exc_info.value)).to(contain(error_text))

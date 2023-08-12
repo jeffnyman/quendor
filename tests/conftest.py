@@ -48,3 +48,10 @@ def zenspeak_blorb_bytes(pytestconfig) -> bytes:
     program = pytestconfig.rootdir / "tests" / "fixtures" / "zenspeak.blb"
 
     return Path(program).read_bytes()
+
+
+@pytest.fixture()
+def airport_blorb_bytes(pytestconfig) -> bytes:
+    program = pytestconfig.rootdir / "tests" / "fixtures" / "airport.gblorb"
+
+    return Path(program).read_bytes()
