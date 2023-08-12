@@ -48,6 +48,16 @@ class Blorb:
             usage = self._get_usage(offset, resource)
             logging.debug(f"\t\tUsage: {usage!r}")
 
+            # The number field tells which resource is being described. This
+            # is from the context of the running program. For exmaple, if a
+            # @draw_picture is called with an arwgument of 3, the interpreter
+            # needs to find the index entry whose usage is 'Pict' and whose
+            # number is 3. Any code chunks, which are usage 'Exec', should
+            # havew 0 for the number.
+
+            number = self._get_number(offset, resource)
+            logging.debug(f"\t\tNumber: {number}")
+
     def _get_resource_count(self, offset: int) -> int:
         count = int.from_bytes(
             self._data[offset : offset + 4],
@@ -60,6 +70,12 @@ class Blorb:
 
     def _get_usage(self, offset: int, resource: int) -> bytes:
         return self._data[offset + (resource * 12) : offset + (resource * 12) + 4]
+
+    def _get_number(self, offset: int, resource: int) -> int:
+        return int.from_bytes(
+            self._data[offset + (resource * 12) + 4 : offset + (resource * 12) + 8],
+            byteorder="big",
+        )
 
     def _locate_chunk(self, chunk_name: bytes) -> int:
         logging.debug(f"\tSearching for chunk name: {str(chunk_name)}")
