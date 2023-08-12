@@ -1,7 +1,7 @@
 import logging
 from typing import Dict
 
-from quendor.errors import UnableToLocateRIdxChunkError
+from quendor.errors import UnableToLocateRIdxChunkError, UnableToLocateExecChunkError
 
 
 class Blorb:
@@ -10,6 +10,18 @@ class Blorb:
         self._resource_index: Dict[bytes, dict] = {}
 
         self._read_data()
+
+    def read_exec_chunk(self, number: int = 0) -> bytes:
+        try:
+            exec_start = self._resource_index[b"Exec"][number]
+        except KeyError:
+            raise UnableToLocateExecChunkError(
+                "\nThe blorb file does not contain an executable chunk of data."
+            )
+
+        size = self._get_chunk_size(exec_start)
+
+        return self._data[int(exec_start, 16) + 8 : int(exec_start, 16) + 8 + size]
 
     def _read_data(self) -> None:
         logging.debug("(Blorb Handling)")
@@ -98,6 +110,11 @@ class Blorb:
         return int.from_bytes(
             self._data[offset + (resource * 12) + 8 : offset + (resource * 12) + 12],
             byteorder="big",
+        )
+
+    def _get_chunk_size(self, offset: str) -> int:
+        return int.from_bytes(
+            self._data[int(offset, 16) + 4 : int(offset, 16) + 8], byteorder="big"
         )
 
     def _locate_chunk(self, chunk_name: bytes) -> int:

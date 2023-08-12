@@ -60,7 +60,8 @@ class Program:
             )
 
     def _read_blorb_data(self) -> None:
-        Blorb(self._data)
+        blorb = Blorb(self._data)
+        self._data = blorb.read_exec_chunk()
 
     def _check_for_zcode(self, format_id: bytes) -> None:
         # If the program is an unblorbed zcode program then the first

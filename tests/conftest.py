@@ -41,3 +41,10 @@ def invalid_zblorb(pytestconfig) -> Path:
 @pytest.fixture()
 def invalid_zblorb_bytes(invalid_zblorb: Path) -> bytes:
     return Path(invalid_zblorb).read_bytes()
+
+
+@pytest.fixture()
+def zenspeak_blorb_bytes(pytestconfig) -> bytes:
+    program = pytestconfig.rootdir / "tests" / "fixtures" / "zenspeak.blb"
+
+    return Path(program).read_bytes()
