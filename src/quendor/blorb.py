@@ -27,7 +27,26 @@ class Blorb:
 
         offset += 8
 
-        _ = self._get_resource_count(offset)
+        resource_count = self._get_resource_count(offset)
+
+        # Need to set the offset to the start of the resource
+        # index entries.
+
+        offset += 4
+
+        self._get_resources(offset, resource_count)
+
+    def _get_resources(self, offset: int, resource_count: int) -> None:
+        # There is one index entry for each resource. Each index entry
+        # is 12 bytes long.
+
+        for resource in range(resource_count):
+            logging.debug("\tResources:")
+
+            # The usage field tells what kind of resource is being described.
+
+            usage = self._get_usage(offset, resource)
+            logging.debug(f"\t\tUsage: {usage!r}")
 
     def _get_resource_count(self, offset: int) -> int:
         count = int.from_bytes(
@@ -38,6 +57,9 @@ class Blorb:
         logging.debug(f"\tResource Count: {count}")
 
         return count
+
+    def _get_usage(self, offset: int, resource: int) -> bytes:
+        return self._data[offset + (resource * 12) : offset + (resource * 12) + 4]
 
     def _locate_chunk(self, chunk_name: bytes) -> int:
         logging.debug(f"\tSearching for chunk name: {str(chunk_name)}")
