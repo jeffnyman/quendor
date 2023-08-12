@@ -63,6 +63,13 @@ class Blorb:
                 logging.debug(f"\tFound chunk ID: {str(chunk_id)}")
                 break
 
+            # If the chunk has not been found, the position has to be
+            # incremented to the next chunk.
+
+            position += chunk_length + 8
+
+            logging.debug(f"\tUpdated chunk position: {position}")
+
         # If the chunk wasn't found, zero is returned. This is never a valid
         # offset for a chunk so can be used for error checking.
         if chunk_id != chunk_name:
