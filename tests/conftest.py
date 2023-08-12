@@ -31,3 +31,13 @@ def aif_program(pytestconfig) -> Path:
 @pytest.fixture()
 def invalid_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "invalid.z1"
+
+
+@pytest.fixture()
+def invalid_zblorb(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "invalid.zblorb"
+
+
+@pytest.fixture()
+def invalid_zblorb_bytes(invalid_zblorb: Path) -> bytes:
+    return Path(invalid_zblorb).read_bytes()

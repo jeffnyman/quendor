@@ -1,5 +1,7 @@
 import logging
 
+from quendor.errors import UnableToLocateRIdxChunkError
+
 
 class Blorb:
     def __init__(self, data: bytes) -> None:
@@ -15,9 +17,10 @@ class Blorb:
 
         offset = self._locate_chunk(b"RIdx")
 
-        # NOTE: A check for a 0 offset should likely cause either a warning
-        # or possibly exiting the reading of data.
-        print(offset)
+        if offset == 0:
+            raise UnableToLocateRIdxChunkError(
+                "\nQuendor did not find an RIdx chunk in the blorb."
+            )
 
     def _locate_chunk(self, chunk_name: bytes) -> int:
         logging.debug(f"\tSearching for chunk name: {str(chunk_name)}")
@@ -30,7 +33,7 @@ class Blorb:
         # it has an IFRS type. This refers to the type ID and is the last
         # four bytes of the header. The middle four bytes are the byte
         # count of the file itself and not needed. So the logic here
-        # starts by mmoving past the header.
+        # starts by moving past the header.
 
         position: int = 12
 

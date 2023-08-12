@@ -10,6 +10,10 @@ class UnableToLocateProgramError(Exception):
     """Raise for a zcode program file that cannot be located."""
 
 
+class UnableToLocateRIdxChunkError(Exception):
+    """Raise when a blorb does not contain an RIdx."""
+
+
 class UnableToSupportGlulxProgramError(Exception):
     """Raise when a program file is determined to be Glulx."""
 
