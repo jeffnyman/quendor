@@ -2,6 +2,7 @@ import os
 import logging
 from enum import Enum
 from pathlib import Path
+from typing import List
 
 from quendor.blorb import Blorb
 from quendor.errors import (
@@ -22,6 +23,7 @@ class Program:
         self._file: Path
         self._data: bytes = b""
         self._format: FORMAT = FORMAT.UNKNOWN
+        self.blorbs: List[Blorb] = []
 
         self._locate()
         self._read_data()
@@ -60,8 +62,8 @@ class Program:
             )
 
     def _read_blorb_data(self) -> None:
-        blorb = Blorb(self._data)
-        self._data = blorb.read_exec_chunk()
+        self.blorbs = [Blorb(self._data)]
+        self._data = self.blorbs[0].read_exec_chunk()
 
     def _check_for_zcode(self, format_id: bytes) -> None:
         # If the program is an unblorbed zcode program then the first
