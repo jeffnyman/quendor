@@ -24,6 +24,21 @@ def zork1_blorb_bytes(zork1_blorb: Path) -> bytes:
 
 
 @pytest.fixture()
+def zenspeak_program(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "zenspeak.z5"
+
+
+@pytest.fixture()
+def zenspeak_resource(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "zenspeak.blb"
+
+
+@pytest.fixture()
+def zenspeak_blorb_bytes(zenspeak_resource) -> bytes:
+    return Path(zenspeak_resource).read_bytes()
+
+
+@pytest.fixture()
 def glulx_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "adventure.ulx"
 
@@ -46,13 +61,6 @@ def invalid_zblorb(pytestconfig) -> Path:
 @pytest.fixture()
 def invalid_zblorb_bytes(invalid_zblorb: Path) -> bytes:
     return Path(invalid_zblorb).read_bytes()
-
-
-@pytest.fixture()
-def zenspeak_blorb_bytes(pytestconfig) -> bytes:
-    program = pytestconfig.rootdir / "tests" / "fixtures" / "zenspeak.blb"
-
-    return Path(program).read_bytes()
 
 
 @pytest.fixture()

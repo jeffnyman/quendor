@@ -4,6 +4,7 @@ from typing import Optional
 
 from quendor import __version__
 from quendor.cli import process_arguments
+from quendor.blorb import Blorb
 from quendor.program import Program
 
 
@@ -26,6 +27,9 @@ def main(args: Optional[list] = None) -> int:
 def setup_quendor(cli: dict) -> None:
     program = Program(cli["program"])
     program.details()
+
+    if cli["resource-file"]:
+        _ = Blorb.locate(cli["resource-file"])
 
 
 def setup_logging(log_level: str) -> None:

@@ -10,6 +10,10 @@ class UnableToLocateProgramError(Exception):
     """Raise for a zcode program file that cannot be located."""
 
 
+class UnableToLocateResourceError(Exception):
+    """Raise for a resource file that cannot be located."""
+
+
 class UnableToLocateExecChunkError(Exception):
     """Raise when a blorb does not contain an Exec resource."""
 

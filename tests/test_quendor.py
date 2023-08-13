@@ -11,13 +11,30 @@ def test_package_version() -> None:
     expect(__version__).to(equal("0.1.0"))
 
 
-def test_startup_banner(capsys, zork1_z3) -> None:
-    """Provides a minimal banner on startup."""
+def test_load_program(capsys, zork1_z3) -> None:
+    """Loads a zcode program."""
 
     from quendor import __version__
     from quendor.__main__ import main
 
     main([str(zork1_z3)])
+
+    captured = capsys.readouterr()
+    result = captured.out
+
+    banner_text = f"Quendor Z-Machine Interpreter (version: {__version__})"
+    expect(result).to(contain(banner_text))
+
+
+def test_load_program_with_resource(
+    capsys, zenspeak_program, zenspeak_resource
+) -> None:
+    """Loads a zcode program and a resource."""
+
+    from quendor import __version__
+    from quendor.__main__ import main
+
+    main([str(zenspeak_program), str(zenspeak_resource)])
 
     captured = capsys.readouterr()
     result = captured.out
@@ -127,6 +144,19 @@ def test_unable_to_locate_program() -> None:
         main(["program.z3"])
 
     error_text = "Unable to locate the program: program.z3"
+    expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_unable_to_locate_resource(zenspeak_program) -> None:
+    """Raises an exception when a resource can't be located."""
+
+    from quendor.__main__ import main
+    from quendor.errors import UnableToLocateResourceError
+
+    with pytest.raises(UnableToLocateResourceError) as exc_info:
+        main([str(zenspeak_program), "invalid.blb"])
+
+    error_text = "Unable to locate the resource: invalid.blb"
     expect(str(exc_info.value)).to(contain(error_text))
 
 

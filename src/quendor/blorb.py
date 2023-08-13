@@ -1,7 +1,10 @@
 import logging
+import os
+from pathlib import Path
 from typing import Dict
 
 from quendor.errors import (
+    UnableToLocateResourceError,
     UnableToLocateRIdxChunkError,
     UnableToLocateExecChunkError,
     UnsupportedBlorbFormatError,
@@ -14,6 +17,33 @@ class Blorb:
         self._resource_index: Dict[bytes, dict] = {}
 
         self._read_data()
+
+    @staticmethod
+    def locate(resource: str) -> Path:
+        paths = [
+            Path.cwd(),
+            Path.cwd() / "zcode",
+            Path.home() / "zcode",
+            Path(os.path.expandvars("$ZCODE_PATH")),
+            Path(os.path.expandvars("$QUENDOR_PATH")),
+        ]
+
+        paths = [Path(path) for path in paths]
+
+        for path in paths:
+            logging.info(f"Checking: {Path(path).joinpath(resource)}")
+
+            file_path = path.joinpath(resource)
+
+            if file_path.is_file():
+                return file_path
+
+        checked_paths = "\n\t".join([a.as_posix() for a in paths])
+
+        raise UnableToLocateResourceError(
+            f"\nUnable to locate the resource: {resource}"
+            f"\n\nChecked in:\n\t{checked_paths}"
+        )
 
     def read_exec_chunk(self, number: int = 0) -> bytes:
         # There should at most one chunk with usage 'Exec'. Its content is an
