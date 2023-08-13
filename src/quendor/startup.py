@@ -28,6 +28,11 @@ def setup_quendor(cli: dict) -> None:
     program = Program(cli["program"])
     program.details()
 
+    # A resource file which doesn't contain an executable chunk can only
+    # be used in tandem with an executable file. The interpreter must be
+    # given both the resource file and the executable file in order to
+    # begin interpreting.
+
     if cli["resource-file"]:
         _ = Blorb.locate(cli["resource-file"])
 
