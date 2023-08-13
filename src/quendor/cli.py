@@ -15,6 +15,14 @@ def process_arguments(args: list) -> dict:
     parser.add_argument("program", help="zcode program to load")
 
     parser.add_argument(
+        "resource-file",
+        nargs="?",
+        action="store",
+        type=str,
+        help="resource file to load with z-code program",
+    )
+
+    parser.add_argument(
         "--log",
         default="ERROR",
         const="ERROR",
