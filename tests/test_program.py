@@ -21,6 +21,7 @@ def test_read_valid_blorb(zork1_blorb) -> None:
 
     expect(program._data).to(be_a(bytes))
     expect(program._format.name).to(equal("BLORB"))
+    expect(len(program.blorbs)).to(equal(1))
 
 
 def test_zcode_and_blorb_byte_equivalency(zork1_z1, zork1_blorb) -> None:
