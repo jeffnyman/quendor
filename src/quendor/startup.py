@@ -19,12 +19,12 @@ def main(args: Optional[list] = None) -> int:
     cli = process_arguments(args)
     setup_logging(cli["log"])
     display_arguments(cli)
-    setup_quendor(cli)
+    _ = setup_quendor(cli)
 
     return 0
 
 
-def setup_quendor(cli: dict) -> None:
+def setup_quendor(cli: dict) -> Program:
     program = Program(cli["program"])
     program.details()
 
@@ -34,7 +34,10 @@ def setup_quendor(cli: dict) -> None:
     # begin interpreting.
 
     if cli["resource-file"]:
-        _ = Blorb.locate(cli["resource-file"])
+        resource_file = Blorb.locate(cli["resource-file"])
+        program.blorbs.append(Blorb(resource_file.read_bytes(), program._data))
+
+    return program
 
 
 def setup_logging(log_level: str) -> None:

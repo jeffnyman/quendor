@@ -24,6 +24,19 @@ def test_read_valid_blorb(zork1_blorb) -> None:
     expect(len(program.blorbs)).to(equal(1))
 
 
+def test_read_valid_zcode_and_resource(zenspeak_program, zenspeak_resource) -> None:
+    """Reads binary data from blorb program."""
+
+    from quendor.startup import setup_quendor
+
+    cli = {"program": zenspeak_program, "resource-file": zenspeak_resource}
+
+    program = setup_quendor(cli)
+
+    expect(program._data).to(be_a(bytes))
+    expect(len(program.blorbs)).to(equal(1))
+
+
 def test_zcode_and_blorb_byte_equivalency(zork1_z1, zork1_blorb) -> None:
     """Reads the same data whether blorbed or unblorbed."""
 

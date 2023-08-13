@@ -12,8 +12,9 @@ from quendor.errors import (
 
 
 class Blorb:
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, zcode_data: bytes = b"") -> None:
         self._data: bytes = data
+        self._zcode_data: bytes = zcode_data
         self._resource_index: Dict[bytes, dict] = {}
 
         self._read_data()
