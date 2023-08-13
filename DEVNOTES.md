@@ -2,7 +2,7 @@
 
 There is a `locate()` method in the `Program` module and one in the `Blorb` module. Maybe these should be factored out?
 
-- Handling inncosistent programs.
+- Handling inconsistent programs.
 
 The Blorb spec says "If an interpreter is handed inconsistent arguments – that is, a resource file with no executable chunk, or a resource file with an executable chunk plus an executable file – it should complain righteously to the user."
 
