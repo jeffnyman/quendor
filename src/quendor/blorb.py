@@ -176,7 +176,7 @@ class Blorb:
         if offset:
             offset += 8
 
-            self.release = int.from_bytes(
+            self._release = int.from_bytes(
                 self._data[offset : offset + 2], byteorder="big"
             )
 

@@ -228,4 +228,4 @@ def test_get_release_number_information(shogun_zcode, shogun_resource) -> None:
 
     resource = program.blorbs[0]
 
-    expect(resource.release).to(equal(9))
+    expect(resource._release).to(equal(9))
