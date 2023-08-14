@@ -27,7 +27,8 @@ def main(args: Optional[list] = None) -> int:
 
 
 def read_config(data: bytes) -> None:
-    Config(data)
+    config = Config(data)
+    config.read()
 
 
 def setup_quendor(cli: dict) -> Program:

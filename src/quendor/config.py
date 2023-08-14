@@ -7,8 +7,14 @@ class Config:
     def __init__(self, program_data: bytes) -> None:
         self._data: bytes = program_data
         self._file: Path
+        self._contents: str = ""
 
         self._locate()
+
+    def read(self) -> None:
+        if self._file:
+            with open(self._file, "r") as config:
+                self._contents = config.read()
 
     def _locate(self) -> None:
         paths = [

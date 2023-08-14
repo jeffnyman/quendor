@@ -83,3 +83,8 @@ def airport_blorb_bytes(pytestconfig) -> bytes:
     program = pytestconfig.rootdir / "tests" / "fixtures" / "airport.gblorb"
 
     return Path(program).read_bytes()
+
+
+@pytest.fixture()
+def quendor_config() -> str:
+    return """Test Config"""
