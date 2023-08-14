@@ -21,8 +21,8 @@ class Program:
     def __init__(self, program: str) -> None:
         self._program: str = program
         self._file: Path
-        self._data: bytes = b""
         self._format: FORMAT = FORMAT.UNKNOWN
+        self.data: bytes = b""
         self.blorbs: List[Blorb] = []
 
         self._locate()
@@ -41,7 +41,7 @@ class Program:
         # Reading the first four bytes is enough to get the format
         # for any valid program file.
 
-        format_id = self._data[0:4]
+        format_id = self.data[0:4]
 
         self._check_for_glulx(format_id)
         self._check_for_blorb(format_id)
@@ -54,7 +54,7 @@ class Program:
 
     def _read_data(self) -> None:
         try:
-            self._data = self._file.read_bytes()
+            self.data = self._file.read_bytes()
         except OSError:
             raise UnableToAccessProgramError(
                 f"\nUnable to access the program: {self._file.name}"
@@ -62,8 +62,8 @@ class Program:
             )
 
     def _read_blorb_data(self) -> None:
-        self.blorbs = [Blorb(self._data)]
-        self._data = self.blorbs[0].read_exec_chunk()
+        self.blorbs = [Blorb(self.data)]
+        self.data = self.blorbs[0].read_exec_chunk()
 
     def _check_for_zcode(self, format_id: bytes) -> None:
         # If the program is an unblorbed zcode program then the first
@@ -81,7 +81,7 @@ class Program:
         # interactive fiction type.
 
         if self._decode_bytes(format_id) == "FORM":
-            ifrs_id = self._data[8:12]
+            ifrs_id = self.data[8:12]
 
             if self._decode_bytes(ifrs_id) != "IFRS":
                 raise UnableToSupportNonIfrsResource(

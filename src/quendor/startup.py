@@ -35,7 +35,7 @@ def setup_quendor(cli: dict) -> Program:
 
     if cli["resource-file"]:
         resource_file = Blorb.locate(cli["resource-file"])
-        program.blorbs.append(Blorb(resource_file.read_bytes(), program._data))
+        program.blorbs.append(Blorb(resource_file.read_bytes(), program.data))
 
     return program
 

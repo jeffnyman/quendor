@@ -171,7 +171,7 @@ def test_get_ifhd_information(shogun_zcode, shogun_resource) -> None:
     resource_file = Blorb.locate(shogun_resource)
     resource_bytes = resource_file.read_bytes()
 
-    program.blorbs.append(Blorb(resource_bytes, program._data))
+    program.blorbs.append(Blorb(resource_bytes, program.data))
 
     resource = program.blorbs[0]
 
@@ -207,7 +207,7 @@ def test_ifhd_mismatch(shogun_zcode, arthur_resource) -> None:
     resource_bytes = resource_file.read_bytes()
 
     with pytest.raises(UnableToMatchIFhdError) as exc_info:
-        program.blorbs.append(Blorb(resource_bytes, program._data))
+        program.blorbs.append(Blorb(resource_bytes, program.data))
 
     error_text = "Quendor found a mismatch between zcode and resource data"
 
