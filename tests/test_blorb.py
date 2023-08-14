@@ -159,3 +159,56 @@ def test_blorb_invalid_exec_chunk(airport_blorb_bytes) -> None:
     error_text = "The blorb file does not have a zcode executable"
 
     expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_get_ifhd_information(shogun_zcode, shogun_resource) -> None:
+    """Compares IFhd chunk resource information with zcode data."""
+
+    from quendor.blorb import Blorb
+    from quendor.program import Program
+
+    program = Program(shogun_zcode)
+    resource_file = Blorb.locate(shogun_resource)
+    resource_bytes = resource_file.read_bytes()
+
+    program.blorbs.append(Blorb(resource_bytes, program._data))
+
+    resource = program.blorbs[0]
+
+    offset = resource._locate_chunk(b"IFhd")
+
+    expect(offset).to(equal(600))
+
+    offset += 8
+    resource_release = resource._read_release(resource._data, offset)
+
+    expect(resource_release).to(equal(322))
+
+    offset += 2
+    resource_serial = resource._read_serial(resource._data, offset)
+
+    expect(resource_serial).to(equal(b"890706"))
+
+    offset += 6
+    resource_checksum = resource._read_checksum(resource._data, offset)
+
+    expect(resource_checksum).to(equal(23688))
+
+
+def test_ifhd_mismatch(shogun_zcode, arthur_resource) -> None:
+    """Raises exception for mismatch IFhd data and zcode data."""
+
+    from quendor.blorb import Blorb
+    from quendor.program import Program
+    from quendor.errors import UnableToMatchIFhdError
+
+    program = Program(shogun_zcode)
+    resource_file = Blorb.locate(arthur_resource)
+    resource_bytes = resource_file.read_bytes()
+
+    with pytest.raises(UnableToMatchIFhdError) as exc_info:
+        program.blorbs.append(Blorb(resource_bytes, program._data))
+
+    error_text = "Quendor found a mismatch between zcode and resource data"
+
+    expect(str(exc_info.value)).to(contain(error_text))

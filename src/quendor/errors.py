@@ -22,6 +22,10 @@ class UnableToLocateRIdxChunkError(Exception):
     """Raise when a blorb does not contain a RIdx resource."""
 
 
+class UnableToMatchIFhdError(Exception):
+    """Raise for an IFhd mismatch between zcode and blorb resource."""
+
+
 class UnableToSupportGlulxProgramError(Exception):
     """Raise when a program file is determined to be Glulx."""
 

@@ -39,6 +39,21 @@ def zenspeak_blorb_bytes(zenspeak_resource) -> bytes:
 
 
 @pytest.fixture()
+def shogun_zcode(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "shogun.z6"
+
+
+@pytest.fixture()
+def shogun_resource(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "shogun.blb"
+
+
+@pytest.fixture()
+def arthur_resource(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "arthur.blb"
+
+
+@pytest.fixture()
 def glulx_program(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "adventure.ulx"
 

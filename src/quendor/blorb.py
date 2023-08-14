@@ -7,6 +7,7 @@ from quendor.errors import (
     UnableToLocateResourceError,
     UnableToLocateRIdxChunkError,
     UnableToLocateExecChunkError,
+    UnableToMatchIFhdError,
     UnsupportedBlorbFormatError,
 )
 
@@ -18,6 +19,9 @@ class Blorb:
         self._resource_index: Dict[bytes, dict] = {}
 
         self._read_data()
+
+        if zcode_data:
+            self._verify_zcode_data()
 
     @staticmethod
     def locate(resource: str) -> Path:
@@ -78,6 +82,78 @@ class Blorb:
         # prseent in an unblorbed program.
 
         return self._data[int(exec_start, 16) + 8 : int(exec_start, 16) + 8 + size]
+
+    def _verify_zcode_data(self) -> None:
+        # The IFhd is a program identifier chunk which indicates which
+        # zcode program the resources are associated with. The format for
+        # the information chunk is:
+
+        # 4 bytes		'IFhd'	chunk ID
+        # 4 bytes		13		chunk length
+        # 1 word		...		release number ($2 in header)
+        # 6 bytes		...		serial number ($12 in header)
+        # 1 word		...		checksum ($1C in header)
+        # 3 bytes		...		PC
+
+        offset = self._locate_chunk(b"IFhd")
+
+        # Infocom games will likely have an offset whereas many, if not
+        # most, Inform games will not. Since the chunk is optional, if
+        # it doesn't exist, the data and resource will be assumed to be
+        # valid.
+
+        if offset == 0:
+            return
+
+        # STAGE 1: Get "game identifier" information from the resource.
+
+        offset += 8
+
+        resource_release = self._read_release(self._data, offset)
+
+        offset += 2
+
+        resource_serial = self._read_serial(self._data, offset)
+
+        offset += 6
+
+        resource_checksum = self._read_checksum(self._data, offset)
+
+        # STAGE 2: Get "game identifier" information from the zcode
+        # data in the resource.
+
+        # The release number is 0x2 in the header.
+
+        zcode_release = self._read_release(self._zcode_data, 2)
+
+        # The serial number is 0x12 in the header.
+
+        zcode_serial = self._read_serial(self._zcode_data, 0x12)
+
+        # The checksum is 0x1C in the header.
+
+        zcode_checksum = self._read_checksum(self._zcode_data, 0x1C)
+
+        if not (
+            resource_release == zcode_release
+            and resource_serial == zcode_serial
+            and resource_checksum == zcode_checksum
+        ):
+            raise UnableToMatchIFhdError(
+                "\nQuendor found a mismatch between zcode and resource data"
+            )
+
+    @staticmethod
+    def _read_release(data: bytes, offset: int) -> int:
+        return int.from_bytes(data[offset : offset + 2], byteorder="big")
+
+    @staticmethod
+    def _read_serial(data: bytes, offset: int) -> bytes:
+        return data[offset : offset + 6]
+
+    @staticmethod
+    def _read_checksum(data: bytes, offset: int) -> int:
+        return int.from_bytes(data[offset : offset + 2], byteorder="big")
 
     def _read_data(self) -> None:
         logging.debug("(Blorb Handling)")
