@@ -17,11 +17,14 @@ class Blorb:
         self._data: bytes = data
         self._zcode_data: bytes = zcode_data
         self._resource_index: Dict[bytes, dict] = {}
+        self._release: int = 0
 
         self._read_data()
 
         if zcode_data:
             self._verify_zcode_data()
+
+        self._read_release_number()
 
     @staticmethod
     def locate(resource: str) -> Path:
@@ -154,6 +157,28 @@ class Blorb:
     @staticmethod
     def _read_checksum(data: bytes, offset: int) -> int:
         return int.from_bytes(data[offset : offset + 2], byteorder="big")
+
+    def _read_release_number(self) -> None:
+        # The RelN chunk is used to tell the interpreter the release
+        # number of the resource file. This chunk is optional and if
+        # it's not present, the interpreter should assume a release
+        # number of 0. This is only meaningulf in zcode resource files.
+        # The format for the release chunk is:
+
+        # 4 bytes   'RelN'   chunk ID
+        # 4 bytes   2        chunk length
+        # 2 bytes   num      release number
+
+        offset = self._locate_chunk(b"RelN")
+
+        logging.debug(f"\tRelN Offset: {offset}")
+
+        if offset:
+            offset += 8
+
+            self.release = int.from_bytes(
+                self._data[offset : offset + 2], byteorder="big"
+            )
 
     def _read_data(self) -> None:
         logging.debug("(Blorb Handling)")

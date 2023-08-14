@@ -212,3 +212,20 @@ def test_ifhd_mismatch(shogun_zcode, arthur_resource) -> None:
     error_text = "Quendor found a mismatch between zcode and resource data"
 
     expect(str(exc_info.value)).to(contain(error_text))
+
+
+def test_get_release_number_information(shogun_zcode, shogun_resource) -> None:
+    """Reads RelN chunk information from a blorb resource."""
+
+    from quendor.blorb import Blorb
+    from quendor.program import Program
+
+    program = Program(shogun_zcode)
+    resource_file = Blorb.locate(shogun_resource)
+    resource_bytes = resource_file.read_bytes()
+
+    program.blorbs.append(Blorb(resource_bytes, program.data))
+
+    resource = program.blorbs[0]
+
+    expect(resource.release).to(equal(9))
