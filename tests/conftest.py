@@ -87,4 +87,11 @@ def airport_blorb_bytes(pytestconfig) -> bytes:
 
 @pytest.fixture()
 def quendor_config() -> str:
-    return """Test Config"""
+    return """
+    value: 1
+    value: 2
+
+    %%
+
+    other
+    """

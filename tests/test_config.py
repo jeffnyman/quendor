@@ -44,3 +44,29 @@ def test_read_quendor_file(monkeypatch, zork1_z3, quendor_config) -> None:
 
     expect(config._contents).to(contain(quendor_config))
     expect(hasattr(config, "_file")).to(be_true)
+
+
+def test_get_defaults(zork1_z3, quendor_config) -> None:
+    from quendor.config import Config
+    from quendor.program import Program
+
+    program = Program(zork1_z3)
+    config = Config(program.data)
+
+    config._contents = quendor_config
+
+    defaults = config.get_defaults()
+
+    expected_defaults = """
+        value: 1
+        value: 2
+
+        %%
+        """
+
+    expected_defaults = "\n".join(
+        line.lstrip() for line in expected_defaults.split("\n")
+    )
+    defaults = "\n".join(line.lstrip() for line in defaults.split("\n"))
+
+    expect(defaults).to(contain(expected_defaults))
