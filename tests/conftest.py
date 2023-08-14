@@ -91,6 +91,8 @@ def quendor_config() -> str:
     value: 1
     value: 2
 
+    title: Unknown Program
+
     %%
 
     other

@@ -61,6 +61,8 @@ def test_get_defaults(zork1_z3, quendor_config) -> None:
         value: 1
         value: 2
 
+        title: Unknown Program
+
         %%
         """
 

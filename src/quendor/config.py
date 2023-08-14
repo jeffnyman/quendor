@@ -12,6 +12,13 @@ class Config:
 
         self._locate()
 
+    def get_values(self, default_data: str) -> list:
+        configs = []
+
+        configs.append(self._read_title(default_data))
+
+        return configs
+
     def get_defaults(self) -> str:
         # The defaults in the configuration file are any entries at
         # the start of the file up to the first "%%" characters.
@@ -34,6 +41,16 @@ class Config:
         if self._file:
             with open(self._file, "r") as config:
                 self._contents = config.read()
+
+    def _read_title(self, default_data: str) -> str:
+        expression = r"title:.*?$"
+        regex = re.compile(expression, re.M)
+        match = regex.search(default_data)
+
+        if match is None:
+            return ""
+
+        return match.string[match.start() + 6 : match.end()].strip()
 
     def _locate(self) -> None:
         paths = [

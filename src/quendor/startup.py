@@ -29,7 +29,7 @@ def main(args: Optional[list] = None) -> int:
 def read_config(data: bytes) -> None:
     config = Config(data)
     config.read()
-    _ = config.get_defaults()
+    _ = config.get_values(config.get_defaults())
 
 
 def setup_quendor(cli: dict) -> Program:
