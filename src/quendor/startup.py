@@ -5,6 +5,7 @@ from typing import Optional
 from quendor import __version__
 from quendor.cli import process_arguments
 from quendor.blorb import Blorb
+from quendor.config import Config
 from quendor.program import Program
 
 
@@ -19,9 +20,14 @@ def main(args: Optional[list] = None) -> int:
     cli = process_arguments(args)
     setup_logging(cli["log"])
     display_arguments(cli)
-    _ = setup_quendor(cli)
+    program = setup_quendor(cli)
+    read_config(program.data)
 
     return 0
+
+
+def read_config(data: bytes) -> None:
+    Config(data)
 
 
 def setup_quendor(cli: dict) -> Program:
