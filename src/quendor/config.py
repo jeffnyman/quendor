@@ -20,6 +20,7 @@ class Config:
         configs.append(self._read_width(default_data))
         configs.append(self._read_height(default_data))
         configs.append(self._read_blorb(default_data))
+        configs.append(self._read_terpnum(default_data))
 
         return configs
 
@@ -85,6 +86,16 @@ class Config:
             return ""
 
         return match.string[match.start() + 6 : match.end()].strip()
+
+    def _read_terpnum(self, default_data: str) -> str:
+        expression = r"terpnum:.*?$"
+        regex = re.compile(expression, re.M)
+        match = regex.search(default_data)
+
+        if match is None:
+            return ""
+
+        return match.string[match.start() + 8 : match.end()].strip()
 
     def _locate(self) -> None:
         paths = [
