@@ -88,3 +88,30 @@ def test_set_program_id_for_config(zork1_z3) -> None:
     config.set_program_id()
 
     expect(config._identifier).to(contain("88.840726"))
+
+
+def test_get_program_based_on_id(zork1_z3, quendor_config) -> None:
+    """Reads the defaults from the configuration file."""
+
+    from quendor.config import Config
+    from quendor.program import Program
+
+    program = Program(zork1_z3)
+    config = Config(program.data)
+
+    config._contents = quendor_config
+
+    program_id = config.get_program_id()
+
+    expected_program = """
+        id: 88.840726
+        title: Zork I: The Great Underground Empire
+        """
+
+    expected_program = expected_program.strip()  # Strip leading/trailing whitespace
+    expected_program = "\n".join(line.lstrip() for line in expected_program.split("\n"))
+
+    program_id = program_id.strip()  # Strip leading/trailing whitespace
+    program_id = "\n".join(line.lstrip() for line in program_id.split("\n"))
+
+    expect(program_id).to(contain(expected_program))

@@ -25,3 +25,7 @@ I currently return 0 if there is no value. But that might imply a 0 width / heig
 - Terp num default for config.
 
 I currently return "" if there is no value. But this is an int, much like the height and width. Should I treat it accordingly?
+
+- Similar methods in Config
+
+The get_program_id() and get_defaults() methods are very similar. Should these be factored? If they are, does their respective names still make sense?

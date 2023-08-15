@@ -31,7 +31,19 @@ class Config:
         self._identifier = str(release) + "." + serial
 
     def get_program_id(self) -> str:
-        # PLACEDHOLDER: Need an identifier from the program file first.
+        text = re.escape(self._identifier)
+        expression = r"id:[\s\w\.]*" + text + ".*?(^%%|\\Z)"
+
+        # The re.M flag enables multiline matching.
+        # The re.S flag enables dot-all matching.
+
+        regex = re.compile(expression, re.M | re.S)
+
+        match = regex.search(self._contents)
+
+        if match is not None:
+            return match.string[match.start() : match.end()]
+
         return ""
 
     def get_defaults(self) -> str:

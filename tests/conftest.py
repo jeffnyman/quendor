@@ -95,5 +95,6 @@ def quendor_config() -> str:
 
     %%
 
-    other
+    id: 88.840726
+    title: Zork I: The Great Underground Empire
     """
