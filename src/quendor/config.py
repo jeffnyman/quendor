@@ -19,6 +19,7 @@ class Config:
         configs.append(self._read_title(default_data))
         configs.append(self._read_width(default_data))
         configs.append(self._read_height(default_data))
+        configs.append(self._read_blorb(default_data))
 
         return configs
 
@@ -74,6 +75,16 @@ class Config:
             return 0
 
         return int(match.string[match.start() + 7 : match.end()].strip())
+
+    def _read_blorb(self, default_data: str) -> str:
+        expression = r"blorb:.*?$"
+        regex = re.compile(expression, re.M)
+        match = regex.search(default_data)
+
+        if match is None:
+            return ""
+
+        return match.string[match.start() + 6 : match.end()].strip()
 
     def _locate(self) -> None:
         paths = [
