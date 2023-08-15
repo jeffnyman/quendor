@@ -29,7 +29,9 @@ def main(args: Optional[list] = None) -> int:
 def read_config(data: bytes) -> None:
     config = Config(data)
     config.read()
+    config.set_program_id()
     _ = config.get_values(config.get_defaults())
+    _ = config.get_values(config.get_program_id())
 
 
 def setup_quendor(cli: dict) -> Program:

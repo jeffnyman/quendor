@@ -10,6 +10,7 @@ class Config:
         self._data: bytes = program_data
         self._file: Path
         self._contents: str = ""
+        self._identifier: str = ""
 
         self._locate()
 
@@ -23,6 +24,15 @@ class Config:
         configs.append(self._read_terpnum(default_data))
 
         return configs
+
+    def set_program_id(self) -> None:
+        release = (self._data[2] << 8) + self._data[3]
+        serial = self._data[0x12:0x18].decode("latin-1")
+        self._identifier = str(release) + "." + serial
+
+    def get_program_id(self) -> str:
+        # PLACEDHOLDER: Need an identifier from the program file first.
+        return ""
 
     def get_defaults(self) -> str:
         # The defaults in the configuration file are any entries at

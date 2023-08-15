@@ -47,6 +47,8 @@ def test_read_quendor_file(monkeypatch, zork1_z3, quendor_config) -> None:
 
 
 def test_get_defaults(zork1_z3, quendor_config) -> None:
+    """Reads the defaults from the configuration file."""
+
     from quendor.config import Config
     from quendor.program import Program
 
@@ -72,3 +74,17 @@ def test_get_defaults(zork1_z3, quendor_config) -> None:
     defaults = "\n".join(line.lstrip() for line in defaults.split("\n"))
 
     expect(defaults).to(contain(expected_defaults))
+
+
+def test_set_program_id_for_config(zork1_z3) -> None:
+    """Sets the program id for the config based on program data."""
+
+    from quendor.config import Config
+    from quendor.program import Program
+
+    program = Program(zork1_z3)
+    config = Config(program.data)
+
+    config.set_program_id()
+
+    expect(config._identifier).to(contain("88.840726"))
