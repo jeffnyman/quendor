@@ -29,3 +29,7 @@ I currently return "" if there is no value. But this is an int, much like the he
 - Similar methods in Config
 
 The get_program_id() and get_defaults() methods are very similar. Should these be factored? If they are, does their respective names still make sense?
+
+- Position-based config.
+
+I use program_config[3] to read the blorb information. But this requires knowing that the third index is the blorb. Granted, configuration data is minimal but this seems like a poor way to do this. Perhaps a dictionary would be better here?

@@ -49,6 +49,11 @@ def shogun_resource(pytestconfig) -> Path:
 
 
 @pytest.fixture()
+def arthur_zcode(pytestconfig) -> Path:
+    return pytestconfig.rootdir / "tests" / "fixtures" / "arthur.z6"
+
+
+@pytest.fixture()
 def arthur_resource(pytestconfig) -> Path:
     return pytestconfig.rootdir / "tests" / "fixtures" / "arthur.blb"
 
@@ -97,4 +102,10 @@ def quendor_config() -> str:
 
     id: 88.840726
     title: Zork I: The Great Underground Empire
+
+    %%
+
+    id: 41.890504 74.890714
+    title: Arthur: The Quest for Excalibur
+    blorb: arthur.blb
     """

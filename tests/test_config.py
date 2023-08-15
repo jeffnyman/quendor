@@ -108,10 +108,10 @@ def test_get_program_based_on_id(zork1_z3, quendor_config) -> None:
         title: Zork I: The Great Underground Empire
         """
 
-    expected_program = expected_program.strip()  # Strip leading/trailing whitespace
+    expected_program = expected_program.strip()
     expected_program = "\n".join(line.lstrip() for line in expected_program.split("\n"))
 
-    program_id = program_id.strip()  # Strip leading/trailing whitespace
+    program_id = program_id.strip()
     program_id = "\n".join(line.lstrip() for line in program_id.split("\n"))
 
     expect(program_id).to(contain(expected_program))

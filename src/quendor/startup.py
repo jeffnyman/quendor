@@ -20,8 +20,10 @@ def main(args: Optional[list] = None) -> int:
     cli = process_arguments(args)
     setup_logging(cli["log"])
     display_arguments(cli)
+
     program = setup_quendor(cli)
-    _ = read_config(program)
+    program_config = read_config(program)
+    read_blorb_config(program_config, program.blorbs)
 
     return 0
 
@@ -41,6 +43,14 @@ def read_config(program: Program) -> list:
             program_config[value] = default_config[value]
 
     return program_config
+
+
+def read_blorb_config(program_config: list, program_blorbs: list) -> None:
+    print(program_blorbs)
+
+    if program_config[3] != "":
+        print(program_config[3])
+        _ = Blorb.locate(program_config[3])
 
 
 def setup_quendor(cli: dict) -> Program:

@@ -63,3 +63,35 @@ def test_program_configuration_with_filled_in_defaults(zork1_z3) -> None:
     expect(program_config).to(
         equal(["Zork I: The Great Underground Empire", 1024, 768, "", ""])
     )
+
+
+def test_program_configuration_with_filled_in_defaults_with_blorb(arthur_zcode) -> None:
+    """Includes program-specific blorb as part of full configuration."""
+
+    from quendor.program import Program
+    from quendor.startup import read_config
+
+    program = Program(arthur_zcode)
+    program_config = read_config(program)
+
+    expect(program_config).to(
+        equal(["Arthur: The Quest for Excalibur", 640, 400, "arthur.blb", ""])
+    )
+
+
+def test_get_program_configuration_missing_blorb(arthur_zcode) -> None:
+    """Raises an exception if a blorb from the configuration cannot be located."""
+
+    import pytest
+    from quendor.program import Program
+    from quendor.startup import read_config, read_blorb_config
+    from quendor.errors import UnableToLocateResourceError
+
+    program = Program(arthur_zcode)
+    program_config = read_config(program)
+    program_config = ["Arthur: The Quest for Excalibur", 640, 400, "arthur1.blb", ""]
+
+    program.blorbs = []
+
+    with pytest.raises(UnableToLocateResourceError):
+        read_blorb_config(program_config, program.blorbs)
