@@ -2,6 +2,7 @@ import os
 import re
 import logging
 from pathlib import Path
+from typing import List, Union
 
 
 class Config:
@@ -13,9 +14,11 @@ class Config:
         self._locate()
 
     def get_values(self, default_data: str) -> list:
-        configs = []
+        configs: List[Union[str, int]] = []
 
         configs.append(self._read_title(default_data))
+        configs.append(self._read_width(default_data))
+        configs.append(self._read_height(default_data))
 
         return configs
 
@@ -51,6 +54,26 @@ class Config:
             return ""
 
         return match.string[match.start() + 6 : match.end()].strip()
+
+    def _read_width(self, default_data: str) -> int:
+        expression = r"width:.*?$"
+        regex = re.compile(expression, re.M)
+        match = regex.search(default_data)
+
+        if match is None:
+            return 0
+
+        return int(match.string[match.start() + 6 : match.end()].strip())
+
+    def _read_height(self, default_data: str) -> int:
+        expression = r"height:.*?$"
+        regex = re.compile(expression, re.M)
+        match = regex.search(default_data)
+
+        if match is None:
+            return 0
+
+        return int(match.string[match.start() + 7 : match.end()].strip())
 
     def _locate(self) -> None:
         paths = [

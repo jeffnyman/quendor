@@ -58,8 +58,8 @@ def test_get_defaults(zork1_z3, quendor_config) -> None:
     defaults = config.get_defaults()
 
     expected_defaults = """
-        value: 1
-        value: 2
+        width: 1024
+        height: 768
 
         title: Unknown Program
 

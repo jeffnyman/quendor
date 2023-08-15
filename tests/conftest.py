@@ -88,8 +88,8 @@ def airport_blorb_bytes(pytestconfig) -> bytes:
 @pytest.fixture()
 def quendor_config() -> str:
     return """
-    value: 1
-    value: 2
+    width: 1024
+    height: 768
 
     title: Unknown Program
 
