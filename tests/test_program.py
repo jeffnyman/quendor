@@ -58,7 +58,7 @@ def test_program_configuration_with_filled_in_defaults(zork1_z3) -> None:
     from quendor.startup import read_config
 
     program = Program(zork1_z3)
-    program_config = read_config(program.data)
+    program_config = read_config(program)
 
     expect(program_config).to(
         equal(["Zork I: The Great Underground Empire", 1024, 768, "", ""])

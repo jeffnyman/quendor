@@ -21,13 +21,13 @@ def main(args: Optional[list] = None) -> int:
     setup_logging(cli["log"])
     display_arguments(cli)
     program = setup_quendor(cli)
-    _ = read_config(program.data)
+    _ = read_config(program)
 
     return 0
 
 
-def read_config(data: bytes) -> list:
-    config = Config(data)
+def read_config(program: Program) -> list:
+    config = Config(program.data)
     config.read()
     config.set_program_id()
     default_config = config.get_values(config.get_defaults())
