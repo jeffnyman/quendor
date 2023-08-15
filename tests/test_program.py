@@ -49,3 +49,17 @@ def test_zcode_and_blorb_byte_equivalency(zork1_z1, zork1_blorb) -> None:
     blorb_data = program.data
 
     expect(zcode_data).to(equal(blorb_data))
+
+
+def test_program_configuration_with_filled_in_defaults(zork1_z3) -> None:
+    """Uses program-specific and default values to provide a full configuration."""
+
+    from quendor.program import Program
+    from quendor.startup import read_config
+
+    program = Program(zork1_z3)
+    program_config = read_config(program.data)
+
+    expect(program_config).to(
+        equal(["Zork I: The Great Underground Empire", 1024, 768, "", ""])
+    )

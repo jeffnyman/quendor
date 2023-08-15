@@ -21,17 +21,26 @@ def main(args: Optional[list] = None) -> int:
     setup_logging(cli["log"])
     display_arguments(cli)
     program = setup_quendor(cli)
-    read_config(program.data)
+    _ = read_config(program.data)
 
     return 0
 
 
-def read_config(data: bytes) -> None:
+def read_config(data: bytes) -> list:
     config = Config(data)
     config.read()
     config.set_program_id()
-    _ = config.get_values(config.get_defaults())
-    _ = config.get_values(config.get_program_id())
+    default_config = config.get_values(config.get_defaults())
+    program_config = config.get_values(config.get_program_id())
+
+    # Any configuration settings that aren't specific to a
+    # program will use the defaults.
+
+    for value in range(len(program_config)):
+        if program_config[value] == 0 or program_config[value] == "":
+            program_config[value] = default_config[value]
+
+    return program_config
 
 
 def setup_quendor(cli: dict) -> Program:
