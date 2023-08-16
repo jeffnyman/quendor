@@ -137,14 +137,30 @@ class Blorb:
 
         zcode_checksum = self._read_checksum(self._zcode_data, 0x1C)
 
-        if not (
-            resource_release == zcode_release
-            and resource_serial == zcode_serial
-            and resource_checksum == zcode_checksum
-        ):
-            raise UnableToMatchIFhdError(
-                "\nQuendor found a mismatch between zcode and resource data"
+        mismatch_details = []
+
+        if resource_release != zcode_release:
+            mismatch_details.append(
+                "Release mismatch: "
+                f"resource was {resource_release}, zcode was {zcode_release}"
             )
+        if resource_serial != zcode_serial:
+            mismatch_details.append(
+                "Serial mismatch: "
+                f"resource was {resource_serial!r}, zcode was {zcode_serial!r}"
+            )
+        if resource_checksum != zcode_checksum:
+            mismatch_details.append(
+                "Checksum mismatch: "
+                f"resource was {resource_checksum}, zcode was {zcode_checksum}"
+            )
+
+        if mismatch_details:
+            error_message = (
+                "\nQuendor found mismatches between zcode and resource data:\n\n"
+                + "\n".join(mismatch_details)
+            )
+            raise UnableToMatchIFhdError(error_message)
 
     @staticmethod
     def _read_release(data: bytes, offset: int) -> int:

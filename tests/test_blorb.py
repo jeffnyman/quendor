@@ -209,7 +209,7 @@ def test_ifhd_mismatch(shogun_zcode, arthur_resource) -> None:
     with pytest.raises(UnableToMatchIFhdError) as exc_info:
         program.blorbs.append(Blorb(resource_bytes, program.data))
 
-    error_text = "Quendor found a mismatch between zcode and resource data"
+    error_text = "Quendor found mismatches between zcode and resource data"
 
     expect(str(exc_info.value)).to(contain(error_text))
 
