@@ -39,7 +39,7 @@ def read_config(program: Program) -> list:
     # program will use the defaults.
 
     for value in range(len(program_config)):
-        if program_config[value] == 0 or program_config[value] == "":
+        if program_config[value] == "":
             program_config[value] = default_config[value]
 
     return program_config

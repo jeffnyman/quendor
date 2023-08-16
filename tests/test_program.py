@@ -61,7 +61,7 @@ def test_program_configuration_with_filled_in_defaults(zork1_z3) -> None:
     program_config = read_config(program)
 
     expect(program_config).to(
-        equal(["Zork I: The Great Underground Empire", 1024, 768, "", ""])
+        equal(["Zork I: The Great Underground Empire", "1024", "768", "", ""])
     )
 
 
@@ -75,7 +75,7 @@ def test_program_configuration_with_filled_in_defaults_with_blorb(arthur_zcode) 
     program_config = read_config(program)
 
     expect(program_config).to(
-        equal(["Arthur: The Quest for Excalibur", 640, 400, "arthur.blb", ""])
+        equal(["Arthur: The Quest for Excalibur", "640", "400", "arthur.blb", ""])
     )
 
 
@@ -89,7 +89,13 @@ def test_get_program_configuration_missing_blorb(arthur_zcode) -> None:
 
     program = Program(arthur_zcode)
     program_config = read_config(program)
-    program_config = ["Arthur: The Quest for Excalibur", 640, 400, "arthur1.blb", ""]
+    program_config = [
+        "Arthur: The Quest for Excalibur",
+        "640",
+        "400",
+        "arthur1.blb",
+        "",
+    ]
 
     program.blorbs = []
 

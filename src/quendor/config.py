@@ -56,25 +56,25 @@ class Config:
 
         return match.string[match.start() + 6 : match.end()].strip()
 
-    def _read_width(self, default_data: str) -> int:
+    def _read_width(self, default_data: str) -> str:
         expression = r"width:.*?$"
         regex = re.compile(expression, re.M)
         match = regex.search(default_data)
 
         if match is None:
-            return 0
+            return ""
 
-        return int(match.string[match.start() + 6 : match.end()].strip())
+        return match.string[match.start() + 6 : match.end()].strip()
 
-    def _read_height(self, default_data: str) -> int:
+    def _read_height(self, default_data: str) -> str:
         expression = r"height:.*?$"
         regex = re.compile(expression, re.M)
         match = regex.search(default_data)
 
         if match is None:
-            return 0
+            return ""
 
-        return int(match.string[match.start() + 7 : match.end()].strip())
+        return match.string[match.start() + 7 : match.end()].strip()
 
     def _read_blorb(self, default_data: str) -> str:
         expression = r"blorb:.*?$"
