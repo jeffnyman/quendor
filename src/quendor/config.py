@@ -48,25 +48,25 @@ class Config:
 
     def _read_title(self, default_data: str) -> str:
         expression = r"title:.*?$"
-        return self._read_metadata(expression, 6, default_data)
+        return self._read_config(expression, 6, default_data)
 
     def _read_width(self, default_data: str) -> str:
         expression = r"width:.*?$"
-        return self._read_metadata(expression, 6, default_data)
+        return self._read_config(expression, 6, default_data)
 
     def _read_height(self, default_data: str) -> str:
         expression = r"height:.*?$"
-        return self._read_metadata(expression, 7, default_data)
+        return self._read_config(expression, 7, default_data)
 
     def _read_blorb(self, default_data: str) -> str:
         expression = r"blorb:.*?$"
-        return self._read_metadata(expression, 6, default_data)
+        return self._read_config(expression, 6, default_data)
 
     def _read_terpnum(self, default_data: str) -> str:
         expression = r"terpnum:.*?$"
-        return self._read_metadata(expression, 8, default_data)
+        return self._read_config(expression, 8, default_data)
 
-    def _read_metadata(self, expression: str, key: int, default_data: str) -> str:
+    def _read_config(self, expression: str, key: int, default_data: str) -> str:
         regex = re.compile(expression, re.M)
         match = regex.search(default_data)
 
