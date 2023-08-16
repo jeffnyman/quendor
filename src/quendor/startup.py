@@ -46,11 +46,9 @@ def read_config(program: Program) -> dict:
 
 
 def read_blorb_config(program_config: dict, program_blorbs: list) -> None:
-    print(program_blorbs)
-
     if program_config["blorb"] != "":
-        print(program_config["blorb"])
-        _ = Blorb.locate(program_config["blorb"])
+        resource_file = Blorb.locate(program_config["blorb"])
+        program_blorbs.append(Blorb(resource_file.read_bytes()))
 
 
 def setup_quendor(cli: dict) -> Program:

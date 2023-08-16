@@ -117,3 +117,16 @@ def test_get_program_configuration_missing_blorb(arthur_zcode) -> None:
 
     with pytest.raises(UnableToLocateResourceError):
         read_blorb_config(program_config, program.blorbs)
+
+
+def test_blorb_configuration_in_blorbs_list(arthur_zcode) -> None:
+    """Puts program-specific blorb in configuration in blorb list."""
+
+    from quendor.program import Program
+    from quendor.startup import read_config, read_blorb_config
+
+    program = Program(arthur_zcode)
+    program_config = read_config(program)
+    read_blorb_config(program_config, program.blorbs)
+
+    expect(len(program.blorbs)).to(equal(1))
