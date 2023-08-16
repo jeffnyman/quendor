@@ -130,3 +130,26 @@ def test_blorb_configuration_in_blorbs_list(arthur_zcode) -> None:
     read_blorb_config(program_config, program.blorbs)
 
     expect(len(program.blorbs)).to(equal(1))
+
+
+def test_handle_duplicate_blorb_resources(arthur_zcode, arthur_resource) -> None:
+    """Makes sure only one valid blorb resource is included."""
+
+    from quendor.blorb import Blorb
+    from quendor.program import Program
+    from quendor.startup import read_config, read_blorb_config, check_blorb_list
+
+    program = Program(arthur_zcode)
+    resource_file = Blorb.locate(arthur_resource)
+    resource_bytes = resource_file.read_bytes()
+
+    program.blorbs.append(Blorb(resource_bytes, program.data))
+
+    program_config = read_config(program)
+    read_blorb_config(program_config, program.blorbs)
+
+    expect(len(program.blorbs)).to(equal(2))
+
+    check_blorb_list(program.blorbs)
+
+    expect(len(program.blorbs)).to(equal(1))

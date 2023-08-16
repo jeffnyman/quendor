@@ -24,6 +24,7 @@ def main(args: Optional[list] = None) -> int:
     program = setup_quendor(cli)
     program_config = read_config(program)
     read_blorb_config(program_config, program.blorbs)
+    check_blorb_list(program.blorbs)
 
     return 0
 
@@ -49,6 +50,29 @@ def read_blorb_config(program_config: dict, program_blorbs: list) -> None:
     if program_config["blorb"] != "":
         resource_file = Blorb.locate(program_config["blorb"])
         program_blorbs.append(Blorb(resource_file.read_bytes()))
+
+
+def check_blorb_list(program_blorbs: list) -> None:
+    # It's possible that a blorb will be specified multiple times. If
+    # that's the case, any blorbs with exactly equivalent byte data
+    # should be removed. In terms of defensive logic, a second loop
+    # is provided that reverses the iteration order for removing
+    # items so that removing items from the list doesn't impact the
+    # indices of remaining items.
+
+    blorbs_to_remove = []
+
+    for first_blorb in range(len(program_blorbs)):
+        for second_blorb in range(first_blorb + 1, len(program_blorbs)):
+            if program_blorbs[first_blorb]._data == program_blorbs[second_blorb]._data:
+                logging.warning(
+                    "Byte data match found between blorbs in the list. "
+                    "Removing duplicates."
+                )
+                blorbs_to_remove.append(second_blorb)
+
+    for index in reversed(blorbs_to_remove):
+        program_blorbs.pop(index)
 
 
 def setup_quendor(cli: dict) -> Program:
