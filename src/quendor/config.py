@@ -48,53 +48,32 @@ class Config:
 
     def _read_title(self, default_data: str) -> str:
         expression = r"title:.*?$"
-        regex = re.compile(expression, re.M)
-        match = regex.search(default_data)
-
-        if match is None:
-            return ""
-
-        return match.string[match.start() + 6 : match.end()].strip()
+        return self._read_metadata(expression, 6, default_data)
 
     def _read_width(self, default_data: str) -> str:
         expression = r"width:.*?$"
-        regex = re.compile(expression, re.M)
-        match = regex.search(default_data)
-
-        if match is None:
-            return ""
-
-        return match.string[match.start() + 6 : match.end()].strip()
+        return self._read_metadata(expression, 6, default_data)
 
     def _read_height(self, default_data: str) -> str:
         expression = r"height:.*?$"
-        regex = re.compile(expression, re.M)
-        match = regex.search(default_data)
-
-        if match is None:
-            return ""
-
-        return match.string[match.start() + 7 : match.end()].strip()
+        return self._read_metadata(expression, 7, default_data)
 
     def _read_blorb(self, default_data: str) -> str:
         expression = r"blorb:.*?$"
-        regex = re.compile(expression, re.M)
-        match = regex.search(default_data)
-
-        if match is None:
-            return ""
-
-        return match.string[match.start() + 6 : match.end()].strip()
+        return self._read_metadata(expression, 6, default_data)
 
     def _read_terpnum(self, default_data: str) -> str:
         expression = r"terpnum:.*?$"
+        return self._read_metadata(expression, 8, default_data)
+
+    def _read_metadata(self, expression: str, key: int, default_data: str) -> str:
         regex = re.compile(expression, re.M)
         match = regex.search(default_data)
 
         if match is None:
             return ""
 
-        return match.string[match.start() + 8 : match.end()].strip()
+        return match.string[match.start() + key : match.end()].strip()
 
     def _search_regex(self, expression: str) -> str:
         regex = re.compile(expression, re.M | re.S)
