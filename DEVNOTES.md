@@ -8,7 +8,3 @@ I handle the first case but I don't handle the second. An example here would be 
 
 The Blorb spec says: "The interpreter may want to provide a way for the user to ignore or skip this error."
 Should I even make this an exception or just a warning?
-
-- Position-based config.
-
-I use program_config[3] to read the blorb information. But this requires knowing that the third index is the blorb. Granted, configuration data is minimal but this seems like a poor way to do this. Perhaps a dictionary would be better here?

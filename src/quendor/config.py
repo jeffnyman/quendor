@@ -2,7 +2,6 @@ import os
 import re
 import logging
 from pathlib import Path
-from typing import List, Union
 
 
 class Config:
@@ -14,14 +13,14 @@ class Config:
 
         self._locate()
 
-    def get_values(self, default_data: str) -> list:
-        configs: List[Union[str, int]] = []
+    def get_values(self, default_data: str) -> dict:
+        configs: dict = {}
 
-        configs.append(self._read_title(default_data))
-        configs.append(self._read_width(default_data))
-        configs.append(self._read_height(default_data))
-        configs.append(self._read_blorb(default_data))
-        configs.append(self._read_terpnum(default_data))
+        configs["title"] = self._read_title(default_data)
+        configs["width"] = self._read_width(default_data)
+        configs["height"] = self._read_height(default_data)
+        configs["blorb"] = self._read_blorb(default_data)
+        configs["terpnum"] = self._read_terpnum(default_data)
 
         return configs
 

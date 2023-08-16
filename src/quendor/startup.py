@@ -28,7 +28,7 @@ def main(args: Optional[list] = None) -> int:
     return 0
 
 
-def read_config(program: Program) -> list:
+def read_config(program: Program) -> dict:
     config = Config(program.data)
     config.read()
     config.set_program_id()
@@ -38,19 +38,19 @@ def read_config(program: Program) -> list:
     # Any configuration settings that aren't specific to a
     # program will use the defaults.
 
-    for value in range(len(program_config)):
-        if program_config[value] == "":
-            program_config[value] = default_config[value]
+    for key in program_config:
+        if program_config[key] == "":
+            program_config[key] = default_config[key]
 
     return program_config
 
 
-def read_blorb_config(program_config: list, program_blorbs: list) -> None:
+def read_blorb_config(program_config: dict, program_blorbs: list) -> None:
     print(program_blorbs)
 
-    if program_config[3] != "":
-        print(program_config[3])
-        _ = Blorb.locate(program_config[3])
+    if program_config["blorb"] != "":
+        print(program_config["blorb"])
+        _ = Blorb.locate(program_config["blorb"])
 
 
 def setup_quendor(cli: dict) -> Program:
