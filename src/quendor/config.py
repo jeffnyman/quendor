@@ -34,35 +34,12 @@ class Config:
         text = re.escape(self._identifier)
         expression = r"id:[\s\w\.]*" + text + ".*?(^%%|\\Z)"
 
-        # The re.M flag enables multiline matching.
-        # The re.S flag enables dot-all matching.
-
-        regex = re.compile(expression, re.M | re.S)
-
-        match = regex.search(self._contents)
-
-        if match is not None:
-            return match.string[match.start() : match.end()]
-
-        return ""
+        return self._search_regex(expression)
 
     def get_defaults(self) -> str:
-        # The defaults in the configuration file are any entries at
-        # the start of the file up to the first "%%" characters.
-
         expression = r".*?(^%%|\Z)"
 
-        # The re.M flag enables multiline matching.
-        # The re.S flag enables dot-all matching.
-
-        regex = re.compile(expression, re.M | re.S)
-
-        match = regex.search(self._contents)
-
-        if match is not None:
-            return match.string[match.start() : match.end()]
-
-        return ""
+        return self._search_regex(expression)
 
     def read(self) -> None:
         if self._file:
@@ -118,6 +95,15 @@ class Config:
             return ""
 
         return match.string[match.start() + 8 : match.end()].strip()
+
+    def _search_regex(self, expression: str) -> str:
+        regex = re.compile(expression, re.M | re.S)
+        match = regex.search(self._contents)
+
+        if match is not None:
+            return match.string[match.start() : match.end()]
+
+        return ""
 
     def _locate(self) -> None:
         paths = [
