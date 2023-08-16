@@ -7,6 +7,7 @@ from quendor.cli import process_arguments
 from quendor.blorb import Blorb
 from quendor.config import Config
 from quendor.program import Program
+from quendor.zmachine.architecture import Architecture
 
 
 def main(args: Optional[list] = None) -> int:
@@ -25,6 +26,8 @@ def main(args: Optional[list] = None) -> int:
     program_config = read_config(program)
     read_blorb_config(program_config, program.blorbs)
     check_blorb_list(program.blorbs)
+
+    Architecture(program)
 
     return 0
 
