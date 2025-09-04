@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <title>The Ontology of Quendor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Quendor GitHub Page">
+  <meta name="author" content="Jeff Nyman">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow">
+  <meta name="apple-mobile-web-app-title" content="Quendor">
+  <link rel="icon" type="image/png" href="../assets/site/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="../assets/site/favicon.svg">
+  <link rel="shortcut icon" href="../assets/site/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="../assets/site/apple-touch-icon.png">
+  <link rel="manifest" href="../assets/site/site.webmanifest">
+  <link rel="preload" href="../styles/fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../styles/fonts/Montserrat-Italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles/site.css?v=1.0">
+  <script type="module" src="../scripts/site.js" defer></script>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>The Ontology of Quendor</h1>
+
+      <img src="../assets/images/zmachine-emulation.png" width="645" height="403" alt="Zork emulated on a Z-Machine">
+
+      <p>
+        The above image shows an example of a story file (zcode) being executed by a Z-Machine interpreter. This execution of zcode is what Quendor aims to do. Understanding the Z-Machine architecture and how zcode programs run is essential to explaining how Quendor will operate.
+      </p>
+
+      <h2>What is Quendor Going to Be?</h2>
+
+      <p>
+        Let's start with this statement: Quendor is a TypeScript-based ZIP implementation that allows for the emulation of the Z-Machine. Great. But what does <em>that</em> mean? Let's break it down a bit.
+      </p>
+
+      <p>
+        The goal of Quendor is to be an emulator. Any emulator's goal is to execute the binary files from some specific machine directly. Let's consider another retro-gaming example. Atari 2600 cartridges contained binary files that were the instructions for how the game would play once the cartridge was plugged into a console.
+      </p>
+
+      <img src="../assets/images/atari2600-cartridge-rom.jpg" width="577" height="541" alt="Atari 2600 playing cartridges.">
+
+      <p>
+        What you see in that above image is actual Atari 2600 with the use of a tool called ROM Scanner. This device lets you use multiple cartridges at a time and select which one to play. Each cartridge contains code that makes up the logic of the game program, stored in binary. That binary can be pulled out of those cartridges and stored as a binary file, usually called a ROM. You can build an Atari 2600 emulator that can take one of those binary files and execute it <em>as if it were running on an Atari 2600</em>.
+      </p>
+
+      <img src="../assets/images/atari2600-rom-emulation.jpg" width="1366" height="768" alt="Atari 2600 emulating a game.">
+
+      <p>
+        What that above image shows you is a game being played in a virtual Atari 2600, with the portion of the screen to the left showing the contents of the binary file. Those are the instructions of the game. The portion of the screen to the right shows the game being played just as it would have been had the binary been in a cartridge and had that cartridge been plugged into an actual Atari 2600 console.
+      </p>
+
+      <p>
+        What I just described there applies to any machine, such as a Gameboy or a PlayStation or whatever else. The binary files that execute on these machines are always assembly-level instructions. So what does that mean for Quendor?
+      </p>
+
+      <ul>
+        <li>
+          The machine to be emulated is the <a href="https://en.wikipedia.org/wiki/Z-machine">Z-Machine</a>.
+        </li>
+        <li>
+          The binary files to be executed are called <em>story files</em> that contain <a href="http://fileformats.archiveteam.org/wiki/Z-code">zcode</a>.
+        </li>
+      </ul>
+
+      <p>
+        Unlike the binary files for the Atari 2600, the story files in question never ran on a machine's <em>actual</em> processor. Instead, they ran on a <em>virtual</em> machine, and it was this virtual machine that ran on the actual processor. So, as an example, a (virtual) Z-Machine might be running on an (actual) Commodore 64 or an (actual) Apple II. Here's the <em>Zork 1</em> zcode running on an actual Commodore 64.
+      </p>
+
+      <img src="../assets/images/zmachine-c64.png" width="750" height="470" alt="Zork running on a Commdore 64.">
+
+      <p>
+        And here's the same zcode running on a Commodore Amiga.
+      </p>
+
+      <img src="../assets/images/zmachine-amiga.png" width="750" height="470" alt="Zork running on a Commodore Amiga.">
+
+      <p>
+        And, just for good measure, the exact same zcode running on an Apple II.
+      </p>
+
+      <img src="../assets/images/zmachine-appleii.png" width="750" height="470" alt="Zork running on an Apple II.">
+
+      <h3>It's All About Emulation</h3>
+
+      <p>
+        All of the above means that the Z-Machine was never a physical computing device made of circuits; thus, it was never physical hardware. The Z-Machine was instead a virtual computing device that had to be implemented in software. That's one part of what Quendor needs to be. Quendor needs to be able <em>emulate</em> a Z-Machine.
+      </p>
+
+      <p>
+        Just as the binary files for the Atari 2600 were made up of assembly instructions for graphical games, the story files I'm referring to are made up of assembly instructions for text adventure games. These text adventure games and the Z-Machine on which they ran were created by <a href="https://en.wikipedia.org/wiki/Infocom">Infocom</a> back in the late 1970s and through most of the 1980s.
+      </p>
+
+      <p>
+        In the case of the Atari 2600, the binary files were written directly in <a href="https://en.wikibooks.org/wiki/6502_Assembly">6502 assembly language</a>. In the case of the story files, the assembly instructions are actually a compiled form of <em>z-language</em>, which was more often known as <a href="http://www.ifwiki.org/index.php/ZIL">ZIL</a> (<strong>Z</strong>ork <strong>I</strong>mplementation <strong>L</strong>anguage). This compiled assembly code is referred to as <em>z-machine code</em> or just <em>zcode</em>.
+      </p>
+
+      <p>
+        In fact, this is a form of code known as <em>bytecode</em>, which is code that makes up an instruction set designed to be run on a particular interpreter. This is identical to the concept of Java bytecode, which is the instruction set for code that can run on a Java Virtual Machine (JVM) via a Java Runtime Engine (JRE). The language used to create the bytecode doesn't necessarily matter. For example, you can compile Java, Groovy, or Clojure programs, which all produce bytecode that runs on the JVM. Similar to Microsoft's .NET implementation of the Common Language Runtime (CLR) that can execute compiled C#, F#, and VB.NET.
+      </p>
+
+      <p>
+        The same applies in this context. Someone can compile a story file using a tool like <a href="https://foss.heptapod.net/zilf/zilf/-/wikis/home">ZILF</a>, <a href="https://www.linusakesson.net/dialog/">Dialog</a>, or <a href="https://ganelson.github.io/inform-website/">Inform</a> and as long as those tools produce the appropriate bytecode, that bytecode will run on the Z-Machine.
+      </p>
+
+      <h3>But It's Also About Interpretation</h3>
+
+      <p>
+        Thus, a "Z-Language Interpreter" or a "ZIL Interpreter" is basically designed to execute the instruction set of the zcode, which was, in turn, intended to be executed on a Z-Machine (virtual) processor. What language was used to create that zcode is mainly irrelevant.
+      </p>
+
+      <p>
+        Quendor will be one of those interpreters, a type of ZIP. A ZIP (<strong>Z</strong>-Language <strong>I</strong>nterpreter <strong>P</strong>rogram) was a program, or rather a series of programs, written by Infocom. Infocom referred to their own interpreters by the following designations:
+      </p>
+
+      <ul>
+        <li>
+          <a href="https://github.com/jeffnyman/zmachine/blob/master/spec-zip.pdf">ZIP</a> (versions 1 to 3)
+        </li>
+        <li>
+          <a href="https://github.com/jeffnyman/zmachine/blob/master/spec-ezip.pdf">EZIP / LZIP</a> (version 4) ("extended" or "expanded")
+        </li>
+        <li>
+          <a href="https://github.com/jeffnyman/zmachine/blob/master/spec-xzip.pdf">XZIP</a> (version 5) ("experimental")
+        </li>
+        <li>
+          <a href="https://github.com/jeffnyman/zmachine/blob/master/spec-yzip.pdf">YZIP (version 6)</a> ("successor to X")
+        </li>
+      </ul>
+
+      <p class="note">
+        There was apparently a version called GZIP (Graphical ZIP). This particular ZIP was used for a one-off project from Infocom called <a href="https://en.wikipedia.org/wiki/Fooblitzky">Fooblitzky</a>. That game was intended to be a multiplayer strategy game quite different from the text adventures for which most ZIPs were designed.
+      </p>
+
+      <p>
+        Based on surviving notes from the company, Infocom did think about the possibility of an interpreter capable of running all versions. "One interpreter to rule them all," so to speak. It's unknown how far they took this idea, but they didn't release such an interpreter, at least so far as anyone has found.
+      </p>
+
+      <p>
+        The point is that each ZIP was a program that emulated the hardware instruction set specified for the Z-Machine. Even though the Z-Machine was never <em>actually</em> hardware, its operation basics were just like any processor that communicated with input and output devices and performed operations via instructions.
+      </p>
+
+      <h2>Starting Concepts</h2>
+
+      <p>
+        Here are a few starting points that are crucial to understand:
+      </p>
+
+      <ol>
+        <li>The Z-Machine is a virtual computer.</li>
+        <li>The machine language of the Z-Machine is called zcode.</li>
+        <li>There are six Infocom versions of the Z-Machine.</li>
+        <li>There are two Inform versions of the Z-Machine.</li>
+        <li>The structure and operation of zcode can differ between the versions.</li>
+      </ol>
+
+      <p>
+        In the above, "Inform" refers to a development system that was created to allow for compiling text adventures down into a bytecode format that could be read by the Z-Machine. Many saw this tool as the successor to the Infocom compiler known as ZILCH.
+      </p>
+
+      <img src="../assets/images/infocom-zmachine-tools.jpg" width="842" height="389">
+
+      <p>
+        That image comes from the 2014 Game Developers Conference, specifically the talk by Dave Lebling called <a href="https://archive.org/details/GDC2014Lebling">"Classic Game Postmortem: Zork"</a>. You can also see a <a href="Write up: https://adventuregamers.com/articles/view/26224">write up of that presentation</a>.
+      </p>
+
+      <p>
+        The Z-Machine was originally a closed proprietary technology. The implementation of this machine, although not its general existence, was guarded closely by Infocom since this provided their competitive advantage over all other rivals at the time. It was essentially their "secret sauce." In the early to mid-1990s, when it was clear that Infocom was dissolving and would be no more, various people tried to reverse engineer what made the Infocom games work.
+      </p>
+
+      <p>
+        Regarding those versions, the Z-Machine specification says:
+      </p>
+
+      <blockquote>
+        Eight Versions of the Z-machine exist, and the first byte of any "story file" (that is: any Z-machine program) gives the Version number it must be interpreted under.
+      </blockquote>
+
+      <p>
+        You can think of these versions as emulations of the architecture. Consider how Apple released the Apple I (1976), Apple II (1977), Apple III (1980), and Apple Lisa (1983). Each of these was effectively an evolution of a processing architecture. The same applies to the Z-Machine versions, even though that architecture was entirely virtual.
+      </p>
+
+      <p>
+        The Z-Machine specification also tells us something quite important.
+      </p>
+
+      <blockquote>
+        The design's cardinal principle is that any game is 100% portable to different computers: that is, any legal program exactly determines its behaviour.
+      </blockquote>
+
+      <p>
+        In this context, a legal program refers to a program that adheres to the Z-Machine specification. The specification defines how the Z-Machine should behave, including how it should interpret and execute the instructions provided by zcode programs.
+      </p>
+
+      <p>
+        By stating that any legal program exactly determines its behavior, the specification emphasizes that the behavior of a zcode program running on the Z-Machine is entirely determined by the zcode program itself, according to the rules defined in the Z-Machine specification. This means that a zcode program should behave the same regardless of the computer or operating system it's running on, as long as the Z-Machine implementation is correct and adheres to the specification.
+      </p>
+    </article>
+  </main>
+</body>
+</html>

@@ -13,6 +13,10 @@ article {
   margin: 2rem auto 3rem;
 }
 
+article :is(ul, ol) {
+  margin: 1em 2em;
+}
+
 em {
   font-weight: 400;
   font-style: italic;
@@ -75,6 +79,35 @@ a:not([class]) {
   text-decoration-thickness: max(0.08em, 1px);
   text-underline-offset: 0.25em;
   text-decoration-skip-ink: auto;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--ff-heading);
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+blockquote {
+  position: relative;
+  margin: 0.2em 1.8em;
+  padding: 1.2em 1.875em 1.2em 2.68em;
+}
+
+blockquote:not([class])::before {
+  content: "\201C";
+  position: absolute;
+  top: -10px;
+  left: 10px;
+  font-family: "Times New Roman", serif;
+  font-size: 4em;
+  font-weight: bold;
+}
+
+blockquote:not([class])::after {
+  content: "";
 }
 
 .note {
