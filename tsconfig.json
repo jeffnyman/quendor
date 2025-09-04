@@ -1,0 +1,43 @@
+// https://www.typescriptlang.org/tsconfig/
+{
+  "compilerOptions": {
+    // Type Checking
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Completeness
+    "skipLibCheck": true,
+
+    // Emit
+    "sourceMap": true,
+    "outDir": "./dist",
+
+    // Language and Environment
+    "target": "esnext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
+
+    // Modules
+    "rootDir": "./src",
+    "types": ["node"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+
+    // Interop Constraints
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

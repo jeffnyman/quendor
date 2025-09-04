@@ -16,5 +16,17 @@
   "bugs": {
     "url": "https://github.com/jeffnyman/quendor/issues"
   },
-  "homepage": "https://jeffnyman.github.io/quendor/"
+  "homepage": "https://jeffnyman.github.io/quendor/",
+  "scripts": {
+    "build": "tsdown",
+    "clean": "npx rimraf dist",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "rimraf": "^6.0.1",
+    "tsdown": "^0.14.2",
+    "typescript": "^5.9.2"
+  }
 }
