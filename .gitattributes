@@ -1,0 +1,53 @@
+# Establish project-wide standard of LF line endings.
+* text=auto eol=lf
+
+# Binary files (binary is a macro for -text -diff).
+*.ico    binary
+*.gif    binary
+*.jpg    binary
+*.png    binary
+*.jpeg   binary
+*.webp   binary
+*.woff2  binary
+
+# Treat SVG files as normalized text instead of binary.
+*.svg    text
+
+# Handle Windows specific files.
+*.cmd    text eol=crlf
+*.bat    text eol=crlf
+*.ps1    text eol=crlf
+*.psm1   text eol=crlf
+
+# Handle whitespace display in diffs and patches.
+*.js   whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.ts   whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.mjs  whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.cjs  whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.css  whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.html whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.json whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.yaml whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+*.yml  whitespace=-blank-at-eof,space-before-tab,tab-in-indent,trailing-space,tabwidth=2
+
+# Ignores for language statistics.
+package-lock.json  linguist-vendored
+yarn.lock          linguist-vendored
+
+# Conflict resolution.
+package-lock.json  merge=ours
+yarn.lock          merge=ours
+
+# Export exclusions for archive.
+tsconfig.json      export-ignore
+*.config.mjs       export-ignore
+*.config.js        export-ignore
+*.config.ts        export-ignore
+.eslintrc*         export-ignore
+.prettierignore    export-ignore
+.prettierrc*       export-ignore
+.editorconfig      export-ignore
+.gitattributes     export-ignore
+.gitignore         export-ignore
+.github/*          export-ignore
+.vscode/*          export-ignore
