@@ -10,6 +10,18 @@ Install dependencies:
 npm ci
 ```
 
+Test the library:
+
+```bash
+npm test
+```
+
+Generate test coverage:
+
+```bash
+npm run test:coverage
+```
+
 Build the library:
 
 ```bash

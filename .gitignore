@@ -2,6 +2,7 @@
 out
 dist
 build
+coverage
 node_modules
 
 # Visual Studio Code project files.
