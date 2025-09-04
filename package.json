@@ -1,0 +1,19 @@
+{
+  "name": "quendor",
+  "version": "0.0.0",
+  "type": "module",
+  "author": {
+    "name": "Jeff Nyman",
+    "email": "jeffnyman@gmail.com",
+    "url": "https://testerstories.com"
+  },
+  "license": "MIT",
+  "description": "A Z-Machine Interpreter",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeffnyman/quendor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeffnyman/quendor/issues"
+  }
+}
