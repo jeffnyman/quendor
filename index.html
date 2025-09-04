@@ -47,6 +47,32 @@
       <p class="note">
         These "games" are often referred to as "stories," keeping with the focus on interactive <em>fiction</em>.
       </p>
+
+      <h2>Z-Machine Design and Specifications</h2>
+
+      <p>
+        Quendor has to act both as an <strong>emulator</strong> (software that operates like the hardware of a machine) and an <strong>interpreter</strong> (software that takes code as input and executes it).
+      </p>
+
+      <p>
+        <strong>To write an emulator</strong>, you need a specification for the machine in question. There is the <a href="https://inform-fiction.org/zmachine/standards/z1point1/index.html">Z-Machine Standards Document 1.1</a> and a <a href="https://zspec.jaredreisinger.com/">Z-Machine Standards Document 1.1 (annotated)</a>.
+      </p>
+
+      <p class="tip">
+        There is a repository of <a href="https://mirror.ifarchive.org/indexes/if-archive/infocom/interpreters/specification/">Infocom Interpreters Specifications</a>. There are also the <a href="https://www.inform-fiction.org/zmachine/standards/">Inform Z-Machine Standards</a>.
+      </p>
+
+      <p>
+        <strong>To write an interpreter</strong> and test your emulator, you need the very thing that makes a Z-Machine worthwhile to emulate in the first place: zcode programs. Andrew Plotkin has made available <a href="https://eblong.com/infocom/">The Obsessively Complete Infocom Catalog</a>, which is a great resource that provides the story files that were produced by Infocom. I also have my own <a href="https://github.com/jeffnyman/zcode_catalog">zcode catalog</a> that serves as a reference location for many zcode programs.
+      </p>
+
+      <p>
+        Any time you're designing something like a virtual machine, beyond having a specification and example programs that run on that machine, it's good to have some means of disassembling those programs to see how they are constructed. In this context, there are some tools known as the <a href="https://ifarchive.org/indexes/if-archive/infocom/tools/ztools/">ztools</a>.
+      </p>
+
+      <p class="tip">
+        Other tools worth looking at are <a href="https://github.com/heasm66/unz">Unz</a> and <a href="https://github.com/DustinCampbell/ZDebug">ZDebug</a>. There is also a <a href="https://github.com/SpookyFM/ZDebug">ZDebug fork</a>.
+      </p>
     </article>
   </main>
 </body>
