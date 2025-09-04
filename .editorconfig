@@ -1,0 +1,31 @@
+# Root file for the project.
+root = true
+
+# Global settings for all files.
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Windows scripts use CRLF line endings.
+[*.{cmd,bat,ps1,psm1}]
+end_of_line = crlf
+
+# Markdown files might have deliberate ending spaces.
+[*.md]
+trim_trailing_whitespace = false
+
+# JavaScript and TypeScript files (explicit for clarity).
+[*.{js,ts}]
+indent_size = 2
+
+# JSON and YAML files (explicit for clarity).
+[*.{json,yaml,yml}]
+indent_size = 2
+
+# CSS and HTML files (explicit for clarity).
+[*.{css,html}]
+indent_size = 2
