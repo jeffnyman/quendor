@@ -12,3 +12,87 @@ article {
   padding: 0 var(--content-padding);
   margin: 2rem auto 3rem;
 }
+
+em {
+  font-weight: 400;
+  font-style: italic;
+}
+
+strong {
+  font-weight: 700;
+  font-style: normal;
+}
+
+strong em,
+em strong {
+  font-weight: 700;
+  font-style: italic;
+}
+
+p,
+li,
+blockquote {
+  text-align: justify;
+  text-wrap: pretty;
+  margin-bottom: 1.5rem;
+}
+
+img {
+  margin: 1.8em auto;
+}
+
+img.prop30 {
+  width: 30%;
+  height: auto;
+}
+
+img.prop40 {
+  width: 40%;
+  height: auto;
+}
+
+img.prop50 {
+  width: 50%;
+  height: auto;
+}
+
+img.prop60 {
+  width: 60%;
+  height: auto;
+}
+
+img.prop70 {
+  width: 70%;
+  height: auto;
+}
+
+img.prop80 {
+  width: 80%;
+  height: auto;
+}
+
+a:not([class]) {
+  text-decoration-thickness: max(0.08em, 1px);
+  text-underline-offset: 0.25em;
+  text-decoration-skip-ink: auto;
+}
+
+.note {
+  margin: 1.9em;
+  padding: 0.5em 0.8em;
+  border: 1px solid hsla(234.86, 30.97%, 55.69%, 1);
+  border-radius: 16px;
+  color: var(--clr-note);
+}
+
+.tip {
+  margin: 1.9em;
+  padding: 0.5em 0.8em;
+  border: 1px solid hsla(340, 50%, 80%, 1);
+  border-radius: 16px;
+  color: var(--clr-tip);
+}
+
+:where(p, blockquote, img, pre, ul, ol) + p:not(.tip):not(.note) {
+  text-indent: var(--para-indent);
+}

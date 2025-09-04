@@ -1,6 +1,7 @@
 :root {
   --ff-base: "Montserrat", sans-serif;
   --ff-heading: "Kyiv Sans", sans-serif;
+  --ff-mono: "Roboto Mono", monospace;
 
   /*
     fs-200: Small text (captions, fine print)
@@ -27,6 +28,11 @@
   --word-spacing: 0.05em;
   --content-width: 65ch;
   --content-padding: clamp(1rem, 5vw, 2rem);
+
+  --clr-note: hsla(222.13, 23.38%, 39.41%, 1);
+  --clr-tip: hsla(340, 50%, 25%, 1);
+
+  --para-indent: 0.8em;
 
   color-scheme: light dark;
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
