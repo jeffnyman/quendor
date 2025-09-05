@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <title>The Bits and Bytes of Quendor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Quendor GitHub Page">
+  <meta name="author" content="Jeff Nyman">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow">
+  <meta name="apple-mobile-web-app-title" content="Quendor">
+  <link rel="icon" type="image/png" href="../assets/site/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="../assets/site/favicon.svg">
+  <link rel="shortcut icon" href="../assets/site/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="../assets/site/apple-touch-icon.png">
+  <link rel="manifest" href="../assets/site/site.webmanifest">
+  <link rel="preload" href="../styles/fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../styles/fonts/Montserrat-Italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles/site.css?v=1.0">
+  <script type="module" src="../scripts/site.js" defer></script>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>The Bits and Bytes of Quendor</h1>
+
+      <p>
+        It's crucial to understand how the Z-Machine works by how it takes in something called "zcode" to execute and precisely what is executing. Spoiler alert: it's 0's and 1's all the way down.
+      </p>
+
+      <h2>Bits and Bytes</h2>
+
+      <p>
+        Let's start with a high-level statement of what the Z-Machine is. The Z-Machine is a 16-bit byte-oriented virtual machine using big-endian addressing. There are already a few things to unpack there, such as bits, being byte-oriented, and the notion of endian-ness. It may all seem very academic, but having this knowledge is necessary to get started. The simplest explanation is that the Z-Machine processes data primarily in chunks of 8 bits (a byte). However, let's dig in a little bit (no pun intended). The Z-Machine specification says:
+      </p>
+
+      <blockquote>
+        Like any computer, it stores its information (mostly) in an array of variables numbered from 0 up to some large number: this is called its <strong>memory</strong>.
+      </blockquote>
+
+      <p>
+        In simple terms, this means that the Z-Machine organizes its data into a long list of memory cells, each of which can hold specific values. In the context of the Z-Machine, we have primary kinds of semantically meaningful value. There's the byte (8 bits) and the 2-byte word (16 bits).
+      </p>
+
+      <p class="note">
+        Bytes (8 bits) are fundamental units of memory, while words (16 bits) are composed of two bytes, where the first byte represents the most important part of the value. In many instances, understanding how bits and bytes interact will help you navigate the Z-Machine's memory structure.
+      </p>
+
+      <p>
+        You deal with bits and bytes a lot when building a Z-Machine, so let's ensure we level set on this. The Z-Machine specification says:
+      </p>
+
+      <blockquote>
+        The bits in a byte are numbered 0 to 7, 0 being the least significant and the top bit, 7, the most.
+      </blockquote>
+
+      <p>
+        Schematically, in a byte (8 bits), bits are numbered from 0 to 7, starting from the right. The "least significant bit" (LSB) is at position 0 (the far right), and the "most significant bit" (MSB) is at position 7 (the far left). Here's how that looks:
+      </p>
+
+      <pre><code>
+        MSB               LSB
+        top               bottom
+           7 6 5 4 3 2 1 0
+           | | | | | | | |
+           1 0 0 1 0 1 0 1
+      </code></pre>
+
+      <p>
+        Again, just to be very clear: the LSB (bit 0) is 1 (the rightmost bit). The MSB (bit 7) is 1 (the leftmost bit).
+      </p>
+
+      <p>
+        Each bit in a byte corresponds to a power of 2, with the LSB having the smallest value and the MSB having the largest value. Here's how the bits map to their values:
+      </p>
+
+      <pre><code>
+        Bit number:  7  6  5  4  3  2  1  0
+        Bit value: 128 64 32 16  8  4  2  1
+        Value:       1  0  0  1  0  1  0  1
+      </code></pre>
+
+      <p>
+        The value represented by the byte 10010101 is calculated as follows:
+      </p>
+
+      <ul>
+        <li>
+          1 &times; 128 + 0 &times; 64 + 0 &times; 32 + 1 &times; 16 + 0 &times; 8 + 1 &times; 4 + 0 &times; 2 + 1 &times; 1
+        </li>
+        <li>
+          128 + 16 + 4 + 1 = 149
+        </li>
+      </ul>
+
+      <h2>Which End Is The End?</h2>
+
+      <p>
+        With a single byte like we just looked at, the concept of endian-ness doesn't matter. Since a byte is only 8 bits, there's no need to worry about the order in which it's stored: there's only one byte. But once you're dealing with more than one byte, the concept of endian-ness ("which end matters more") becomes important. If you have two bytes, you would have something like this:
+      </p>
+
+      <pre><code>
+        00111011  01101101
+      </code></pre>
+
+      <p>
+        Here endian-ness <em>does</em> matter. Why? This is a 16-bit value, which can be stored in two different ways depending on endian-ness. When you read multi-byte data, a program must ask: "where does the biggest byte appear?" It breaks down like this:
+      </p>
+
+      <ul>
+        <li>
+          On a "big endian machine", the data is stored "big-end first." That means that when looking at multiple bytes, the first byte (lowest address) is the biggest.
+        </li>
+        <li>
+          On a "little endian machine", the data is stored "little-end first." That means that when looking at multiple bytes, the first byte (lowest address) is the smallest.
+        </li>
+      </ul>
+
+      <p>
+        Thus, endianness refers to the order in which bytes are stored in multi-byte data types, such as words or integers, in computer memory.
+      </p>
+
+      <p>
+        In a multi-byte value, such as a word (two bytes), the order of bytes depends on the system's memory addressing. The address refers to the location in memory where data is stored. In a big-endian system, the byte stored at the lowest address (the first location in memory) is the most significant one, while in a little-endian system, the byte stored at the lowest address is the least significant one.
+      </p>
+
+      <p class="note">
+        In short, endianness tells us whether the most significant or least significant byte comes first in memory when dealing with multi-byte values like words.
+      </p>
+
+      <p>
+        When I mentioned earlier that the Z-Machine uses "big-endian addressing," this refers to the way it stores multi-byte data. In big-endian byte order, the most significant byte (the "big end") is placed at the byte with the lowest memory address. This is in contrast to little-endian systems, where the least significant byte (the "little end") is stored first.
+      </p>
+
+      <p class="note">
+        Fun fact: The terms "big-endian" and "little-endian" come from <em>Gulliver's Travels</em>, where the Lilliputians argue about whether to break an egg on the little end or the big end.
+      </p>
+
+      <p>
+        So the key thing to note here is that the Z-Machine follows the specific endianness convention known as big-endian. In big-endian representation, the most significant byte is stored at the lower memory address, and the least significant byte is stored at the higher memory address. This means that the most significant byte comes first in memory when interpreting a two-byte word in the Z-Machine.
+      </p>
+
+      <h2>Bytes and Words</h2>
+
+      <p>
+        A byte, consisting of 8 bits, can represent values from 0 to 255 and is the smallest unit of memory in the Z-Machine. However, the Z-Machine often works with larger data units, like the 2-byte word, which consists of 16 bits. In a 2-byte word, the most significant byte holds the higher-order bits, meaning those that contribute more to the total value. The least significant byte holds the lower-order bits, which contribute less. Together, these two bytes form a larger value, which the Z-Machine can process.
+      </p>
+
+      <p>
+        Understanding endianness is crucial because it affects how data is interpreted when transferred between systems or stored in memory. For the Z-Machine, big-endian order ensures that the most significant byte (MSB) is processed first, aligning with its internal logic. In other words, when interpreting a 2-byte word in the Z-Machine, you need to evaluate the MSB first because it represents the higher-order portion of the value. Ignoring this order would lead to incorrect data interpretation, especially when decoding the Z-Machine's instruction set, where multi-byte values frequently represent addresses, opcodes, or other data. Misinterpreting the byte order could lead to entirely different instructions being executed.
+      </p>
+
+      <p>
+        Here's a painfully simple representation of this:
+      </p>
+
+      <pre><code>
+        +-----------------------+------------------------+
+        | Most Significant Byte | Least Significant Byte |
+        +-----------------------+------------------------+
+        |       01010101        |       11001100         |
+        +-----------------------+------------------------+
+        |        Byte 1         |        Byte 2          |
+        +-----------------------+------------------------+
+      </code></pre>
+
+      <p>
+        In this example, Byte 1 represents the most significant byte, containing the higher-order bits (01010101), while Byte 2 represents the least significant byte (11001100), holding the lower-order bits. When combined in big-endian order, the value is interpreted as:
+      </p>
+
+      <pre><code>
+        01010101 11001100 (binary)
+        = 0x51CC (hexadecimal)
+        = 20940 (decimal)
+      </code></pre>
+
+      <p>
+        In summary, properly combining the most significant and least significant bytes is crucial for accurately interpreting word values in the Z-Machine. This byte order convention is a key part of understanding how the Z-Machine processes instructions and data.
+      </p>
+
+      <h2>Fields of Bits</h2>
+
+      <p>
+        There's also the concept of "bit-field" or "bit-field flags" that you'll need to understand. Bit-field flags are stored in one or more bytes, with bit number 0 starting at the least significant bit of the least significant byte and bit number 8N-1 at the most significant bit of the most significant byte. Let's unpack what that actually means.
+      </p>
+
+      <p>
+        Bit-field flags are commonly used in the Z-Machine to efficiently store multiple Boolean (true/false) values in a compact form. Each bit in a bit-field represents a different flag or condition, and its state (0 or 1) indicates whether that particular condition is active.
+      </p>
+
+      <p>
+        The bit numbering within the bit-field starts at 0, corresponding to the least significant bit of the least significant byte. The least significant bit holds the lowest-order or rightmost position within a byte. As we move towards higher bit numbers, we progress towards the most significant bit of the most significant byte.
+      </p>
+
+      <p>
+        This means bit 0 represents the smallest value (least significant), while bit 15 (in a 2-byte sequence) represents the largest (most significant). Here's a diagram of a bit-field spanning two bytes, with bits numbered from 0 (the least significant bit in Byte 2) to 15 (the most significant bit in Byte 1):
+      </p>
+
+      <pre><code>
+        +-------------------------------------+-------------------------------+
+        |       Most Significant Byte         |     Least Significant Byte    |
+        +-------------------------------------+-------------------------------+
+        | 15 | 14 | 13 | 12 | 11 | 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+        +-------------------------------------+-------------------------------+
+        |              Byte 1                 |             Byte 2            |
+        +-------------------------------------+-------------------------------+
+      </code></pre>
+
+      <p>
+        In the above schematic, the bit-field flags are spread across two bytes. The least significant bit of the least significant byte is labeled as bit number 0, while the most significant bit of the most significant byte is labeled as bit number 8N-1, where <em>N</em> represents the total number of bytes in the bit-field.
+      </p>
+
+      <p>
+        The '8N-1' formula helps us determine the highest bit number when dealing with multiple bytes. For example, if a bit-field spans two bytes (N = 2), the highest bit number is 15. This tells us that when working with bit-field flags in a two-byte span, the bit numbering goes from 0 to 15, with 15 representing the most significant bit. For example, if we have a bit-field spanning two bytes, the highest bit number using the "8N-1" formula would be:
+      </p>
+
+      <pre><code>
+        Highest bit number = 8 &times; 2 - 1 = 16 - 1 = 15
+      </code></pre>
+
+      <p>
+        So, in this case, the highest bit number would be 15, corresponding to the most significant bit of the most significant byte. What all of this tells us is that the Z-Machine is fundamentally byte-addressable. Let's expand on that thought.
+      </p>
+
+      <h2>Addressing By Byte</h2>
+
+      <p>
+        Byte-addressability means that each byte in the Z-Machine's memory can be individually accessed and manipulated. This is crucial for efficiently managing data, especially when dealing with operations like reading or writing flags, instructions, or addresses, all of which rely on byte-level access.
+      </p>
+
+      <p>
+        In the Z-Machine, the memory is typically implemented as a large contiguous array of bytes. Each byte within this array is assigned a unique address, starting from 0 and incrementing by one for each subsequent byte. This addressing scheme allows direct and efficient access to any specific Z-Machine memory byte.
+      </p>
+
+      <p>
+        This further means that any address in the Z-Machine ultimately resolves to a byte offset from the beginning of memory. For example, an address of 100 refers to the 101st byte from the start of memory. Since each address points to an individual byte, the Z-Machine can directly access and manipulate specific portions of its memory with precision.
+      </p>
+
+      <h2>It's Memory All The Way Down</h2>
+
+      <p>
+        So, to summarize all this, the Z-Machine relies on a byte-addressable memory model, allowing it to access individual bytes efficiently. Bit-field flags enable compact representation of Boolean data, with bits numbered from least to most significant across multiple bytes. I know this seems like a rough slog but these concepts are foundational for understanding how the Z-Machine processes instructions and manages its memory.
+      </p>
+
+      <p>
+        What I hope you take from all this is everything really comes down to that idea of memory.
+      </p>
+    </article>
+  </main>
+</body>
+</html>

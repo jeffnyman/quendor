@@ -29,6 +29,7 @@
   --content-width: 65ch;
   --content-padding: clamp(1rem, 5vw, 2rem);
 
+  --clr-link: hsla(213.19, 98.6%, 28.04%, 1);
   --clr-note: hsla(222.13, 23.38%, 39.41%, 1);
   --clr-tip: hsla(340, 50%, 25%, 1);
 
