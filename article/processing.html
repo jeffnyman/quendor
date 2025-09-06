@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <title>Processing with Quendor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Quendor GitHub Page">
+  <meta name="author" content="Jeff Nyman">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow">
+  <meta name="apple-mobile-web-app-title" content="Quendor">
+  <link rel="icon" type="image/png" href="../assets/site/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="../assets/site/favicon.svg">
+  <link rel="shortcut icon" href="../assets/site/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="../assets/site/apple-touch-icon.png">
+  <link rel="manifest" href="../assets/site/site.webmanifest">
+  <link rel="preload" href="../styles/fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../styles/fonts/Montserrat-Italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles/site.css?v=1.0">
+  <script type="module" src="../scripts/site.js" defer></script>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Processing with Quendor</h1>
+
+      <p>
+        The meatiest part of creating a Z-Machine implementation is the decoding of instructions from the zcode binary. To understand that, it helps to take a look at the overall processing that will need to be supported.
+      </p>
+
+      <p>
+        Emulating the Z-Machine basically means emulating a CPU, often just referred to as a processor. The processor at the heart of any computer &mdash; even a virtual one &mdash; can ultimately understand only the most simplistic of instructions. These instructions, known as "operation codes" (or just "opcodes") do really simple things. Some examples of "really simple things" are:
+      </p>
+
+      <ul>
+        <li>
+          Moving a single number from memory into a register of the processor.
+        </li>
+        <li>
+          Adding a number already stored in a register to another number.
+        </li>
+        <li>
+          Putting the result from an operation back into memory.
+        </li>
+      </ul>
+
+      <h2>The Idea of Opcodes</h2>
+
+      <p>
+        Each opcode is identified by a unique sequence of "on/off switches," better known as bits. Some of the earliest programmers were quite literally bit flippers. This meant they entered long sequences of 1s and 0s by hand, essentially "flipping" a given bit to one of the two values.
+      </p>
+
+      <p class="note">
+        Technically you could argue that's all programmers do these days as well but the levels of abstraction are so high that what we do now is light years in distance from what we did back when computing was just getting started.
+      </p>
+
+      <p>
+        Tools called assemblers were eventually developed and these allowed those programmers to replace 1s and 0s with unique textual identifiers, often referred to as <em>mnemonics</em> because they were meant to indicate what the operation did. For example, <code>STO</code> would store a number in memory, <code>ADD</code> would perform an addition operation, and so on.
+      </p>
+
+      <h3>The Use of Opcodes</h3>
+
+      <p>
+        To use a retro example, firing up my Commodore 64, I can enter this:
+      </p>
+
+      <pre><code>
+        POKE 53280,0
+      </code></pre>
+
+      <p>
+        That's a statement written in BASIC. The memory address 53280 (0xD020) is used for the background color of characters and graphics of the machine. The above command would set the background to black. What does <code>POKE</code> mean, though? It was just the mnemonic for an instruction that was used to change the contents of any address in memory. A <code>PEEK</code> instruction, by contrast, would provide you with the contents of memory at a given address.
+      </p>
+
+      <p>
+        Incidentally, there is no "POKE" equivalent in 6502 assembly language. I mention that because the Commodore 64 was based on the 6502 microprocessor and its instruction set architecture. In that context, it's not possible to load a memory location with a value within a single instruction. So, to change the color to black, the BASIC statement "POKE 53280,0" actually becomes this:
+      </p>
+
+      <pre><code>
+        LDA #$00
+        STA $d020
+      </code></pre>
+
+      <p>
+        The mnemonic <code>LDA</code> (Load Accumulator) is used to load a value into the accumulator, and the mnemonic <code>STA</code> (Store Accumulator) is used to store the value from the accumulator into a memory location. In this case, "LDA #$00" loads the immediate value of 0 into the accumulator, and "STA $d020" stores the value from the accumulator into the memory location represented by $d020, which corresponds to the chip's register controlling the background color.
+      </p>
+
+      <p>
+        Without the mnemonics, the assembly code snippet would be represented like this:
+      </p>
+
+      <pre><code>
+        A9 00
+        8D 20 D0
+      </code></pre>
+
+      <p>
+        How that breaks down is:
+      </p>
+
+      <ul>
+        <li>
+          <code>A9</code> is the opcode for the "Load Accumulator Immediate" instruction.
+        </li>
+        <li>
+          <code>$00</code> is the immediate value being loaded into the accumulator (register A). In this case, it's 00 which represents the value zero.
+        </li>
+        <li>
+          <code>8D</code> is the opcode for the "Store Accumulator Absolute" instruction.
+        </li>
+        <li>
+          <code>$20 D0</code> is the memory address where the accumulator value will be stored. In this case, it refers to the memory address $D020, $20 is the low byte, and $D0 is the high byte. Together, they form a 16-bit memory address.
+        </li>
+      </ul>
+
+      <p>
+        In binary, this would have been:
+      </p>
+
+      <pre><code>
+        Load Accumulator Immediate:
+        A9        00000000
+
+        Store Accumulator Absolute:
+        8D 20D0   00100000 11010000
+      </code></pre>
+
+      <p>
+        While it's easy to see that these mnemonics were useful aids for programmers, they meant nothing to any computer. It was only that lowest level binary that actually meant anything to a processor. So, after writing the program using a system of mnemonics, the programmer had to pass it through the assembler to generate the 1s and 0s the computer needed.
+      </p>
+
+      <p>
+        Eventually higher-level languages were created that would let these programmers create their programs at a much greater level of abstraction from the hardware. This allowed them to focus more on the logic of what they were trying to achieve and less on bit twiddling.
+      </p>
+
+      <h2>Programming Languages</h2>
+
+      <p>
+        The first really complete example of such a language arrived in 1954 and was called FORTRAN. This language is historically interesting (relevant to the context of Quendor) because it was the language a guy named Will Crowther chose to code a game called <a href="https://en.wikipedia.org/wiki/Colossal_Cave_Adventure"><em>Colossal Cave Adventure</em></a> in. This was back in 1975. Infocom's <em>Zork</em> would initially pay homage to this game and was arguably written as a successor to it.
+      </p>
+
+      <p>
+        Another such language was LISP, which came on the scene even earlier, around 1958. This one is historically interesting (again, as relevant to the Quendor context) in that it was the ancestor of a language created at MIT called <a href="https://en.wikipedia.org/wiki/MDL_(programming_language)">MDL</a>. That, in turn, was the ancestor to a language created by Infocom, called ZIL (Zork Implementation Language). <a href="http://www.ifwiki.org/index.php/ZIL">ZIL</a> is ultimately what the <em>Zork</em> that most people played was written in.
+      </p>
+
+      <p>
+        A program written in ZIL was compiled into a form of bytecode, which is the <a href="http://fileformats.archiveteam.org/wiki/Z-code">zcode</a> I've mentioned in other areas in this documentation. This zcode was executed by having it run through another program called a ZIP (Z-Machine Interpreter Program).
+      </p>
+
+      <p class="note">
+        The ZIP is what Quendor has to emulate.
+      </p>
+
+      <h2>How Much to Emulate</h2>
+
+      <p>
+        All of what I describe above is important because it means that when I read the Z-Machine specification, I have to understand how the Z-Machine interpreters &mdash; the ZIPs &mdash; were created and worked <em>back then</em> but also translate that to what is needed, or practical, <em>today</em>.
+      </p>
+
+      <p>
+        For example, as the most obvious thing to consider, today we're generally not dealing with games on disks at all, much less multiple disks. Thus paging systems and segment tables are not something I'll likely be worrying about.
+      </p>
+
+      <p>
+        As another example, perhaps less obvious, there really is no need to make a distinction between dynamic (mutable) and static (immutable) memory in a modern implementation. And while that's technically true, it's still probably a good idea to do so. One of the main reasons being that doing so helps ensure that static memory is never written to. Also if the interpreter restarts a story file (or saves and restores the state of one), it's necessary to be able to provide the original state of the dynamic memory. That feels like it's going to be a lot easier if Quendor has clear separation of what "dynamic memory" is.
+      </p>
+
+      <p>
+        Yet another good example of this has to do with the concept of the stacks that were briefly mentioned when I talked about <a href="./memorystate.html">memory and state</a>. There's <em>technically</em> two stacks: a call stack and an evaluation stack. But are these separate structures or just one structure? That's really up to the author of the interpreter. A "stack" is nothing more than a data structure that's a wrapper around some numbers.
+      </p>
+
+      <p>
+        Thus, what matters is that the zcode program being executed can only directly access the data structure ("stack") of the current routine. But the zcode program itself has no way to know whether the interpreter it's running under has one large stack that just sits in memory or separate call stacks (one for each routine called) that in turn each have their own evaluation stack.
+      </p>
+
+      <p>
+        The point here is: I've spent a lot of time learning about how things <em>worked</em>; now, as part of implementing Quendor, I have to figure out how I want to make things <em>work</em>. The common denominator to all this is that Quendor has to interact with the zcode program it loads up.
+      </p>
+    </article>
+  </main>
+</body>
+</html>
