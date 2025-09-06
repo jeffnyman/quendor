@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <title>The Zcode Intersection in Quendor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Quendor GitHub Page">
+  <meta name="author" content="Jeff Nyman">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow">
+  <meta name="apple-mobile-web-app-title" content="Quendor">
+  <link rel="icon" type="image/png" href="../assets/site/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="../assets/site/favicon.svg">
+  <link rel="shortcut icon" href="../assets/site/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="../assets/site/apple-touch-icon.png">
+  <link rel="manifest" href="../assets/site/site.webmanifest">
+  <link rel="preload" href="../styles/fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../styles/fonts/Montserrat-Italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles/site.css?v=1.0">
+  <script type="module" src="../scripts/site.js" defer></script>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>The Zcode Intersection in Quendor</h1>
+
+      <p>
+        As this series has moved along, It's very clear that zcode is the intersection between the <a href="./bitsbytes.html">bits and bytes</a> and the Z-Machine architecture, which I've briefly introduced when talking about <a href="./memorystate.html">memory and state</a>. What this comes down to is the actual "interpreting" part of writing a Z-Machine <em>interpreter</em>.
+      </p>
+
+      <img src="../assets/images/zmachine-emulate-interpret.jpg" width="824" height="426" alt="Z-Machine emulator and interpreter.">
+
+      <p>
+        When we talk about "zcode" what we're really talking about is a bytecode compiled language. The native language of the Z-Machine is this assembly language, just as 6502 assembly language was the native language of the Commodore 64.
+      </p>
+
+      <p>
+        At this point, I should note that there is a document referred to as the <em>Inform Designer's Manual, version 4</em> (often abbreviated as DM4), which serves as documentation for the Inform development system.
+      </p>
+
+      <p class="note">
+        Inform, which is a compiler, is often viewed as the successor to Infocom's tooling since Inform can produce zcode that works very similarly to what Infocom's compilers were able to produce. There are two major versions of Inform: <a href="https://www.inform-fiction.org/">Inform 6</a> and <a href="https://ganelson.github.io/inform-website/">Inform 7</a>.
+      </p>
+
+      <p>
+        The DM4 has a few things to say about the Z-Machine architecture and, in that context, this snippet of code is provided:
+      </p>
+
+      <pre><code>
+        "The answer is ", 3 * total + 1;
+      </code></pre>
+
+      <p>
+        This is essentially a statement in the high-level language of Inform, which is very different than the ZIL that Infocom was using. An equivalent ZIL might look something like this:
+      </p>
+
+      <pre><code>
+        &lt;SETG TOTAL <* ,TOTAL 3 >>
+        &lt;SETG TOTAL <+ ,TOTAL 1 >>
+        &lt;TELL "[ The answer is " N .TOTAL ".]" >)>>
+      </code></pre>
+
+      <p>
+        However, the nature of the source code matters not at all. What matters is the <em>bytecode</em>. The above logic, in either case, would be rendered something like this:
+      </p>
+
+      <pre><code>
+        @print "The answer is ";
+        @mul 3 total -> x;
+        @add x 1 -> x;
+        @print_num x;
+        @new_line;
+        @rtrue;
+      </code></pre>
+
+      <p>
+        What I have there is assembly code. Assembly languages have commands that are called opcodes. In the above example, those are written with an <code>@</code> sign in front of them. The values supplied to opcodes, such as <code>3</code>, <code>1</code>, and <code>total</code>, are called operands.
+      </p>
+
+      <p>
+        Opcodes and operands are going to be <em>really</em> important as you start building the a Z-Machine implementation. A zcode program is made up of a sequence of bits and bytes and Quendor, like any such interpreter, essentially has to loop through those sequences.
+      </p>
+
+      <h2>The Interpretation Loop</h2>
+
+      <p>
+        Here I'll post again the visual of the Z-Machine architecture:
+      </p>
+
+      <img src="../assets/images/zmachine-architecture.png" width="2446" height="1436" alt="Z-Machine architecture diagram.">
+
+      <p>
+        As you can see in the visual above, the Z-Machine itself has an architecture and, ultimately, you have to implement that architecture if you want to actually emulate the machine itself.
+      </p>
+
+      <p class="note">
+        Do keep in mind that the Z-Machine was never an <em>actual</em> machine. The specification is all about creating the <em>virtual</em> Z-Machine. Thus, that architecture that you emulate is the architecture of the virtual machine as laid out in the specification.
+      </p>
+
+      <p>
+        While the architecture may seem a little daunting, I'm finding that I can consider the architecture part in stages I'm designing how Quendor will act as an emulator and an interpreter.
+      </p>
+
+      <p>
+        The simple part of the architecture, and the first to be implemented, can be thought of as the interpretation loop. Then there's the more complex part of the architecture, which is the actual emulation of the virtual machine so that the interpretation loop is carried out correctly.
+      </p>
+
+      <p>
+        "Carried out correctly," in this context, means being able to actually play one of the games, like <em>Zork</em>, that run on the Z-Machine. A simple view of that would be this:
+      </p>
+
+      <img src="../assets/images/interpreter-basic-view.jpg" width="568" height="65" alt="Basic view of interpretation loop.">
+
+      <p>
+        Here the source code is actually the bytecode and that is fed into the interpreter which "does stuff" and then that produces some output. But how <em>exactly</em> is that output produced? Well, that takes me to the simple part of the interpreter loop, where Quendor will have to do the following:
+      </p>
+
+      <ol>
+        <li>Load a story file that contains zcode.</li>
+        <li>Get the byte contents of the story file.</li>
+        <li>Determine which byte the story execution starts at.</li>
+        <li>Decode the instruction at the starting byte.</li>
+        <li>Loop through any remaining instructions.</li>
+      </ol>
+
+      <p class="note">
+        A "story file" is what Infocom called their game files because they felt they didn't just produce "text adventures," but rather interactive stories.
+      </p>
+
+      <p>
+        The above loop looks like this:
+      </p>
+
+      <img src="../assets/images/interpreter-loop-view.jpg" width="703" height="246" alt="Quendor interpretation loop.">
+
+      <p>
+        The byte contents of the file are essentially the starting state of the game. As the game is played, different instructions will be carried out, based on whatever the player does, and that will change the state of the game. For example, in <em>Zork</em> the player can open a mailbox and take a leaflet out of that mailbox. The player can open a trapdoor and descend into a dungeon whereupon the trapdoor will be closed and locked behind them. All of thse are changes to the state of the game based on player action.
+      </p>
+
+      <h3>A Focus on Decoding Opcodes</h3>
+
+      <p>
+        Step 4 above is clearly the most involved of this initial part of the architecture. To write Quendor, I essentially have to understand how to determine the nature of instructions, which is where the Z-Machine specification comes in. After I have that part down, then I have to provide an implementation for each instruction. Once again, I'll have to turn to the Z-Machine specification to understand how to do that.
+      </p>
+
+      <p>
+        That's the low-hanging fruit of the architecture I have to implement. Once that bit of architecture is in place, the work comes down to implementing all of the instructions. So, with the above assembly example, I have to provide implementations of <code>@print</code>, <code>@mul</code>, <code>@add</code>, <code>@print_num</code>, <code>@new_line</code>, and <code>@rtrue</code>.
+      </p>
+
+      <h3>Don't Forget the Operands!</h3>
+
+      <p>
+        But it gets tricky. I mentioned that some opcodes take operands. Operands can only be constants or variables. So consider this assembly instruction:
+      </p>
+
+      <pre><code>
+        @add x 1 -> x;
+      </code></pre>
+
+      <p>
+        This instruction adds <code>x</code> (a variable) and <code>1</code> (a constant), storing the result of this addition back in <code>x</code>. And this brings up an important point: some opcodes store values and some don't. So this is a part of the architecture that I need to implement. One part of that, for example, would be the stack.
+      </p>
+
+      <p>
+        The reason this is relevant so quickly is because, looking ahead a bit, I found that one of the first opcodes I'll work with in implementing a Z-Machine is the <code>call</code> opcode and, in that context, the stack can have some relevance.
+      </p>
+
+      <h3>Think About the Stack</h3>
+
+      <p>
+        For now I'm going to keep this pretty simple. The Z-Machine contains a stack which is accessed with a stack pointer. The stack is basically nothing more than a bucket of values. Quendor must write to and read from this bucket by using the stack pointer.
+      </p>
+
+      <ul>
+        <li>
+          <strong>Writing to the stack pointer</strong> means placing a value on top of the stack.
+        </li>
+        <li>
+          <strong>Reading from the stack pointer</strong> means a value is taken off the top of the stack.
+        </li>
+      </ul>
+
+      <p>
+        A naunce here is that each routine in a zcode story file has its own stack. Some people like to refer to a "call stack" (for all routines) and then each routine itself having its own "evaluation stack."
+      </p>
+
+      <p>
+        Let's consider another way that things can happen. Consider the following assembly:
+      </p>
+
+      <pre><code>
+        @je x 1 ?Xisone;
+        @print "x not equal to 1";
+        .Xisone;
+      </code></pre>
+
+      <p>
+        The instruction <code>@je</code> means "jump if equal" and what this does is test an operand, in this case <code>x</code>, to see if it's equal to another operand, in this case <code>1</code>. If that's the case, the code will jump to the label called <code>Xisone</code>, effectively skipping the <code>@print</code> instruction.
+      </p>
+
+      <p>
+        And this brings up another important point: some opcodes can branch. This results in execution jumping to a different place in the code if some condition turns out to be true.
+      </p>
+
+      <p>
+        What the above is showing me is that some of these instructions are more complicated than others. So when building Quendor, and the implementation of the instructions, I do need to have some understanding of the Z-Machine architecture.
+      </p>
+
+      <p>
+        I'll have to learn, for example, how attributes are dealt with (they can only be true or false; set or unset). I'll have to learn how properties are dealt with (they can contain values). I'll have to learn how the object table works (so that I can make sure object manipulation occurs as it should so that object relationships are maintained). I can see the complexity horizon here!
+      </p>
+    </article>
+  </main>
+</body>
+</html>
