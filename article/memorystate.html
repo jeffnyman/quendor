@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <title>Memory and State in Quendor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Quendor GitHub Page">
+  <meta name="author" content="Jeff Nyman">
+  <meta name="robots" content="index, follow">
+  <meta name="googlebot" content="index, follow">
+  <meta name="apple-mobile-web-app-title" content="Quendor">
+  <link rel="icon" type="image/png" href="../assets/site/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="../assets/site/favicon.svg">
+  <link rel="shortcut icon" href="../assets/site/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="../assets/site/apple-touch-icon.png">
+  <link rel="manifest" href="../assets/site/site.webmanifest">
+  <link rel="preload" href="../styles/fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../styles/fonts/Montserrat-Italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../styles/site.css?v=1.0">
+  <script type="module" src="../scripts/site.js" defer></script>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Memory and State in Quendor</h1>
+
+      <p>
+        There is one core area that you must set up first for a Z-Machine implementation: memory. Without having the virtual machine's memory set up, you can't effectively do anything. It first helps to consider the basic architecture.
+      </p>
+
+      <h2>The Architecture</h2>
+
+      <p>
+        The Z-Machine specification does provide an architecture diagram. I've modified and updated that slightly.
+      </p>
+
+      <img src="../assets/images/zmachine-architecture.png" width="2446" height="1436" alt="Z-Machine architecture diagram.">
+
+      <p>
+        The key thing to focus on is the "Main Memory," which Quendor will have to establish and then maintain. What this does is take you into the notion of state as well.
+      </p>
+
+      <h2>Memory Maps</h2>
+
+      <p>
+        The bytes in the zcode file that a Z-Machine executes represent the program's memory map. The Z-Machine specification says the following:
+      </p>
+
+      <blockquote>
+        The memory map of the Z-machine is an array of bytes with “byte addresses” running from 0 upwards.
+      </blockquote>
+
+      <p>
+        This is consistent with everything I said in the <a href="./bitsbytes.html">bits and bytes</a> section in terms of being byte-oriented. The memory map is a region of memory that contains the program's instructions and data. The Z-Machine specification also brings up an interesting point:
+      </p>
+
+      <blockquote>
+        Note that the routine call state, the stack and the PC must be stored outside the Z-machine memory map, in the interpreter's private memory.
+      </blockquote>
+
+      <p>
+        That idea of "interpreter's private memory" caused a little cognitive friction for me when I first read it. In a program like Quendor, it's worth asking how the "Z-Machine memory map" and the "interpreter's private memory" are distinguished.
+      </p>
+
+      <p>
+        The answer is that in the context of a program that emulates a Z-Machine, you can think of the "Z-Machine memory map" as a <code>bytes</code> object that represents the memory map of the Z-Machine program. This <code>bytes</code> object is created by reading the contents of a zcode file into memory. The "interpreter's private memory" refers to the memory used by the program (Quendor) to execute the Z-Machine program (zcode). This includes the stack, the routine call state, and the program counter (PC), all mentioned in the specification and shown in the diagram.
+      </p>
+
+      <p>
+        What this means is that in order to implement the Z-Machine, you need to create data structures in the "interpreter's private memory" &mdash; i.e., my TypeScript logic for Quendor &mdash; to represent the stack, routine call state, and program counter. Crucially, however, these data structures are separate from the <code>bytes</code> object that represents the memory map of the Z-Machine program.
+      </p>
+
+      <p>
+        So, at the bare minimum, any Z-Machine implementation must read in a zcode binary file.
+      </p>
+
+      <h2>Getting State</h2>
+
+      <p>
+        So, if Quendor is going to load up the "Z-machine memory map," then, when Quendor executes the Z-Machine program that it loads, it will use the "interpreter's private memory" to keep track of the state of the program. Here, the "interpreter's private memory" refers to Quendor itself!
+      </p>
+
+      <p>
+        Quendor has to get a <code>bytes</code> object that represents the memory map of the Z-Machine program. That memory map is used to look up instructions and data and to update the <em>state</em> of the program as that program executes.
+      </p>
+
+      <p>
+        Given this context, is it fair to say that the zcode memory map contains the "story state" or "game state"? Is it equally fair to say that the private memory contains the "interpreter state"? Arguably, that <em>is</em> a good way to think about it, and it certainly helped me as I conceptualized things. So, let's break this down.
+      </p>
+
+      <ul>
+        <li>
+          The Z-Machine memory map, which is represented by the <code>bytes</code> object that I obtain by reading a zcode program file, contains the <strong>story state</strong> or <strong>game state</strong>. This includes the program's instructions, data, and global variables.
+        </li>
+        <li>
+          The interpreter's private memory, on the other hand, contains the <strong>interpreter state.</strong> This includes the stack, the routine call state, the program counter, and other data structures that are used by the interpreter to execute the Z-Machine program.
+        </li>
+      </ul>
+
+      <p>
+        As Quendor executes the Z-Machine program, it will use, or rather <em>be</em> the interpreter's private memory, which will be used to keep track of the program's state. This state includes the values of the program's variables, the contents of the stack, and the current position in the program's execution. This relates back to memory because the Z-Machine memory map is used to look up instructions and data and to update the program's state as it executes.
+      </p>
+
+      <h2>State of Play</h2>
+
+      <p>
+        Consistent with my conceptualization above, consider this next bit from the Z-Machine specification:
+      </p>
+
+      <blockquote>
+        The 'state of play' is defined as the following: the contents of dynamic memory; the contents of the stack; the value of the program counter (PC), and the 'routine call state' (that is, the chain of routines which have called each other in sequence, and the values of their local variables).
+      </blockquote>
+
+      <p>
+        This tells me that the "state of play" in the Z-Machine combines the story state and the interpreter state. It includes the contents of dynamic memory, which is part of the story state, as well as the contents of the stack and the routine call state, which are part of the interpreter state. The Z-Machine specification also says:
+      </p>
+
+      <blockquote>
+        The entire state of play must be stored when the game is saved.
+      </blockquote>
+
+      <p>
+        That's an interesting and crucial point! Let's talk about why.
+      </p>
+
+      <h3>Saving and Restoring</h3>
+
+      <p>
+        In the Z-Machine, it's possible to save and restore the state of play, which includes the contents of dynamic memory, the contents of the stack, the value of the program counter, and the routine call state. This state can be saved to a file and then later restored to continue the program's execution from where it left off. When you save the state of play, you create an image of the program's current state. So, for example, in a game, if the player moves around, picks up items, solves puzzles, and so on, all of that is stored in the "state of play."
+      </p>
+
+      <h3>Restarting</h3>
+
+      <p>
+        Beyond saving and restoring the state of play in the Z-Machine, there's also a "restart" operation. This resets the story state to its initial state, as it was when the program was first loaded into memory. This means that any changes to the story state made during the program's execution are discarded, and the program starts again from the beginning.
+      </p>
+
+      <h3>Undoing</h3>
+
+      <p>
+        It's also worth noting that in the Z-Machine, there's the idea of an "undo" operation. This operation allows for reverting the current state of play to a previous state. This means that the program's execution is rewound to an earlier point in time, and its state is restored to what it was at that point. Not all Z-Machine programs will necessarily support this operation, and even if they do, the number of undo "steps" available can be limited.
+      </p>
+
+      <h2>State is Serialized Memory</h2>
+
+      <p>
+        All of this is important to understand the notion of state and how that ties into memory. The state of the zcode program at any given time is a serialization of its memory. The Z-Machine specification says this:
+      </p>
+
+      <blockquote>
+        Z-machine programs are stored on disc, or archived on the Internet, in what are called story files. (Since they were introduced to hold interactive stories.) A story file consists of a snapshot of main memory only.
+      </blockquote>
+
+      <p>
+        Thus, an interpreter implementation like Quendor takes a file as input, which is just a straight-up serialization of the story state. What should become clear with all this context is that as I move forward with an interpreter, like Quendor, you will spend a lot of time figuring out how to decode that state.
+      </p>
+
+      <p>
+        Decoding that state means working with actual zcode files. These will effectively serve as the oracles for determining what is and is not correct behavior in the context of reading the memory and determining the state.
+      </p>
+
+      <p>
+        So, for example, if you have a <em>Zork 1</em> zcode program, then loading up that program is getting the memory map or initial state of play. Executing the instructions in that program will allow the program to be "played" and thus allow for state changes.
+      </p>
+    </article>
+  </main>
+</body>
+</html>
