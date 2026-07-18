@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "EditorConfig.EditorConfig",
+    "jacobcassidy.css-nesting-syntax-highlighting",
+    "stylelint.vscode-stylelint",
+    "VoidZero.vite-plus-extension-pack"
+  ]
+}

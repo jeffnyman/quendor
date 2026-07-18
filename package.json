@@ -1,0 +1,38 @@
+{
+  "name": "quendor-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A TypeScript Z-Machine interpreter (quendor) and its debugger (zdebug)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeffnyman/quendor.git"
+  },
+  "type": "module",
+  "scripts": {
+    "ready": "vp check && vp run -r test && vp run -r build",
+    "dev": "vp run zdebug#dev",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "fallow": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.13.1",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

@@ -1,0 +1,36 @@
+packages:
+  - apps/*
+  - packages/*
+  - tools/*
+
+catalogMode: strict
+
+catalog:
+  "@commitlint/cli": ^21.2.1
+  "@commitlint/config-conventional": ^21.2.0
+  "@types/node": ^26.1.1
+  fallow: ^3.6.0
+  stylelint: ^17.14.0
+  stylelint-config-standard: ^40.0.0
+  stylelint-use-nesting: ^6.0.2
+  typescript: ^7.0.2
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.5
+  vite-plus: 0.2.5
+overrides:
+  vite: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
+minimumReleaseAgeExclude:
+  - "@voidzero-dev/vite-plus-core@0.2.5"
+  - "@voidzero-dev/vite-plus-darwin-arm64@0.2.5"
+  - "@voidzero-dev/vite-plus-darwin-x64@0.2.5"
+  - "@voidzero-dev/vite-plus-linux-arm64-gnu@0.2.5"
+  - "@voidzero-dev/vite-plus-linux-arm64-musl@0.2.5"
+  - "@voidzero-dev/vite-plus-linux-x64-gnu@0.2.5"
+  - "@voidzero-dev/vite-plus-linux-x64-musl@0.2.5"
+  - "@voidzero-dev/vite-plus-win32-arm64-msvc@0.2.5"
+  - "@voidzero-dev/vite-plus-win32-x64-msvc@0.2.5"
+  - vite-plus@0.2.5

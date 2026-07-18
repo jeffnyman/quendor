@@ -1,0 +1,19 @@
+# Root file for the project. Stops the editor from searching higher up.
+root = true
+
+# Universal Settings (The "Common Law")
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Windows Scripts Exception (They physically require CRLF to run.)
+[*.{cmd,bat,ps1,psm1}]
+end_of_line = crlf
+
+# Markdown Exception (Trailing spaces are semantic syntax here.)
+[*.md]
+trim_trailing_whitespace = false

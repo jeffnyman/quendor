@@ -1,0 +1,54 @@
+{
+  "name": "quendor",
+  "version": "0.0.0",
+  "description": "A Specification-Accurate Z-Machine Implementation",
+  "keywords": [
+    "infocom",
+    "interactive-fiction",
+    "interpreter",
+    "z-machine",
+    "zmachine",
+    "zork"
+  ],
+  "homepage": "https://github.com/jeffnyman/quendor#readme",
+  "bugs": {
+    "url": "https://github.com/jeffnyman/quendor/issues",
+    "email": "jeffnyman@gmail.com"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Jeff Nyman",
+    "email": "jeffnyman@gmail.com",
+    "url": "https://github.com/jeffnyman"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeffnyman/quendor.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build",
+    "release": "bumpp --tag \"quendor@%s\""
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "bumpp": "^11.1.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

@@ -1,0 +1,2 @@
+node .vite-hooks/sync-agent-docs.mjs
+vp staged
