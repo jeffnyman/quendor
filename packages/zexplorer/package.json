@@ -5,14 +5,19 @@
   "description": "A Z-Machine explorer",
   "homepage": "https://jeffnyman.github.io/quendor/",
   "license": "MIT",
+  "bin": {
+    "zexp": "./dist-cli/cli.mjs"
+  },
   "type": "module",
   "scripts": {
+    "zexp": "node src/cli.ts",
     "dev": "vp dev --host --open",
-    "build": "tsc && vp build",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cli.json && vp pack && vp build",
     "preview": "vp preview --host --open",
     "lint:css": "stylelint 'src/**/*.css'"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "stylelint": "catalog:",
     "stylelint-config-standard": "catalog:",
     "stylelint-use-nesting": "catalog:",
