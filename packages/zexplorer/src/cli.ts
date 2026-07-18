@@ -3,7 +3,9 @@
 import { loadStoryFromFile } from "quendor/node";
 
 async function cmdHeader(path: string): Promise<void> {
-  await loadStoryFromFile(path);
+  const story = await loadStoryFromFile(path);
+
+  console.log(`loaded ${story.bytes.length} bytes`);
 }
 
 async function main(): Promise<void> {
