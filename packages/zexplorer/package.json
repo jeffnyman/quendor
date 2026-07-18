@@ -1,8 +1,8 @@
 {
-  "name": "zdebug",
+  "name": "zexplorer",
   "version": "0.0.0",
   "private": true,
-  "description": "A Z-Machine debugger",
+  "description": "A Z-Machine explorer",
   "homepage": "https://jeffnyman.github.io/quendor/",
   "license": "MIT",
   "type": "module",
