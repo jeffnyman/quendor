@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   staged: {
     "*": "vp check --fix",
-    "packages/zdebug/**/*.css": "vp run zdebug#lint:css --",
+    "packages/zexplorer/**/*.css": "vp run zexplorer#lint:css --",
   },
   fmt: {},
   lint: {
