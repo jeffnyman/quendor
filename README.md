@@ -15,6 +15,13 @@
 <p align="center">
   <a href="https://github.com/jeffnyman/quendor/actions/workflows/ci.yml"><img src="https://github.com/jeffnyman/quendor/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="https://renovatebot.com"><img alt="Renovate enabled" src="https://img.shields.io/badge/renovate-enabled-brightgreen.svg?style=flat-square"></a>
+  <a href="https://conventionalcommits.org"><img src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-green.svg?style=flat-square" alt="Conventional Commits: 1.0.0"></a>
+</p>
+
+<p align="center">
+  <a href="https://viteplus.dev"><img src="https://img.shields.io/badge/vite+-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white" alt="Vite+"></a>
+  <a href="https://oxc.rs"><img src="https://img.shields.io/badge/oxc-%233451b2.svg?style=for-the-badge&logo=oxc&logoColor=white&logoSize=auto" alt="OXC"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjeffnyman%2Fquendor%2Fmain%2Fpackage.json&query=%24.engines.node&label=node&style=for-the-badge&logo=node.js&logoColor=white&color=339933" alt="Node.js"></a>
 </p>
 
 <div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/></div>
@@ -58,6 +65,44 @@ vp run dev
 ```bash
 vp add <dependency> --save-catalog --filter <workspace-package>
 ```
+
+## Contributing
+
+Thanks for considering a contribution to Quendor! A few things to know before you dive in.
+
+### Getting Started
+
+```bash
+git clone https://github.com/jeffnyman/quendor.git
+cd quendor
+vp install
+```
+
+See [Development](#development) above for the day-to-day commands.
+
+### Workflow
+
+`main` is protected; all changes go through a pull request, not a direct push:
+
+```bash
+git switch -c your-branch-name
+# make your changes
+git push -u origin your-branch-name
+```
+
+Then open a PR. It needs to pass CI (formatting, linting, type checks, tests, and a build) and be up to date with `main` before it can be merged.
+
+### Commit Messages
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org) (`type(scope): subject`), enforced by a commit-msg hook.
+
+### Dependencies
+
+This project uses pnpm catalogs to pin shared dependency versions in one place. See the "Dependency Management" section in [AGENTS.md](AGENTS.md) for how to add or update a dependency correctly.
+
+### AI Coding Assistants
+
+If you use one, [AGENTS.md](AGENTS.md) is the source of truth for project conventions: `CLAUDE.md` and the other tool-specific instruction files are synced copies of it, not independently maintained.
 
 ## Crafted by Humans, Optimized for Everyone
 
