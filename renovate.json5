@@ -1,0 +1,34 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", "schedule:monthly"],
+  packageRules: [
+    // Keep GitHub Actions up to date.
+    {
+      matchManagers: ["github-actions"],
+      commitMessagePrefix: "chore(ci)",
+    },
+    // Keep npm/pnpm dependencies up to date.
+    {
+      matchManagers: ["npm"],
+      commitMessagePrefix: "chore(deps)",
+    },
+    // Group all Vite+ related updates into a single PR.
+    {
+      matchManagers: ["npm"],
+      matchPackageNames: ["vite", "vite-plus"],
+      groupName: "vite-plus",
+    },
+    // Group all TypeScript related updates into a single PR.
+    {
+      matchManagers: ["npm"],
+      matchPackageNames: ["typescript", "@types/*"],
+      groupName: "typescript",
+    },
+    // Group all commitlint related updates into a single PR.
+    {
+      matchManagers: ["npm"],
+      matchPackageNames: ["@commitlint/*"],
+      groupName: "commitlint",
+    },
+  ],
+}
