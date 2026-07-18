@@ -42,7 +42,7 @@
     "test": "vp test",
     "check": "vp check",
     "prepublishOnly": "vp run build",
-    "release": "bumpp --tag \"quendor@%s\""
+    "release": "bumpp --no-tag --no-push"
   },
   "devDependencies": {
     "@types/node": "catalog:",
