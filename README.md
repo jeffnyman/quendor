@@ -12,7 +12,10 @@
   <a href="https://github.com/jeffnyman/quendor/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="Quendor is released under the MIT license."></a>
 </p>
 
-<p align="center"><a href="https://github.com/jeffnyman/quendor/actions/workflows/ci.yml"><img src="https://github.com/jeffnyman/quendor/actions/workflows/ci.yml/badge.svg" alt="CI status"></a></p>
+<p align="center">
+  <a href="https://github.com/jeffnyman/quendor/actions/workflows/ci.yml"><img src="https://github.com/jeffnyman/quendor/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://renovatebot.com"><img alt="Renovate enabled" src="https://img.shields.io/badge/renovate-enabled-brightgreen.svg?style=flat-square"></a>
+</p>
 
 <div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/></div>
 
