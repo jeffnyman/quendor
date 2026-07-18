@@ -23,6 +23,12 @@ jobs:
           cache: true
           run-install: true
 
+      # quendor is consumed by other workspace packages through its built
+      # output (package.json `exports`), not raw source, so it must be
+      # built before type-aware checks run against its dependents.
+      - name: Build quendor
+        run: vp run quendor#build
+
       - name: Check (format, lint, types)
         run: vp check
 
