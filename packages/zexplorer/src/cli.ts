@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-async function cmdHeader(_path: string): Promise<void> {
-  throw new Error("not implemented");
+import { loadStoryFromFile } from "quendor/node";
+
+async function cmdHeader(path: string): Promise<void> {
+  await loadStoryFromFile(path);
 }
 
 async function main(): Promise<void> {

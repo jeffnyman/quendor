@@ -66,6 +66,21 @@ vp run dev
 vp add <dependency> --save-catalog --filter <workspace-package>
 ```
 
+- Test `zexplorer`'s CLI as a real installed command. This must be run directly in a shell with a globally installed `vp` on `PATH` (see [viteplus.dev](https://viteplus.dev/guide/)). It cannot be a `package.json` script, since scripts always run against the project-local `vp`, which intentionally refuses global operations:
+
+```bash
+vp run zexplorer#build
+vp add -g ./packages/zexplorer
+```
+
+The leading `./` matters: without it, `vp add -g packages/zexplorer` is parsed as GitHub shorthand (`owner/repo`) rather than a local path, and fails trying to clone a nonexistent repo.
+
+`zexp <command> [args]` then works from any directory on this machine, the same way it will once actually published. This isn't captured by git or the lockfile. Repeat after a fresh clone, and re-run `vp pack` whenever `src/cli.ts` changes. To remove the global link:
+
+```bash
+vp remove zexplorer -g
+```
+
 ## Contributing
 
 Thanks for considering a contribution to Quendor! A few things to know before you dive in.
