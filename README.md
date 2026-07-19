@@ -66,18 +66,28 @@ vp run dev
 vp add <dependency> --save-catalog --filter <workspace-package>
 ```
 
-- Test `zexplorer`'s CLI as a real installed command. This must be run directly in a shell with a globally installed `vp` on `PATH` (see [viteplus.dev](https://viteplus.dev/guide/)). It cannot be a `package.json` script, since scripts always run against the project-local `vp`, which intentionally refuses global operations:
+### Installing the CLIs Locally
+
+Both `quendor` and `zexplorer` ship a `bin`. Testing either as a real installed command must be run directly in a shell with a globally installed `vp` on `PATH` (see [viteplus.dev](https://viteplus.dev/guide/)). It cannot be a `package.json` script, since scripts always run against the project-local `vp`, which intentionally refuses global operations.
+
+```bash
+vp run quendor#build
+vp add -g ./packages/quendor
+```
 
 ```bash
 vp run zexplorer#build
 vp add -g ./packages/zexplorer
 ```
 
-The leading `./` matters: without it, `vp add -g packages/zexplorer` is parsed as GitHub shorthand (`owner/repo`) rather than a local path, and fails trying to clone a nonexistent repo.
+The leading `./` matters: without it, `vp add -g packages/quendor` is parsed as GitHub shorthand (`owner/repo`) rather than a local path, and fails trying to clone a nonexistent repo.
 
-`zexp <command> [args]` then works from any directory on this machine, the same way it will once actually published. This isn't captured by git or the lockfile. Repeat after a fresh clone, and re-run `vp pack` whenever `src/cli.ts` changes. To remove the global link:
+Linking one package doesn't link the other; each is a separate global install.
+
+`quendor <story-file>` and `zexp <command> [args]` then work from any directory on this machine, the same way they will once actually published. This isn't captured by git or the lockfile. Repeat after a fresh clone, and re-run the relevant `vp run <package>#build` whenever that package's CLI source changes. To remove a global link:
 
 ```bash
+vp remove quendor -g
 vp remove zexplorer -g
 ```
 

@@ -25,6 +25,10 @@
     "type": "git",
     "url": "git+https://github.com/jeffnyman/quendor.git"
   },
+  "bin": {
+    "qdor": "./dist/qdor.mjs",
+    "quendor": "./dist/cli.mjs"
+  },
   "files": [
     "dist"
   ],
