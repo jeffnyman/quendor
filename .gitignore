@@ -19,6 +19,7 @@ node_modules
 dist
 dist-ssr
 coverage
+**/test-results
 
 # Tool caches
 .fallow

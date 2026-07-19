@@ -16,6 +16,8 @@
   "devDependencies": {
     "@commitlint/cli": "catalog:",
     "@commitlint/config-conventional": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "@vitest/ui": "catalog:",
     "fallow": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

@@ -6,4 +6,15 @@ export default defineConfig({
     tsconfig: "tsconfig.cli.json",
     outDir: "dist-cli",
   },
+  test: {
+    reporters: ["default", "html"],
+
+    outputFile: {
+      html: "./test-results/index.html",
+    },
+
+    coverage: {
+      reportsDirectory: "./test-results/coverage",
+    },
+  },
 });

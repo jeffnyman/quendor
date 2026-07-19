@@ -21,4 +21,15 @@ export default defineConfig({
     },
   },
   fmt: {},
+  test: {
+    reporters: ["default", "html"],
+
+    outputFile: {
+      html: "./test-results/index.html",
+    },
+
+    coverage: {
+      reportsDirectory: "./test-results/coverage",
+    },
+  },
 });
