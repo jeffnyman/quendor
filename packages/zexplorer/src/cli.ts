@@ -2,13 +2,13 @@
 
 import { loadStoryFromFile } from "quendor/node";
 
-async function cmdHeader(path: string): Promise<void> {
+export async function cmdHeader(path: string): Promise<void> {
   const story = await loadStoryFromFile(path);
 
   console.log(`loaded ${story.bytes.length} bytes`);
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
   switch (command) {
@@ -34,7 +34,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+/* v8 ignore next -- @preserve */
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
