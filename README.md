@@ -127,6 +127,10 @@ Then open a PR. It needs to pass CI (formatting, linting, type checks, tests, an
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org) (`type(scope): subject`), enforced by a commit-msg hook.
 
+### Codebase Health Checks
+
+`vp exec fallow` (dead code, duplication, complexity, hotspots — see [Development](#development)) runs automatically on `git push` via a pre-push hook, not on every commit: it analyzes the whole codebase rather than just staged files, so it's scoped to run once right before code leaves your machine instead of adding that cost to every incremental commit.
+
 ### Dependencies
 
 This project uses pnpm catalogs to pin shared dependency versions in one place. See the "Dependency Management" section in [AGENTS.md](AGENTS.md) for how to add or update a dependency correctly.
