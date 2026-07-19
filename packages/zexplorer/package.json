@@ -14,6 +14,7 @@
     "dev": "vp dev --host --open",
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.cli.json && vp pack && vp build",
     "preview": "vp preview --host --open",
+    "test": "vp test",
     "lint:css": "stylelint 'src/**/*.css'"
   },
   "dependencies": {
