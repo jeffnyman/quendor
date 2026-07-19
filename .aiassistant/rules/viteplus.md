@@ -30,3 +30,17 @@ This project uses [pnpm catalogs](https://pnpm.io/catalogs) to pin shared depend
 - [ ] After that PR is merged, on an up-to-date `main`, create and push the tag against the commit that actually landed: `git tag quendor@X.Y.Z && git push origin quendor@X.Y.Z`. Tags are not covered by the branch ruleset, so this push is unaffected by it.
 
 Do not tag before the version-bump commit is merged — depending on the PR merge method, the commit that lands on `main` may not be the same commit `bumpp` created on the branch.
+
+## Reference Material (`entharion`)
+
+`entharion` is an optional git submodule (see the README's "Getting Started" section for how to check it out) holding Z-machine/IF reference material that isn't part of quendor's own source. It's organized by purpose:
+
+- `specs/` — format specifications as PDFs: the Z-Machine Standard, Blorb, Quetzal (save files), and the older per-version Z-code specs (`spec-zip`, `spec-ezip`, `spec-xzip`, `spec-yzip`).
+- `zcode-checkers/` (+ `-source`) — compliance test story files (czech, etude, gntests, strictz) for validating a Z-machine implementation against the spec, plus their Inform 6 source.
+- `zcode-infocom/` (+ `-source`) — original Infocom-era game files (multiple Zork I releases/formats, including a `.zblorb`), plus ZIL source for two of them.
+- `zcode-inform/` (+ `-source`) — modern Inform 6-compiled games, plus their `.inf` source.
+- `ztools-source/` — C source for the classic ztools suite (`infodump`, `txd`, `check`, etc.), useful as a reference implementation.
+- `tools-mac/` / `tools-win/` — compiled ztools binaries per platform.
+
+- [ ] Before citing spec behavior in a comment, check the actual PDF in `entharion/specs/` rather than relying on general knowledge of the format. If no PDF-reading tool is available, extract text first, e.g. `pdftotext -layout <file> -`.
+- [ ] `entharion` isn't checked out by a plain clone. If it's missing locally, say so rather than assuming the reference material doesn't exist for this project — the fix is `git submodule update --init`.
