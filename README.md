@@ -46,6 +46,12 @@ vp exec fallow
 
 ```bash
 vp run -r test
+
+# run with coverage
+vp run -r test --coverage
+
+# generate the ui
+vp run -r test --ui --watch
 ```
 
 - Build the monorepo:
