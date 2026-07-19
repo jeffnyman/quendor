@@ -93,6 +93,12 @@ cd quendor
 vp install
 ```
 
+Optional: `entharion` (specs, tools, and other Z-machine reference material) is a git submodule and isn't checked out by a plain clone. Nothing in the build, tests, or checks depends on it. Pull it in only if you want the reference material locally:
+
+```bash
+git submodule update --init
+```
+
 See [Development](#development) above for the day-to-day commands.
 
 ### Workflow
@@ -114,6 +120,22 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org) (`typ
 ### Dependencies
 
 This project uses pnpm catalogs to pin shared dependency versions in one place. See the "Dependency Management" section in [AGENTS.md](AGENTS.md) for how to add or update a dependency correctly.
+
+### Updating the `entharion` Reference
+
+`entharion` is pinned to a specific commit in quendor's history: a plain `git submodule update --init` (see [Getting Started](#getting-started)) always checks out that exact commit, never whatever's currently on entharion's `main`.
+
+To advance the pin, for example after new material has been added to entharion itself:
+
+```bash
+git submodule update --remote
+git add entharion
+git commit -m "chore: update entharion submodule reference"
+```
+
+That goes through the normal branch/PR workflow like any other change.
+
+To just check whether entharion has new content without committing anything, run the same `git submodule update --remote` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init`, which snaps back to quendor's actual pinned commit.
 
 ### AI Coding Assistants
 
