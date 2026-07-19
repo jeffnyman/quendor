@@ -9,8 +9,8 @@ export default defineConfig({
     exports: {
       exclude: ["cli", "qdor"],
       bin: {
-        quendor: "./src/cli.ts",
         qdor: "./src/qdor.ts",
+        quendor: "./src/cli.ts",
       },
     },
   },
@@ -25,11 +25,11 @@ export default defineConfig({
     reporters: ["default", "html"],
 
     outputFile: {
-      html: "./test-results/index.html",
+      html: "./test-quendor/index.html",
     },
 
     coverage: {
-      reportsDirectory: "./test-results/coverage",
+      reportsDirectory: "./test-quendor/coverage",
     },
   },
 });

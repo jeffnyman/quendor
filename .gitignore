@@ -19,7 +19,8 @@ node_modules
 dist
 dist-ssr
 coverage
-**/test-results
+**/test-quendor
+**/test-zexplorer
 
 # Tool caches
 .fallow

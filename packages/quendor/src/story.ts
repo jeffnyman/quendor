@@ -1,7 +1,9 @@
+import { Memory } from "./memory.ts";
+
 export class Story {
-  readonly bytes: Uint8Array;
+  readonly memory: Memory;
 
   constructor(bytes: Uint8Array) {
-    this.bytes = bytes;
+    this.memory = new Memory(bytes);
   }
 }

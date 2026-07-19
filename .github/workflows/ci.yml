@@ -29,13 +29,6 @@ jobs:
       - name: Build quendor
         run: vp run quendor#build
 
-      # The build above regenerates quendor's package.json `bin`/`exports`
-      # fields (tsdown writes them in insertion order), which does not
-      # match oxfmt's canonical ordering. Re-normalize before the format
-      # check below, or it fails on a file no human actually edited.
-      - name: Normalize generated package.json
-        run: vp check --fix packages/quendor/package.json
-
       - name: Check (format, lint, types)
         run: vp check
 

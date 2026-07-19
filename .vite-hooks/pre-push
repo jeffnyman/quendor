@@ -1,1 +1,2 @@
+vp run -w ready
 vp exec fallow
