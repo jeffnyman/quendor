@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   const story = await loadStoryFromFile(parsed.path);
 
-  console.log(`loaded ${story.bytes.length} bytes`);
+  console.log(`loaded ${story.memory.size} bytes`);
 }
 
 main().catch((err) => {
