@@ -10,11 +10,11 @@ export default defineConfig({
     reporters: ["default", "html"],
 
     outputFile: {
-      html: "./test-results/index.html",
+      html: "./test-zexplorer/index.html",
     },
 
     coverage: {
-      reportsDirectory: "./test-results/coverage",
+      reportsDirectory: "./test-zexplorer/coverage",
     },
   },
 });
