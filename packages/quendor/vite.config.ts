@@ -9,8 +9,8 @@ export default defineConfig({
     exports: {
       exclude: ["cli", "qdor"],
       bin: {
-        quendor: "./src/cli.ts",
         qdor: "./src/qdor.ts",
+        quendor: "./src/cli.ts",
       },
     },
   },
