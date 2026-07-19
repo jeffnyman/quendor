@@ -5,8 +5,11 @@ export default defineConfig({
     "*": "vp check --fix",
     "packages/zexplorer/**/*.css": "vp run zexplorer#lint:css --",
   },
-  fmt: {},
+  fmt: {
+    ignorePatterns: ["entharion/**"],
+  },
   lint: {
+    ignorePatterns: ["entharion/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: {
       "typescript/explicit-function-return-type": "error",

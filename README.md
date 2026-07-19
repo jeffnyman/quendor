@@ -93,6 +93,12 @@ cd quendor
 vp install
 ```
 
+Optional: `entharion` (specs, tools, and other Z-machine reference material) is a git submodule and isn't checked out by a plain clone. Nothing in the build, tests, or checks depends on it — pull it in only if you want the reference material locally:
+
+```bash
+git submodule update --init
+```
+
 See [Development](#development) above for the day-to-day commands.
 
 ### Workflow
