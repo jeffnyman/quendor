@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { Machine } from "./machine.ts";
 import { loadStoryFromFile } from "./node.ts";
 
 const USAGE = `quendor — a terminal Z-Machine player
@@ -35,8 +36,7 @@ async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-
-  console.log(`loaded ${story.memory.size} bytes`);
+  new Machine(story);
 }
 
 main().catch((err) => {
