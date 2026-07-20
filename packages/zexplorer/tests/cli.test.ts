@@ -22,8 +22,8 @@ afterEach(() => {
 
 test("cmdHeader logs the byte count for a loaded story", async () => {
   vi.mocked(loadStoryFromFile).mockResolvedValue({
-    memory: { bytes: new Uint8Array(10), size: 10 },
-  });
+    memory: { size: 10 },
+  } as unknown as Awaited<ReturnType<typeof loadStoryFromFile>>);
 
   await cmdHeader("game.z5");
 
@@ -43,8 +43,8 @@ test("main prints usage and exits 1 when header is missing a path", async () => 
 
 test("main dispatches to cmdHeader when given a path", async () => {
   vi.mocked(loadStoryFromFile).mockResolvedValue({
-    memory: { bytes: new Uint8Array(5), size: 5 },
-  });
+    memory: { size: 5 },
+  } as unknown as Awaited<ReturnType<typeof loadStoryFromFile>>);
   process.argv = ["node", "zexp", "header", "game.z5"];
 
   await main();
