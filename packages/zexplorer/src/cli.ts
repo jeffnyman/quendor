@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { loadStoryFromFile } from "quendor/node";
+import { dumpHeader } from "quendor";
 
 export async function cmdHeader(path: string): Promise<void> {
   const story = await loadStoryFromFile(path);
 
+  console.log(`File  ${path}`);
   console.log(`loaded ${story.memory.size} bytes`);
+  console.log(dumpHeader(story));
 }
 
 export async function main(): Promise<void> {
