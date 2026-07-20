@@ -17,6 +17,14 @@ export class Memory {
     return this.bytes.length;
   }
 
+  /**
+   * Optional observer invoked after every write, with the address
+   * written and how many bytes (1 or 2). Left undefined on the hot
+   * path (the interpreter only installs it while data watchpoints
+   * are active) so normal execution pays nothing.
+   */
+  onWrite: ((address: number, size: number) => void) | undefined;
+
   /** Read an unsigned byte (0..255). */
   readByte(address: number): number {
     if (address < 0 || address >= this.bytes.length) {
@@ -45,5 +53,15 @@ export class Memory {
     const lo = this.bytes[address + 1];
 
     return ((hi << 8) | lo) & 0xffff;
+  }
+
+  /** Write an unsigned byte; value is masked to 8 bits. */
+  writeByte(address: number, value: number): void {
+    if (address < 0 || address >= this.bytes.length) {
+      throw new RangeError(`writeByte out of range: 0x${address.toString(16)}`);
+    }
+
+    this.bytes[address] = value & 0xff;
+    this.onWrite?.(address, 1);
   }
 }
