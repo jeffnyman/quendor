@@ -6,6 +6,29 @@ vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
 }));
 
+// `fileLength: 0` sidesteps computeChecksum's byte-reading loop, so this
+// fake doesn't need a working `memory.readByte`.
+function fakeStory(size: number): Awaited<ReturnType<typeof loadStoryFromFile>> {
+  return {
+    memory: { size },
+    header: {
+      version: 3,
+      release: 0,
+      highMemoryBase: 0,
+      initialProgramCounter: 0,
+      dictionaryAddress: 0,
+      objectTableAddress: 0,
+      globalVariablesTableAddress: 0,
+      staticMemoryBase: 0,
+      serialNumber: "000000",
+      abbreviationsTableAddress: 0,
+      fileLength: 0,
+      alphabetTableAddress: 0,
+      checksum: 0,
+    },
+  } as unknown as Awaited<ReturnType<typeof loadStoryFromFile>>;
+}
+
 const originalArgv = process.argv;
 
 beforeEach(() => {
@@ -21,9 +44,7 @@ afterEach(() => {
 });
 
 test("cmdHeader logs the byte count for a loaded story", async () => {
-  vi.mocked(loadStoryFromFile).mockResolvedValue({
-    memory: { size: 10 },
-  } as unknown as Awaited<ReturnType<typeof loadStoryFromFile>>);
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(10));
 
   await cmdHeader("game.z5");
 
@@ -42,9 +63,7 @@ test("main prints usage and exits 1 when header is missing a path", async () => 
 });
 
 test("main dispatches to cmdHeader when given a path", async () => {
-  vi.mocked(loadStoryFromFile).mockResolvedValue({
-    memory: { size: 5 },
-  } as unknown as Awaited<ReturnType<typeof loadStoryFromFile>>);
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
   process.argv = ["node", "zexp", "header", "game.z5"];
 
   await main();
