@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { Memory } from "../src/memory.ts";
-import { HeaderOffset, readHeader, type Header } from "../src/header.ts";
+import { computeChecksum, HeaderOffset, readHeader, type Header } from "../src/header.ts";
 
 interface HeaderField {
   name: string;
@@ -41,8 +41,8 @@ const HEADER_FIELDS: HeaderField[] = [
   },
 ];
 
-function buildMemory(fill: (bytes: Uint8Array) => void): Memory {
-  const bytes = new Uint8Array(64);
+function buildMemory(size: number, fill: (bytes: Uint8Array) => void): Memory {
+  const bytes = new Uint8Array(size);
 
   fill(bytes);
 
@@ -50,7 +50,7 @@ function buildMemory(fill: (bytes: Uint8Array) => void): Memory {
 }
 
 test.each(HEADER_FIELDS)("reads $name from its header offset", ({ write, expected, read }) => {
-  const memory = buildMemory(write);
+  const memory = buildMemory(64, write);
 
   expect(read(readHeader(memory))).toBe(expected);
 });
@@ -61,7 +61,7 @@ test.each([
   { version: 5, scale: 4 },
   { version: 6, scale: 8 },
 ])("scales fileLength by $scale for version $version", ({ version, scale }) => {
-  const memory = buildMemory((bytes) => {
+  const memory = buildMemory(64, (bytes) => {
     bytes[HeaderOffset.Version] = version;
     bytes[HeaderOffset.FileLength] = 0x00;
     bytes[HeaderOffset.FileLength + 1] = 0x10;
@@ -74,4 +74,30 @@ test("throws when memory is too short to contain the header", () => {
   const memory = new Memory(new Uint8Array(0));
 
   expect(() => readHeader(memory)).toThrow(RangeError);
+});
+
+test("computeChecksum sums bytes from 0x40 up to the declared file length", () => {
+  const memory = buildMemory(80, (bytes) => {
+    bytes[HeaderOffset.Version] = 3; // scale 2
+    bytes[HeaderOffset.FileLength + 1] = 40; // 40 * 2 = 80
+
+    for (let i = 0x40; i < 80; i++) {
+      bytes[i] = 1;
+    }
+  });
+
+  expect(computeChecksum(memory, readHeader(memory))).toBe(80 - 0x40);
+});
+
+test("computeChecksum stops at the actual memory size when fileLength overruns it", () => {
+  const memory = buildMemory(70, (bytes) => {
+    bytes[HeaderOffset.Version] = 3; // scale 2
+    bytes[HeaderOffset.FileLength + 1] = 40; // claims 80 bytes, but memory is only 70
+
+    for (let i = 0x40; i < 70; i++) {
+      bytes[i] = 1;
+    }
+  });
+
+  expect(computeChecksum(memory, readHeader(memory))).toBe(70 - 0x40);
 });
