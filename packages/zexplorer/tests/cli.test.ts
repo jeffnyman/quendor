@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { loadStoryFromFile } from "quendor/node";
-import { cmdHeader, main } from "../src/cli.ts";
+import { cmdAbbrevs, cmdHeader, main } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
@@ -8,7 +8,10 @@ vi.mock("quendor/node", () => ({
 
 // `fileLength: 0` sidesteps computeChecksum's byte-reading loop, so this
 // fake doesn't need a working `memory.readByte`.
-function fakeStory(size: number): Awaited<ReturnType<typeof loadStoryFromFile>> {
+function fakeStory(
+  size: number,
+  abbreviations: string[] = [],
+): Awaited<ReturnType<typeof loadStoryFromFile>> {
   return {
     memory: { size },
     header: {
@@ -26,6 +29,7 @@ function fakeStory(size: number): Awaited<ReturnType<typeof loadStoryFromFile>> 
       alphabetTableAddress: 0,
       checksum: 0,
     },
+    readAbbreviations: () => abbreviations,
   } as unknown as Awaited<ReturnType<typeof loadStoryFromFile>>;
 }
 
@@ -70,6 +74,36 @@ test("main dispatches to cmdHeader when given a path", async () => {
 
   expect(loadStoryFromFile).toHaveBeenCalledWith("game.z5");
   expect(console.log).toHaveBeenCalledWith("loaded 5 bytes");
+});
+
+test("cmdAbbrevs logs each decoded abbreviation with its index", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(10, ["a room", "the "]));
+
+  await cmdAbbrevs("game.z5");
+
+  expect(loadStoryFromFile).toHaveBeenCalledWith("game.z5");
+  expect(console.log).toHaveBeenCalledWith('[ 0] "a room"');
+  expect(console.log).toHaveBeenCalledWith('[ 1] "the "');
+});
+
+test("main prints usage and exits 1 when abbrevs is missing a path", async () => {
+  process.argv = ["node", "zexp", "abbrevs"];
+
+  await main();
+
+  expect(console.error).toHaveBeenCalledWith("usage: zexp abbrevs <story-file>");
+  expect(process.exitCode).toBe(1);
+  expect(loadStoryFromFile).not.toHaveBeenCalled();
+});
+
+test("main dispatches to cmdAbbrevs when given a path", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5, ["a room"]));
+  process.argv = ["node", "zexp", "abbrevs", "game.z5"];
+
+  await main();
+
+  expect(loadStoryFromFile).toHaveBeenCalledWith("game.z5");
+  expect(console.log).toHaveBeenCalledWith('[ 0] "a room"');
 });
 
 test("main prints usage and exits 1 for an unknown command", async () => {
