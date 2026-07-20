@@ -15,6 +15,10 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 
 <!--VITE PLUS END-->
 
+## Verifying Changes
+
+Bare `vp check`/`vp test` don't rebuild workspace dependencies first, so they can silently pass against a stale build of a package another one depends on. Run `vp run -w ready` instead — it rebuilds every package (in dependency order) before checking and testing, matching what CI actually does.
+
 ## Dependency Management
 
 This project uses [pnpm catalogs](https://pnpm.io/catalogs) to pin shared dependency versions in one place (`pnpm-workspace.yaml`). `catalogMode` is set to `strict`, so adding a dependency with a version that conflicts with an existing catalog entry fails with `ERR_PNPM_CATALOG_VERSION_MISMATCH` instead of silently installing a divergent version.
