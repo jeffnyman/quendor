@@ -11,6 +11,15 @@ export async function cmdHeader(path: string): Promise<void> {
   console.log(dumpHeader(story));
 }
 
+export async function cmdAbbrevs(path: string): Promise<void> {
+  const story = await loadStoryFromFile(path);
+  const abbrevs = story.readAbbreviations();
+
+  abbrevs.forEach((text, i) => {
+    console.log(`[${String(i).padStart(2)}] ${JSON.stringify(text)}`);
+  });
+}
+
 export async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
@@ -28,10 +37,24 @@ export async function main(): Promise<void> {
 
       return;
     }
+    case "abbrevs": {
+      const path = rest[0];
+
+      if (!path) {
+        console.error("usage: zexp abbrevs <story-file>");
+        process.exitCode = 1;
+        return;
+      }
+
+      await cmdAbbrevs(path);
+
+      return;
+    }
     default:
       console.error("usage: zexp <command> [args]");
       console.error("commands:");
       console.error("  header <story-file>    parse and print the story header");
+      console.error("  abbrevs <story-file>   decode the abbreviation table");
 
       process.exitCode = 1;
   }
