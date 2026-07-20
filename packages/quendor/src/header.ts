@@ -65,6 +65,22 @@ export function readHeader(memory: Memory): Header {
 }
 
 /**
+ * The header checksum is the unsigned sum of every byte from 0x40 to the
+ * declared file length, mod 0x10000. Verifying it confirms the story loaded
+ * intact and that our file-length scaling is right.
+ */
+export function computeChecksum(memory: Memory, header: Header): number {
+  let sum = 0;
+  const end = Math.min(header.fileLength, memory.size);
+
+  for (let i = 0x40; i < end; i++) {
+    sum = (sum + memory.readByte(i)) & 0xffff;
+  }
+
+  return sum;
+}
+
+/**
  * The header stores file length divided by a version-dependent factor.
  * v1-3: /2, v4-5: /4, v6-8: /8.
  */
