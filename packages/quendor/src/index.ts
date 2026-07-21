@@ -21,7 +21,7 @@ export { Story } from "./story.js";
 export { Memory } from "./memory.js";
 
 // --- header ----------------------------------------------------------------
-export { HeaderOffset, readHeader, computeChecksum } from "./header.js";
+export { HeaderOffset, readHeader, computeChecksum, unpackRoutineAddress } from "./header.js";
 export type { Header } from "./header.js";
 
 // --- decode / disassemble ---------------------------------------------------
@@ -49,6 +49,8 @@ export {
 export type { Opcode } from "./opcodes.js";
 
 export { formatInstruction, formatVariable } from "./disasm.js";
+export { disassembleReachable } from "./disassembler.js";
+export type { DisassembledRun } from "./disassembler.js";
 
 // --- text / objects --------------------------------------------------------
 export { DEFAULT_FLAGS, ZText } from "./text.js";

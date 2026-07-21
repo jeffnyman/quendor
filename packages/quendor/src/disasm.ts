@@ -15,7 +15,7 @@ import { hasZText, isCall } from "./opcodes.ts";
  * inline Z-text is decoded.
  */
 export function formatInstruction(instruction: Instruction, text?: ZText): string {
-  const { opcode, operands, storeVariable, branch, zwords } = instruction;
+  const { opcode, operands, storeVariable, branch, zwords, jumpTarget } = instruction;
   const parts: string[] = [opcode.name.padEnd(15)];
   const operandStrings = operands.map(formatOperand);
 
@@ -35,6 +35,10 @@ export function formatInstruction(instruction: Instruction, text?: ZText): strin
     else target = hex(branch.targetAddress ?? 0, 4);
 
     parts.push(`[${cond}${target}]`);
+  }
+
+  if (jumpTarget !== undefined) {
+    parts.push(`[${hex(jumpTarget, 4)}]`);
   }
 
   if (hasZText(opcode) && zwords !== undefined) {

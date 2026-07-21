@@ -211,6 +211,27 @@ test("reads a two-byte branch, sign-extending a negative 14-bit offset", () => {
   expect(reader.next().branch).toEqual({ whenTrue: false, offset: -256, targetAddress: -255 });
 });
 
+test("a jump opcode resolves its signed offset to an absolute target address", () => {
+  const op: Opcode = { kind: OpcodeKind.OneOp, number: 0, name: "jump", flags: OpcodeFlags.Jump };
+  const reader = makeReader([0x80, 0x00, 0x05], [op]); // large constant operand: 5
+
+  expect(reader.next().jumpTarget).toBe(6); // address after operand (3) + 5 - 2
+});
+
+test("a jump opcode sign-extends a negative 16-bit offset", () => {
+  const op: Opcode = { kind: OpcodeKind.OneOp, number: 0, name: "jump", flags: OpcodeFlags.Jump };
+  const reader = makeReader([0x80, 0xff, 0xfe], [op]); // large constant operand: -2
+
+  expect(reader.next().jumpTarget).toBe(-1); // address after operand (3) + -2 - 2
+});
+
+test("jumpTarget is undefined for opcodes without the Jump flag", () => {
+  const op: Opcode = { kind: OpcodeKind.OneOp, number: 0, name: "jz", flags: OpcodeFlags.None };
+  const reader = makeReader([0x90, 0x07], [op]);
+
+  expect(reader.next().jumpTarget).toBeUndefined();
+});
+
 test("a branch offset of 0 is the rfalse special case (no target address)", () => {
   const op: Opcode = { kind: OpcodeKind.ZeroOp, number: 0, name: "jz", flags: OpcodeFlags.Branch };
   const reader = makeReader([0xb0, 0x40], [op]);
@@ -266,6 +287,7 @@ function fakeInstruction(opcode: Partial<Opcode>): Instruction {
     storeVariable: undefined,
     branch: undefined,
     zwords: undefined,
+    jumpTarget: undefined,
   };
 }
 

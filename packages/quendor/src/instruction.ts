@@ -4,6 +4,7 @@ import {
   hasStore,
   hasZText,
   isDoubleVar,
+  isJump,
   isReturn,
   OpcodeKind,
   opcodeTableForVersion,
@@ -50,6 +51,8 @@ export interface Instruction {
   readonly storeVariable: number | undefined;
   readonly branch: Branch | undefined;
   readonly zwords: readonly number[] | undefined;
+  /** jump's resolved target address; undefined for every other opcode. */
+  readonly jumpTarget: number | undefined;
 }
 
 /**
@@ -145,6 +148,17 @@ export class InstructionReader {
     const targetAddress = offset === 0 || offset === 1 ? undefined : this.addr + offset - 2;
 
     return { whenTrue, offset, targetAddress };
+  }
+
+  /**
+   * jump is not a branch: its one operand is a signed 16-bit offset applied
+   * directly to the address after the instruction. See §4.7 / the jump
+   * opcode reference: "address after instruction + Offset - 2".
+   */
+  private computeJumpTarget(operand: Operand): number {
+    const offset = operand.value >= 0x8000 ? operand.value - 0x10000 : operand.value;
+
+    return this.addr + offset - 2;
   }
 
   private readZWords(): number[] {
@@ -256,6 +270,7 @@ export class InstructionReader {
     }
 
     const operands = this.readOperands(kinds);
+    const jumpTarget = isJump(opcode) ? this.computeJumpTarget(operands[0]) : undefined;
 
     const storeVariable = hasStore(opcode) ? this.readByte() : undefined;
     const branch = hasBranch(opcode) ? this.readBranch() : undefined;
@@ -269,6 +284,7 @@ export class InstructionReader {
       storeVariable,
       branch,
       zwords,
+      jumpTarget,
     };
   }
 }

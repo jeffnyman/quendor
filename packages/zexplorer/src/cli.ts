@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadStoryFromFile } from "quendor/node";
-import { dumpAll, dumpHeader, formatInstruction, InstructionReader, isReturnLike } from "quendor";
+import { disassembleReachable, dumpAll, dumpHeader, formatInstruction } from "quendor";
 import { writeFileSync } from "node:fs";
 
 /**
@@ -41,22 +41,35 @@ async function cmdDump(path: string, outPath: string | undefined): Promise<void>
   }
 }
 
-async function cmdDisasm(
-  path: string,
-  addressArg: string | undefined,
-  countArg: string | undefined,
-): Promise<void> {
+/**
+ * Disassemble every routine and jump/branch target reachable from an
+ * address, txd-style, following call/jump/branch targets instead of
+ * reading bytes strictly in order. An unrecognized opcode stops only the
+ * run it's in; every other reachable run still gets decoded and printed.
+ */
+async function cmdDisasm(path: string, addressArg: string | undefined): Promise<void> {
   const story = await loadStoryFromFile(path);
   const start =
     addressArg !== undefined ? parseInt(addressArg, 16) : story.header.initialProgramCounter;
-  const maxCount = countArg !== undefined ? parseInt(countArg, 10) : 64;
-  const reader = new InstructionReader(story.memory, story.header.version, start);
+  const runs = disassembleReachable(story, start);
 
-  for (let i = 0; i < maxCount; i++) {
-    const insn = reader.next();
-    console.log(`${hex(insn.address)}:  ${formatInstruction(insn, story.text)}`);
-    if (isReturnLike(insn)) break;
+  for (const run of runs) {
+    console.log(`=== ${run.isRoutineStart ? "ROUTINE" : "run"} @${hex(run.startAddress)} ===`);
+
+    for (const insn of run.instructions) {
+      console.log(`${hex(insn.address)}:  ${formatInstruction(insn, story.text)}`);
+    }
+
+    if (run.error !== undefined) {
+      console.log(`  (stopped: ${run.error})`);
+    }
+
+    console.log("");
   }
+
+  const instructionCount = runs.reduce((n, r) => n + r.instructions.length, 0);
+
+  console.log(`${runs.length} runs, ${instructionCount} instructions total`);
 }
 
 function hex(n: number, width = 4): string {
@@ -110,12 +123,12 @@ export async function main(): Promise<void> {
       const path = rest[0];
 
       if (!path) {
-        console.error("usage: zexp disasm <story-file> [hex-address] [count]");
+        console.error("usage: zexp disasm <story-file> [hex-address]");
         process.exitCode = 1;
         return;
       }
 
-      await cmdDisasm(path, rest[1], rest[2]);
+      await cmdDisasm(path, rest[1]);
 
       return;
     }
@@ -127,7 +140,9 @@ export async function main(): Promise<void> {
       console.error(
         "  dump <story-file> [output-file]   dump header + objects/properties (to a file or stdout)",
       );
-      console.error("  disasm <story-file> [addr] [n]    disassemble n instructions from addr");
+      console.error(
+        "  disasm <story-file> [addr]        disassemble every reachable routine/jump/branch target",
+      );
 
       process.exitCode = 1;
   }
