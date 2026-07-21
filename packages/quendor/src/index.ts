@@ -15,17 +15,46 @@ export function fn(): string {
 }
 
 // --- execution -------------------------------------------------------------
-export * from "./machine.js"; // Machine, Frame
-export * from "./story.js"; // Story
-export * from "./memory.js"; // Memory
+export { Machine } from "./machine.js";
+export type { Frame } from "./machine.js";
+export { Story } from "./story.js";
+export { Memory } from "./memory.js";
 
 // --- header ----------------------------------------------------------------
-export * from "./header.js"; // readHeader, Header, HeaderOffset, computeChecksum
+export { HeaderOffset, readHeader, computeChecksum } from "./header.js";
+export type { Header } from "./header.js";
+
+// --- decode / disassemble ---------------------------------------------------
+export {
+  VariableKind,
+  OperandKind,
+  InstructionReader,
+  isReturnLike,
+  classifyVariable,
+} from "./instruction.js";
+export type { Operand, Branch, Instruction } from "./instruction.js";
+
+export {
+  OpcodeKind,
+  OpcodeTable,
+  OpcodeFlags,
+  isReturn,
+  hasZText,
+  isCall,
+  isDoubleVar,
+  hasStore,
+  hasBranch,
+  opcodeTableForVersion,
+} from "./opcodes.js";
+export type { Opcode } from "./opcodes.js";
+
+export { formatInstruction, formatVariable } from "./disasm.js";
 
 // --- text / objects --------------------------------------------------------
-export * from "./text.js"; // ZText, DecodeFlags, DEFAULT_FLAGS
-export * from "./alphabet.js"; // AlphabetTable
-export * from "./objects.js"; // ObjectTable
+export { DEFAULT_FLAGS, ZText } from "./text.js";
+export type { DecodeFlags } from "./text.js";
+export { AlphabetTable } from "./alphabet.js";
+export { ObjectTable } from "./objects.js";
 
 // --- tooling ---------------------------------------------------------------
-export * from "./dump.ts"; // dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary
+export { dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary } from "./dump.js";

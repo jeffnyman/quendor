@@ -9,6 +9,6 @@
   },
   "rules": {},
   "health": {
-    "maxCrap": 35
+    "maxCrap": 50
   }
 }
