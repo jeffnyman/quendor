@@ -7,5 +7,8 @@
   "duplicates": {
     "minOccurrences": 3
   },
-  "rules": {}
+  "rules": {},
+  "health": {
+    "maxCrap": 35
+  }
 }
