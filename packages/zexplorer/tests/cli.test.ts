@@ -3,9 +3,7 @@ import { loadStoryFromFile } from "quendor/node";
 import {
   disassembleReachable,
   dumpAll,
-  InstructionReader,
   formatInstruction,
-  isReturnLike,
   type DisassembledRun,
   type Instruction,
 } from "quendor";
@@ -27,9 +25,7 @@ vi.mock("quendor", async () => {
   return {
     ...actual,
     dumpAll: vi.fn(),
-    InstructionReader: vi.fn(),
     formatInstruction: vi.fn(),
-    isReturnLike: vi.fn(),
     disassembleReachable: vi.fn(),
   };
 });
@@ -72,29 +68,6 @@ function fakeInsn(address: number): Instruction {
 
 function hex(n: number, width = 4): string {
   return "0x" + n.toString(16).padStart(width, "0");
-}
-
-/**
- * Sets InstructionReader to yield `instructions` in sequence from next(),
- * and isReturnLike to report true only for the instruction at `returnLikeIndex`.
- */
-function mockReader(instructions: Instruction[], returnLikeIndex?: number): void {
-  let i = 0;
-
-  // vi.mocked(...).mockImplementation types its callback against the class's
-  // (nonexistent) call signature, not its constructor signature, so it wants
-  // a void return even though `new InstructionReader(...)` needs this to
-  // return an object. Widen the parameter type locally to sidestep that.
-  const mock = vi.mocked(InstructionReader) as unknown as {
-    mockImplementation: (fn: unknown) => void;
-  };
-
-  mock.mockImplementation(function (): InstructionReader {
-    return { next: () => instructions[i++] } as unknown as InstructionReader;
-  });
-  vi.mocked(isReturnLike).mockImplementation(
-    (insn) => instructions.indexOf(insn) === returnLikeIndex,
-  );
 }
 
 const originalArgv = process.argv;
@@ -211,60 +184,12 @@ test("main prints usage and exits 1 when disasm is missing a path", async () => 
 
   await main();
 
-  expect(console.error).toHaveBeenCalledWith(
-    "usage: zexp disasm <story-file> [hex-address] [count]",
-  );
+  expect(console.error).toHaveBeenCalledWith("usage: zexp disasm <story-file> [hex-address]");
   expect(process.exitCode).toBe(1);
   expect(loadStoryFromFile).not.toHaveBeenCalled();
 });
 
-test("main dispatches to cmdDisasm, defaulting to the initial PC, and stops at a return-like instruction", async () => {
-  const story = fakeStory(5);
-
-  story.header.initialProgramCounter = 0x1234;
-  vi.mocked(loadStoryFromFile).mockResolvedValue(story);
-
-  const instructions = [fakeInsn(0x1234), fakeInsn(0x1236), fakeInsn(0x1238)];
-
-  mockReader(instructions, 2);
-  vi.mocked(formatInstruction).mockReturnValue("FORMATTED");
-  process.argv = ["node", "zexp", "disasm", "game.z5"];
-
-  await main();
-
-  expect(InstructionReader).toHaveBeenCalledWith(story.memory, story.header.version, 0x1234);
-  expect(console.log).toHaveBeenCalledTimes(3);
-  expect(console.log).toHaveBeenNthCalledWith(3, `${hex(0x1238)}:  FORMATTED`);
-});
-
-test("main dispatches to cmdDisasm with an explicit hex address and count", async () => {
-  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
-
-  const instructions = [fakeInsn(0x2000), fakeInsn(0x2002), fakeInsn(0x2004)];
-
-  mockReader(instructions); // no instruction is return-like
-  vi.mocked(formatInstruction).mockReturnValue("FORMATTED");
-  process.argv = ["node", "zexp", "disasm", "game.z5", "2000", "2"];
-
-  await main();
-
-  expect(InstructionReader).toHaveBeenCalledWith(expect.anything(), 3, 0x2000);
-  expect(console.log).toHaveBeenCalledTimes(2);
-  expect(console.log).toHaveBeenNthCalledWith(1, `${hex(0x2000)}:  FORMATTED`);
-  expect(console.log).toHaveBeenNthCalledWith(2, `${hex(0x2002)}:  FORMATTED`);
-});
-
-test("main prints usage and exits 1 when disasm-all is missing a path", async () => {
-  process.argv = ["node", "zexp", "disasm-all"];
-
-  await main();
-
-  expect(console.error).toHaveBeenCalledWith("usage: zexp disasm-all <story-file> [hex-address]");
-  expect(process.exitCode).toBe(1);
-  expect(loadStoryFromFile).not.toHaveBeenCalled();
-});
-
-test("main dispatches to cmdDisasmAll, printing each run with its own header and an error note", async () => {
+test("main dispatches to cmdDisasm, printing each run with its own header and an error note", async () => {
   vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
 
   const runs: DisassembledRun[] = [
@@ -284,7 +209,7 @@ test("main dispatches to cmdDisasmAll, printing each run with its own header and
 
   vi.mocked(disassembleReachable).mockReturnValue(runs);
   vi.mocked(formatInstruction).mockReturnValue("FORMATTED");
-  process.argv = ["node", "zexp", "disasm-all", "game.z5"];
+  process.argv = ["node", "zexp", "disasm", "game.z5"];
 
   await main();
 
@@ -300,10 +225,10 @@ test("main dispatches to cmdDisasmAll, printing each run with its own header and
   expect(console.log).toHaveBeenNthCalledWith(7, "2 runs, 1 instructions total");
 });
 
-test("main dispatches to cmdDisasmAll with an explicit hex start address", async () => {
+test("main dispatches to cmdDisasm with an explicit hex start address", async () => {
   vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
   vi.mocked(disassembleReachable).mockReturnValue([]);
-  process.argv = ["node", "zexp", "disasm-all", "game.z5", "2000"];
+  process.argv = ["node", "zexp", "disasm", "game.z5", "2000"];
 
   await main();
 

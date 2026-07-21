@@ -1,14 +1,7 @@
 #!/usr/bin/env node
 
 import { loadStoryFromFile } from "quendor/node";
-import {
-  disassembleReachable,
-  dumpAll,
-  dumpHeader,
-  formatInstruction,
-  InstructionReader,
-  isReturnLike,
-} from "quendor";
+import { disassembleReachable, dumpAll, dumpHeader, formatInstruction } from "quendor";
 import { writeFileSync } from "node:fs";
 
 /**
@@ -48,31 +41,13 @@ async function cmdDump(path: string, outPath: string | undefined): Promise<void>
   }
 }
 
-async function cmdDisasm(
-  path: string,
-  addressArg: string | undefined,
-  countArg: string | undefined,
-): Promise<void> {
-  const story = await loadStoryFromFile(path);
-  const start =
-    addressArg !== undefined ? parseInt(addressArg, 16) : story.header.initialProgramCounter;
-  const maxCount = countArg !== undefined ? parseInt(countArg, 10) : 64;
-  const reader = new InstructionReader(story.memory, story.header.version, start);
-
-  for (let i = 0; i < maxCount; i++) {
-    const insn = reader.next();
-    console.log(`${hex(insn.address)}:  ${formatInstruction(insn, story.text)}`);
-    if (isReturnLike(insn)) break;
-  }
-}
-
 /**
  * Disassemble every routine and jump/branch target reachable from an
  * address, txd-style, following call/jump/branch targets instead of
  * reading bytes strictly in order. An unrecognized opcode stops only the
  * run it's in; every other reachable run still gets decoded and printed.
  */
-async function cmdDisasmAll(path: string, addressArg: string | undefined): Promise<void> {
+async function cmdDisasm(path: string, addressArg: string | undefined): Promise<void> {
   const story = await loadStoryFromFile(path);
   const start =
     addressArg !== undefined ? parseInt(addressArg, 16) : story.header.initialProgramCounter;
@@ -148,25 +123,12 @@ export async function main(): Promise<void> {
       const path = rest[0];
 
       if (!path) {
-        console.error("usage: zexp disasm <story-file> [hex-address] [count]");
+        console.error("usage: zexp disasm <story-file> [hex-address]");
         process.exitCode = 1;
         return;
       }
 
-      await cmdDisasm(path, rest[1], rest[2]);
-
-      return;
-    }
-    case "disasm-all": {
-      const path = rest[0];
-
-      if (!path) {
-        console.error("usage: zexp disasm-all <story-file> [hex-address]");
-        process.exitCode = 1;
-        return;
-      }
-
-      await cmdDisasmAll(path, rest[1]);
+      await cmdDisasm(path, rest[1]);
 
       return;
     }
@@ -178,9 +140,8 @@ export async function main(): Promise<void> {
       console.error(
         "  dump <story-file> [output-file]   dump header + objects/properties (to a file or stdout)",
       );
-      console.error("  disasm <story-file> [addr] [n]    disassemble n instructions from addr");
       console.error(
-        "  disasm-all <story-file> [addr]    disassemble every reachable routine/jump/branch target",
+        "  disasm <story-file> [addr]        disassemble every reachable routine/jump/branch target",
       );
 
       process.exitCode = 1;
