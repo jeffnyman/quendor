@@ -49,6 +49,43 @@ export function dumpAbbreviations(story: Story): string {
   return lines.join("\n");
 }
 
+/** An object's short name, or "" if it has none (a zero-length first byte). */
+function dumpObjectName(story: Story, objects: ObjectTable, objNum: number): string {
+  const nameAddr = objects.getShortNameAddress(objNum);
+
+  return story.memory.readByte(nameAddr) === 0 ? "" : story.text.decodeAtAddress(nameAddr + 1);
+}
+
+/** A single property's data bytes, as space-separated hex. */
+function dumpPropertyBytes(story: Story, p: { dataAddress: number; length: number }): string {
+  const bytes: string[] = [];
+
+  for (let i = 0; i < p.length; i++) {
+    bytes.push(
+      story.memory
+        .readByte(p.dataAddress + i)
+        .toString(16)
+        .padStart(2, "0"),
+    );
+  }
+
+  return bytes.join(" ");
+}
+
+/** An object's properties (number → data bytes in hex), one per line. */
+function dumpObjectProperties(story: Story, objects: ObjectTable, objNum: number): string[] {
+  const props = objects.readProperties(objNum);
+
+  if (props.length === 0) {
+    return ["     Properties: none"];
+  }
+
+  return [
+    "     Properties:",
+    ...props.map((p) => `       [${p.number}] ${dumpPropertyBytes(story, p)}`),
+  ];
+}
+
 /**
  * Every object with its short name, set attributes, tree links
  * (parent/sibling/child) and properties (number → data bytes in hex).
@@ -63,44 +100,14 @@ export function dumpObjects(story: Story): string {
   const lines: string[] = [`Objects: ${count}`, ""];
 
   for (let n = 1; n <= count; n++) {
-    const nameAddr = objects.getShortNameAddress(n);
-    // The first byte is the short-name length (in words); 0 means no name.
-    const name =
-      story.memory.readByte(nameAddr) === 0 ? "" : story.text.decodeAtAddress(nameAddr + 1);
-
-    lines.push(`[${n}] ${JSON.stringify(name)}`);
-
     const attrs = objects.getSetAttributes(n);
 
+    lines.push(`[${n}] ${JSON.stringify(dumpObjectName(story, objects, n))}`);
     lines.push(`     Attributes: ${attrs.length ? attrs.join(", ") : "none"}`);
     lines.push(
       `     Parent: ${objects.getParent(n)}  Sibling: ${objects.getSibling(n)}  Child: ${objects.getChild(n)}`,
     );
-
-    const props = objects.readProperties(n);
-
-    if (props.length === 0) {
-      lines.push("     Properties: none");
-    } else {
-      lines.push("     Properties:");
-
-      for (const p of props) {
-        let bytes = "";
-
-        for (let i = 0; i < p.length; i++) {
-          bytes +=
-            (i ? " " : "") +
-            story.memory
-              .readByte(p.dataAddress + i)
-              .toString(16)
-              .padStart(2, "0");
-        }
-
-        lines.push(`       [${p.number}] ${bytes}`);
-      }
-    }
-
-    lines.push("");
+    lines.push(...dumpObjectProperties(story, objects, n), "");
   }
 
   return lines.join("\n");
