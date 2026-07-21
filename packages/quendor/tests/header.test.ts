@@ -1,6 +1,12 @@
 import { expect, test } from "vite-plus/test";
 import { Memory } from "../src/memory.ts";
-import { computeChecksum, HeaderOffset, readHeader, type Header } from "../src/header.ts";
+import {
+  computeChecksum,
+  HeaderOffset,
+  readHeader,
+  unpackRoutineAddress,
+  type Header,
+} from "../src/header.ts";
 
 interface HeaderField {
   name: string;
@@ -39,6 +45,15 @@ const HEADER_FIELDS: HeaderField[] = [
     expected: "861222",
     read: (header) => header.serialNumber,
   },
+  {
+    name: "routinesOffset",
+    write: (bytes) => {
+      bytes[HeaderOffset.RoutinesOffset] = 0x00;
+      bytes[HeaderOffset.RoutinesOffset + 1] = 0x05;
+    },
+    expected: 5,
+    read: (header) => header.routinesOffset,
+  },
 ];
 
 function buildMemory(size: number, fill: (bytes: Uint8Array) => void): Memory {
@@ -69,6 +84,24 @@ test.each([
 
   expect(readHeader(memory).fileLength).toBe(0x10 * scale);
 });
+
+test.each([
+  [1, 2],
+  [2, 2],
+  [3, 2],
+  [4, 4],
+  [5, 4],
+  [8, 8],
+])("unpackRoutineAddress scales version %i's packed address by %i", (version, factor) => {
+  expect(unpackRoutineAddress(version, 100, 0)).toBe(100 * factor);
+});
+
+test.each([6, 7])(
+  "unpackRoutineAddress adds the routines offset (x8) for version %i",
+  (version) => {
+    expect(unpackRoutineAddress(version, 100, 5)).toBe(100 * 4 + 5 * 8);
+  },
+);
 
 test("throws when memory is too short to contain the header", () => {
   const memory = new Memory(new Uint8Array(0));

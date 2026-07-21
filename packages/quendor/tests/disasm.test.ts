@@ -20,6 +20,7 @@ function buildHeader(version: number, overrides: Partial<Header> = {}): Header {
     abbreviationsTableAddress: 0,
     fileLength: 0,
     alphabetTableAddress: 0,
+    routinesOffset: 0,
     checksum: 0,
     ...overrides,
   };

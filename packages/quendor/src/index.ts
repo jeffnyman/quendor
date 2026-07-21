@@ -21,7 +21,7 @@ export { Story } from "./story.js";
 export { Memory } from "./memory.js";
 
 // --- header ----------------------------------------------------------------
-export { HeaderOffset, readHeader, computeChecksum } from "./header.js";
+export { HeaderOffset, readHeader, computeChecksum, unpackRoutineAddress } from "./header.js";
 export type { Header } from "./header.js";
 
 // --- decode / disassemble ---------------------------------------------------

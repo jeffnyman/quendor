@@ -1,4 +1,4 @@
-import { HeaderOffset } from "./header.ts";
+import { HeaderOffset, unpackRoutineAddress } from "./header.ts";
 import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
 
@@ -38,7 +38,7 @@ export class Machine {
 
     this.interpreterNumber = 6; // IBM PC
     this.interpreterVersion = 0x41; // 'A'
-    this.routinesOffset = this.memory.readWord(0x28);
+    this.routinesOffset = story.header.routinesOffset;
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -58,7 +58,7 @@ export class Machine {
     // §5.4: In v6, the word at $06 is the packed address of a real
     // "main" routine, called like any other; it has a genuine header.
     if (this.version === 6) {
-      const routineAddress = this.unpackRoutine(initialPC);
+      const routineAddress = unpackRoutineAddress(this.version, initialPC, this.routinesOffset);
 
       this.pc = routineAddress;
 
@@ -127,22 +127,5 @@ export class Machine {
       returnPC,
       stackBase: this.stack.length,
     };
-  }
-
-  private unpackRoutine(addr: number): number {
-    switch (this.version) {
-      case 1:
-      case 2:
-      case 3:
-        return addr * 2;
-      case 4:
-      case 5:
-        return addr * 4;
-      case 6:
-      case 7:
-        return addr * 4 + this.routinesOffset * 8;
-      default:
-        return addr * 8;
-    }
   }
 }
