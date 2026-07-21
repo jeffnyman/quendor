@@ -1,6 +1,7 @@
 import type { Story } from "./story.ts";
 import { computeChecksum } from "./header.ts";
 
+/** The header fields, formatted as an aligned key/value block. */
 export function dumpHeader(story: Story): string {
   const h = story.header;
   const actual = computeChecksum(story.memory, h);
@@ -22,7 +23,41 @@ export function dumpHeader(story: Story): string {
     ["Checksum (computed)", `${hex(actual)} ${ok ? "✓ match" : "✗ MISMATCH"}`],
   ];
   const w = Math.max(...rows.map(([k]) => k.length));
+
   return rows.map(([k, v]) => `${k.padEnd(w)}  ${v}`).join("\n");
+}
+
+/**
+ * The abbreviation table (decoded). v1 has none; v2 has 32; v3+ has 96.
+ */
+export function dumpAbbreviations(story: Story): string {
+  const v = story.header.version;
+  const count = v >= 3 ? 96 : v === 2 ? 32 : 0;
+
+  if (count === 0 || story.header.abbreviationsTableAddress === 0) {
+    return "Abbreviations: none";
+  }
+
+  const abbrevs = story.readAbbreviations().slice(0, count);
+  const lines = [`Abbreviations: ${count}`, ""];
+
+  abbrevs.forEach((t, i) => {
+    lines.push(`  [${String(i).padStart(2)}] ${JSON.stringify(t)}`);
+  });
+
+  return lines.join("\n");
+}
+
+export function dumpAll(story: Story): string {
+  return [
+    "=== HEADER ===",
+    "",
+    dumpHeader(story),
+    "",
+    "=== ABBREVIATIONS ===",
+    "",
+    dumpAbbreviations(story),
+  ].join("\n");
 }
 
 function hex(n: number, width = 4): string {
