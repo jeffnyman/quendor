@@ -106,6 +106,66 @@ export function dumpObjects(story: Story): string {
   return lines.join("\n");
 }
 
+/**
+ * The dictionary: word separators, entry metadata, and every entry's decoded
+ * word plus its trailing data bytes (grammar/parser flags) in hex.
+ */
+export function dumpDictionary(story: Story): string {
+  const m = story.memory;
+  let addr = story.header.dictionaryAddress;
+  const sepCount = m.readByte(addr++);
+  const seps: string[] = [];
+
+  for (let i = 0; i < sepCount; i++) {
+    seps.push(String.fromCharCode(m.readByte(addr++)));
+  }
+
+  const entryLength = m.readByte(addr++);
+  let count = m.readWord(addr);
+
+  addr += 2;
+
+  const sorted = count < 0x8000;
+
+  if (!sorted) count = 0x10000 - count;
+
+  const wordBytes = story.header.version <= 3 ? 4 : 6; // encoded-word length
+
+  const lines = [
+    `Dictionary: ${count} entries`,
+    `  Word separators: ${JSON.stringify(seps.join(""))}`,
+    `  Entry length: ${entryLength} bytes (${sorted ? "sorted" : "unsorted"})`,
+    "",
+  ];
+
+  for (let i = 0; i < count; i++) {
+    const entryAddr = addr + i * entryLength;
+    let word: string;
+
+    try {
+      word = story.text.decodeAtAddress(entryAddr).trim();
+    } catch {
+      word = "<?>";
+    }
+
+    let data = "";
+
+    for (let j = wordBytes; j < entryLength; j++) {
+      data +=
+        (data ? " " : "") +
+        m
+          .readByte(entryAddr + j)
+          .toString(16)
+          .padStart(2, "0");
+    }
+
+    lines.push(`  ${JSON.stringify(word)}${data ? "  " + data : ""}`);
+  }
+
+  return lines.join("\n");
+}
+
+/** The combined header + abbreviations + objects + dictionary dump. */
 export function dumpAll(story: Story): string {
   return [
     "=== HEADER ===",
@@ -119,6 +179,10 @@ export function dumpAll(story: Story): string {
     "=== OBJECTS ===",
     "",
     dumpObjects(story),
+    "",
+    "=== DICTIONARY ===",
+    "",
+    dumpDictionary(story),
   ].join("\n");
 }
 
