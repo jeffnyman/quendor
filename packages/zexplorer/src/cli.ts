@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadStoryFromFile } from "quendor/node";
-import { dumpAll, dumpHeader } from "quendor";
+import { dumpAll, dumpHeader, formatInstruction, InstructionReader, isReturnLike } from "quendor";
 import { writeFileSync } from "node:fs";
 
 /**
@@ -39,6 +39,28 @@ async function cmdDump(path: string, outPath: string | undefined): Promise<void>
   } else {
     process.stdout.write(text);
   }
+}
+
+async function cmdDisasm(
+  path: string,
+  addressArg: string | undefined,
+  countArg: string | undefined,
+): Promise<void> {
+  const story = await loadStoryFromFile(path);
+  const start =
+    addressArg !== undefined ? parseInt(addressArg, 16) : story.header.initialProgramCounter;
+  const maxCount = countArg !== undefined ? parseInt(countArg, 10) : 64;
+  const reader = new InstructionReader(story.memory, story.header.version, start);
+
+  for (let i = 0; i < maxCount; i++) {
+    const insn = reader.next();
+    console.log(`${hex(insn.address)}:  ${formatInstruction(insn, story.text)}`);
+    if (isReturnLike(insn)) break;
+  }
+}
+
+function hex(n: number, width = 4): string {
+  return "0x" + n.toString(16).padStart(width, "0");
 }
 
 export async function main(): Promise<void> {
@@ -84,6 +106,19 @@ export async function main(): Promise<void> {
 
       return;
     }
+    case "disasm": {
+      const path = rest[0];
+
+      if (!path) {
+        console.error("usage: zexp disasm <story-file> [hex-address] [count]");
+        process.exitCode = 1;
+        return;
+      }
+
+      await cmdDisasm(path, rest[1], rest[2]);
+
+      return;
+    }
     default:
       console.error("usage: zexp <command> [args]");
       console.error("commands:");
@@ -92,6 +127,7 @@ export async function main(): Promise<void> {
       console.error(
         "  dump <story-file> [output-file]   dump header + objects/properties (to a file or stdout)",
       );
+      console.error("  disasm <story-file> [addr] [n]    disassemble n instructions from addr");
 
       process.exitCode = 1;
   }
