@@ -49,6 +49,8 @@ export {
 export type { Opcode } from "./opcodes.js";
 
 export { formatInstruction, formatVariable } from "./disasm.js";
+export { disassembleReachable } from "./disassembler.js";
+export type { DisassembledRun } from "./disassembler.js";
 
 // --- text / objects --------------------------------------------------------
 export { DEFAULT_FLAGS, ZText } from "./text.js";
