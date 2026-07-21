@@ -1,9 +1,25 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { loadStoryFromFile } from "quendor/node";
+import { dumpAll } from "quendor";
+import { writeFileSync } from "node:fs";
 import { cmdAbbrevs, cmdHeader, main } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
+}));
+
+// dumpAll is mocked (dumpHeader stays real) so these tests exercise cmdDump's
+// own plumbing -- argument handling, stdout vs. file output -- without also
+// having to fake a full, valid story for quendor's dump internals, which
+// already have their own thorough test coverage.
+vi.mock("quendor", async () => {
+  const actual = await vi.importActual("quendor");
+
+  return { ...actual, dumpAll: vi.fn() };
+});
+
+vi.mock("node:fs", () => ({
+  writeFileSync: vi.fn(),
 }));
 
 // `fileLength: 0` sidesteps computeChecksum's byte-reading loop, so this
@@ -34,10 +50,12 @@ function fakeStory(
 }
 
 const originalArgv = process.argv;
+let stdoutWrite: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
+  stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 });
 
 afterEach(() => {
@@ -104,6 +122,40 @@ test("main dispatches to cmdAbbrevs when given a path", async () => {
 
   expect(loadStoryFromFile).toHaveBeenCalledWith("game.z5");
   expect(console.log).toHaveBeenCalledWith('[ 0] "a room"');
+});
+
+test("main prints usage and exits 1 when dump is missing a path", async () => {
+  process.argv = ["node", "zexp", "dump"];
+
+  await main();
+
+  expect(console.error).toHaveBeenCalledWith("usage: zexp dump <story-file> [output-file]");
+  expect(process.exitCode).toBe(1);
+  expect(loadStoryFromFile).not.toHaveBeenCalled();
+});
+
+test("main dispatches to cmdDump and writes the combined dump to stdout by default", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  vi.mocked(dumpAll).mockReturnValue("DUMP CONTENT");
+  process.argv = ["node", "zexp", "dump", "game.z5"];
+
+  await main();
+
+  expect(loadStoryFromFile).toHaveBeenCalledWith("game.z5");
+  expect(stdoutWrite).toHaveBeenCalledWith("File: game.z5\n\nDUMP CONTENT\n");
+  expect(writeFileSync).not.toHaveBeenCalled();
+});
+
+test("main dispatches to cmdDump and writes the combined dump to a file when given an output path", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  vi.mocked(dumpAll).mockReturnValue("DUMP CONTENT");
+  process.argv = ["node", "zexp", "dump", "game.z5", "out.txt"];
+
+  await main();
+
+  expect(writeFileSync).toHaveBeenCalledWith("out.txt", "File: game.z5\n\nDUMP CONTENT\n");
+  expect(console.log).toHaveBeenCalledWith("Wrote dump to out.txt");
+  expect(stdoutWrite).not.toHaveBeenCalled();
 });
 
 test("main prints usage and exits 1 for an unknown command", async () => {
