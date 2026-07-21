@@ -5,6 +5,7 @@ import {
   hasZText,
   isCall,
   isDoubleVar,
+  isJump,
   isReturn,
   OpcodeFlags,
   OpcodeKind,
@@ -48,6 +49,7 @@ test("get throws for an unknown opcode, naming the kind and number in hex", () =
 test.each([
   ["isReturn", isReturn, OpcodeFlags.Return],
   ["hasZText", hasZText, OpcodeFlags.ZText],
+  ["isJump", isJump, OpcodeFlags.Jump],
   ["isCall", isCall, OpcodeFlags.Call],
   ["isDoubleVar", isDoubleVar, OpcodeFlags.DoubleVar],
   ["hasStore", hasStore, OpcodeFlags.Store],

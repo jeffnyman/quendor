@@ -42,6 +42,7 @@ function fakeInstruction(overrides: Partial<Instruction> = {}): Instruction {
     storeVariable: undefined,
     branch: undefined,
     zwords: undefined,
+    jumpTarget: undefined,
     ...overrides,
   };
 }
@@ -82,6 +83,18 @@ test.each([
   const insn = fakeInstruction({ opcode: fakeOpcode({ name: "jz" }), branch });
 
   expect(formatInstruction(insn)).toContain(expected);
+});
+
+test("renders jump's resolved target address in brackets", () => {
+  const insn = fakeInstruction({ opcode: fakeOpcode({ name: "jump" }), jumpTarget: 0x4f05 });
+
+  expect(formatInstruction(insn)).toBe(`${"jump".padEnd(15)}  [4f05]`);
+});
+
+test("renders no bracket when jumpTarget is absent", () => {
+  const insn = fakeInstruction({ opcode: fakeOpcode({ name: "add" }) });
+
+  expect(formatInstruction(insn)).not.toContain("[");
 });
 
 test("decodes and quotes inline Z-text when the opcode has ZText and a decoder is supplied", () => {

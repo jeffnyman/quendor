@@ -40,7 +40,7 @@ export class OpcodeTable {
 
     if (op === undefined) {
       throw new Error(
-        `Unknown opcode: kind=${OpcodeKindName[kind]} number=0x${number.toString(16)}`,
+        `Unknown opcode: kind=${OpcodeKindName[kind]} number=0x${number.toString(16).padStart(2, "0")}`,
       );
     }
 
@@ -53,6 +53,7 @@ export const OpcodeFlags = {
   Store: 0x01,
   Branch: 0x02,
   ZText: 0x04,
+  Jump: 0x08,
   Call: 0x10,
   DoubleVar: 0x20,
   FirstOpByRef: 0x40,
@@ -61,13 +62,30 @@ export const OpcodeFlags = {
 
 // [kind, number, name, flags, fromVersion, toVersion]
 type Entry = [OpcodeKind, number, string, number, number, number];
+const F = OpcodeFlags;
 
 const ENTRIES: Entry[] = [
-  //
+  // two-operand opcodes
+  [OpcodeKind.TwoOp, 0x0a, "test_attr", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x0d, "store", F.FirstOpByRef, 1, 8],
+  [OpcodeKind.TwoOp, 0x0e, "insert_obj", F.None, 1, 8],
+  [OpcodeKind.TwoOp, 0x14, "add", F.Store, 1, 8],
+
+  // one-operand opcodes
+  [OpcodeKind.OneOp, 0x0c, "jump", F.Jump, 1, 8],
+
+  // zero-operand opcodes
+  [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
+
+  // variable-operand opcodes
+  [OpcodeKind.VarOp, 0x00, "call", F.Call | F.Store, 1, 4],
+  [OpcodeKind.VarOp, 0x01, "storew", F.None, 1, 8],
+  [OpcodeKind.VarOp, 0x03, "put_prop", F.None, 1, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;
 export const hasZText = (o: Opcode): boolean => (o.flags & OpcodeFlags.ZText) !== 0;
+export const isJump = (o: Opcode): boolean => (o.flags & OpcodeFlags.Jump) !== 0;
 export const isCall = (o: Opcode): boolean => (o.flags & OpcodeFlags.Call) !== 0;
 export const isDoubleVar = (o: Opcode): boolean => (o.flags & OpcodeFlags.DoubleVar) !== 0;
 export const hasStore = (o: Opcode): boolean => (o.flags & OpcodeFlags.Store) !== 0;
