@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { loadStoryFromFile } from "quendor/node";
 import {
+  disassembleReachable,
   dumpAll,
   InstructionReader,
   formatInstruction,
   isReturnLike,
+  type DisassembledRun,
   type Instruction,
 } from "quendor";
 import { writeFileSync } from "node:fs";
@@ -28,6 +30,7 @@ vi.mock("quendor", async () => {
     InstructionReader: vi.fn(),
     formatInstruction: vi.fn(),
     isReturnLike: vi.fn(),
+    disassembleReachable: vi.fn(),
   };
 });
 
@@ -56,6 +59,7 @@ function fakeStory(
       abbreviationsTableAddress: 0,
       fileLength: 0,
       alphabetTableAddress: 0,
+      routinesOffset: 0,
       checksum: 0,
     },
     readAbbreviations: () => abbreviations,
@@ -248,6 +252,62 @@ test("main dispatches to cmdDisasm with an explicit hex address and count", asyn
   expect(console.log).toHaveBeenCalledTimes(2);
   expect(console.log).toHaveBeenNthCalledWith(1, `${hex(0x2000)}:  FORMATTED`);
   expect(console.log).toHaveBeenNthCalledWith(2, `${hex(0x2002)}:  FORMATTED`);
+});
+
+test("main prints usage and exits 1 when disasm-all is missing a path", async () => {
+  process.argv = ["node", "zexp", "disasm-all"];
+
+  await main();
+
+  expect(console.error).toHaveBeenCalledWith("usage: zexp disasm-all <story-file> [hex-address]");
+  expect(process.exitCode).toBe(1);
+  expect(loadStoryFromFile).not.toHaveBeenCalled();
+});
+
+test("main dispatches to cmdDisasmAll, printing each run with its own header and an error note", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+
+  const runs: DisassembledRun[] = [
+    {
+      startAddress: 0x100,
+      isRoutineStart: true,
+      instructions: [fakeInsn(0x101)],
+      error: undefined,
+    },
+    {
+      startAddress: 0x200,
+      isRoutineStart: false,
+      instructions: [],
+      error: "Unknown opcode: kind=TwoOp number=0x05",
+    },
+  ];
+
+  vi.mocked(disassembleReachable).mockReturnValue(runs);
+  vi.mocked(formatInstruction).mockReturnValue("FORMATTED");
+  process.argv = ["node", "zexp", "disasm-all", "game.z5"];
+
+  await main();
+
+  expect(console.log).toHaveBeenNthCalledWith(1, "=== ROUTINE @0x0100 ===");
+  expect(console.log).toHaveBeenNthCalledWith(2, `${hex(0x101)}:  FORMATTED`);
+  expect(console.log).toHaveBeenNthCalledWith(3, "");
+  expect(console.log).toHaveBeenNthCalledWith(4, "=== run @0x0200 ===");
+  expect(console.log).toHaveBeenNthCalledWith(
+    5,
+    "  (stopped: Unknown opcode: kind=TwoOp number=0x05)",
+  );
+  expect(console.log).toHaveBeenNthCalledWith(6, "");
+  expect(console.log).toHaveBeenNthCalledWith(7, "2 runs, 1 instructions total");
+});
+
+test("main dispatches to cmdDisasmAll with an explicit hex start address", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  vi.mocked(disassembleReachable).mockReturnValue([]);
+  process.argv = ["node", "zexp", "disasm-all", "game.z5", "2000"];
+
+  await main();
+
+  expect(disassembleReachable).toHaveBeenCalledWith(expect.anything(), 0x2000);
 });
 
 test("main prints usage and exits 1 for an unknown command", async () => {
