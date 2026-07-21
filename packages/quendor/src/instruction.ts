@@ -159,6 +159,80 @@ export class InstructionReader {
     return words;
   }
 
+  /**
+   * The opcode and its operand kinds are both determined by the opcode
+   * byte's encoding form (long / short / variable / extended); see §4.3.
+   * Kinds are written into `kinds` in place; the long/short forms encode
+   * them directly in the opcode byte, while variable/extended forms read
+   * a following operand-kinds byte (or two, for double-variable opcodes).
+   */
+  private decodeOpcodeAndKinds(opByte: number, kinds: OperandKind[]): Opcode {
+    if (opByte <= 0x1f) {
+      kinds[0] = OperandKind.SmallConstant;
+      kinds[1] = OperandKind.SmallConstant;
+      return this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
+    }
+
+    if (opByte <= 0x3f) {
+      kinds[0] = OperandKind.SmallConstant;
+      kinds[1] = OperandKind.Variable;
+      return this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
+    }
+
+    if (opByte <= 0x5f) {
+      kinds[0] = OperandKind.Variable;
+      kinds[1] = OperandKind.SmallConstant;
+      return this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
+    }
+
+    if (opByte <= 0x7f) {
+      kinds[0] = OperandKind.Variable;
+      kinds[1] = OperandKind.Variable;
+      return this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
+    }
+
+    if (opByte <= 0x8f) {
+      kinds[0] = OperandKind.LargeConstant;
+      return this.opcodeTable.get(OpcodeKind.OneOp, opByte & 0x0f);
+    }
+
+    if (opByte <= 0x9f) {
+      kinds[0] = OperandKind.SmallConstant;
+      return this.opcodeTable.get(OpcodeKind.OneOp, opByte & 0x0f);
+    }
+
+    if (opByte <= 0xaf) {
+      kinds[0] = OperandKind.Variable;
+      return this.opcodeTable.get(OpcodeKind.OneOp, opByte & 0x0f);
+    }
+
+    if ((opByte >= 0xb0 && opByte <= 0xbd) || opByte === 0xbf) {
+      return this.opcodeTable.get(OpcodeKind.ZeroOp, opByte & 0x0f);
+    }
+
+    if (opByte === 0xbe) {
+      const opcode = this.opcodeTable.get(OpcodeKind.Ext, this.readByte());
+
+      this.readOperandKinds(kinds, 0);
+
+      return opcode;
+    }
+
+    if (opByte <= 0xdf) {
+      const opcode = this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
+
+      this.readOperandKinds(kinds, 0);
+
+      return opcode;
+    }
+
+    const opcode = this.opcodeTable.get(OpcodeKind.VarOp, opByte & 0x1f);
+
+    this.readOperandKinds(kinds, 0);
+
+    return opcode;
+  }
+
   /** Decode the instruction at the current address and advance past it. */
   next(): Instruction {
     const startAddress = this.addr;
@@ -175,45 +249,7 @@ export class InstructionReader {
       OperandKind.Omitted,
     ];
 
-    let opcode: Opcode;
-
-    if (opByte <= 0x1f) {
-      opcode = this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
-      kinds[0] = OperandKind.SmallConstant;
-      kinds[1] = OperandKind.SmallConstant;
-    } else if (opByte <= 0x3f) {
-      opcode = this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
-      kinds[0] = OperandKind.SmallConstant;
-      kinds[1] = OperandKind.Variable;
-    } else if (opByte <= 0x5f) {
-      opcode = this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
-      kinds[0] = OperandKind.Variable;
-      kinds[1] = OperandKind.SmallConstant;
-    } else if (opByte <= 0x7f) {
-      opcode = this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
-      kinds[0] = OperandKind.Variable;
-      kinds[1] = OperandKind.Variable;
-    } else if (opByte <= 0x8f) {
-      opcode = this.opcodeTable.get(OpcodeKind.OneOp, opByte & 0x0f);
-      kinds[0] = OperandKind.LargeConstant;
-    } else if (opByte <= 0x9f) {
-      opcode = this.opcodeTable.get(OpcodeKind.OneOp, opByte & 0x0f);
-      kinds[0] = OperandKind.SmallConstant;
-    } else if (opByte <= 0xaf) {
-      opcode = this.opcodeTable.get(OpcodeKind.OneOp, opByte & 0x0f);
-      kinds[0] = OperandKind.Variable;
-    } else if ((opByte >= 0xb0 && opByte <= 0xbd) || opByte === 0xbf) {
-      opcode = this.opcodeTable.get(OpcodeKind.ZeroOp, opByte & 0x0f);
-    } else if (opByte === 0xbe) {
-      opcode = this.opcodeTable.get(OpcodeKind.Ext, this.readByte());
-      this.readOperandKinds(kinds, 0);
-    } else if (opByte <= 0xdf) {
-      opcode = this.opcodeTable.get(OpcodeKind.TwoOp, opByte & 0x1f);
-      this.readOperandKinds(kinds, 0);
-    } else {
-      opcode = this.opcodeTable.get(OpcodeKind.VarOp, opByte & 0x1f);
-      this.readOperandKinds(kinds, 0);
-    }
+    const opcode = this.decodeOpcodeAndKinds(opByte, kinds);
 
     if (isDoubleVar(opcode)) {
       this.readOperandKinds(kinds, 4);
