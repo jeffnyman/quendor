@@ -1,5 +1,6 @@
 import type { Story } from "./story.ts";
 import { computeChecksum } from "./header.ts";
+import { ObjectTable } from "./objects.ts";
 
 /** The header fields, formatted as an aligned key/value block. */
 export function dumpHeader(story: Story): string {
@@ -48,6 +49,63 @@ export function dumpAbbreviations(story: Story): string {
   return lines.join("\n");
 }
 
+/**
+ * Every object with its short name, set attributes, tree links
+ * (parent/sibling/child) and properties (number → data bytes in hex).
+ */
+export function dumpObjects(story: Story): string {
+  const objects = new ObjectTable(
+    story.memory,
+    story.header.version,
+    story.header.objectTableAddress,
+  );
+  const count = objects.getObjectCount();
+  const lines: string[] = [`Objects: ${count}`, ""];
+
+  for (let n = 1; n <= count; n++) {
+    const nameAddr = objects.getShortNameAddress(n);
+    // The first byte is the short-name length (in words); 0 means no name.
+    const name =
+      story.memory.readByte(nameAddr) === 0 ? "" : story.text.decodeAtAddress(nameAddr + 1);
+
+    lines.push(`[${n}] ${JSON.stringify(name)}`);
+
+    const attrs = objects.getSetAttributes(n);
+
+    lines.push(`     Attributes: ${attrs.length ? attrs.join(", ") : "none"}`);
+    lines.push(
+      `     Parent: ${objects.getParent(n)}  Sibling: ${objects.getSibling(n)}  Child: ${objects.getChild(n)}`,
+    );
+
+    const props = objects.readProperties(n);
+
+    if (props.length === 0) {
+      lines.push("     Properties: none");
+    } else {
+      lines.push("     Properties:");
+
+      for (const p of props) {
+        let bytes = "";
+
+        for (let i = 0; i < p.length; i++) {
+          bytes +=
+            (i ? " " : "") +
+            story.memory
+              .readByte(p.dataAddress + i)
+              .toString(16)
+              .padStart(2, "0");
+        }
+
+        lines.push(`       [${p.number}] ${bytes}`);
+      }
+    }
+
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
 export function dumpAll(story: Story): string {
   return [
     "=== HEADER ===",
@@ -57,6 +115,10 @@ export function dumpAll(story: Story): string {
     "=== ABBREVIATIONS ===",
     "",
     dumpAbbreviations(story),
+    "",
+    "=== OBJECTS ===",
+    "",
+    dumpObjects(story),
   ].join("\n");
 }
 
