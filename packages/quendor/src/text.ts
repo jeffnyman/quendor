@@ -9,7 +9,7 @@ export interface DecodeFlags {
   allowIncompleteMultibyte: boolean;
 }
 
-const DEFAULT_FLAGS: DecodeFlags = {
+export const DEFAULT_FLAGS: DecodeFlags = {
   allowAbbreviations: true,
   allowIncompleteMultibyte: false,
 };

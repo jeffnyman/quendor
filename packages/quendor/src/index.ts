@@ -14,5 +14,18 @@ export function fn(): string {
   return "Quendor Z-Machine Interpreter and Debugger";
 }
 
+// --- execution -------------------------------------------------------------
+export * from "./machine.js"; // Machine, Frame
+export * from "./story.js"; // Story
+export * from "./memory.js"; // Memory
+
+// --- header ----------------------------------------------------------------
+export * from "./header.js"; // readHeader, Header, HeaderOffset, computeChecksum
+
+// --- text / objects --------------------------------------------------------
+export * from "./text.js"; // ZText, DecodeFlags, DEFAULT_FLAGS
+export * from "./alphabet.js"; // AlphabetTable
+export * from "./objects.js"; // ObjectTable
+
 // --- tooling ---------------------------------------------------------------
-export * from "./dump.ts"; // dumpHeader
+export * from "./dump.ts"; // dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary
