@@ -114,6 +114,24 @@ test("getObjectCount stops at the property-table boundary (v4+)", () => {
   expect(buildV4Table().getObjectCount()).toBe(1);
 });
 
+test("getObjectCount returns the version's max when no property table ever collides with the entries (v1-3)", () => {
+  const bytes = new Uint8Array(2400);
+  const entriesAddress = 62; // tableAddress(0) + 31 property-default words * 2
+
+  // Every entry's property table address is 0xffff, so `smallest` never
+  // drops low enough for `address` to catch up within all 255 entries.
+  for (let i = 0; i < 255; i++) {
+    const entryAddr = entriesAddress + i * 9;
+
+    bytes[entryAddr + 7] = 0xff;
+    bytes[entryAddr + 8] = 0xff;
+  }
+
+  const objects = new ObjectTable(new Memory(bytes), 3, 0);
+
+  expect(objects.getObjectCount()).toBe(255);
+});
+
 test("getParent/getSibling/getChild read the tree links (v1-3)", () => {
   const objects = buildV3Table();
 

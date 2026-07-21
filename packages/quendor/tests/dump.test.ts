@@ -219,6 +219,25 @@ test("dumpDictionary reports 'unsorted' for a negatively-encoded entry count", (
   expect(output).toContain("(unsorted)");
 });
 
+test("dumpDictionary reads trailing data after a 6-byte encoded word for v4+", () => {
+  const bytes = new Uint8Array(90);
+
+  bytes[HeaderOffset.Version] = 4;
+  bytes[HeaderOffset.DictionaryAddress + 1] = 64;
+
+  bytes[64] = 0; // separator count
+  bytes[65] = 8; // entry length: 6 word bytes + 2 data bytes
+  bytes[67] = 1; // entry count (sorted)
+
+  bytes[68] = (A_ZWORD >> 8) & 0xff;
+  bytes[69] = A_ZWORD & 0xff;
+  // bytes 70-73 are the rest of the 6-byte encoded-word slot, unused by "a"
+  bytes[74] = 0xaa;
+  bytes[75] = 0xbb;
+
+  expect(dumpDictionary(new Story(bytes))).toContain('"a"  aa bb');
+});
+
 test("dumpDictionary falls back to '<?>' when an entry fails to decode", () => {
   const bytes = new Uint8Array(80);
   // An incomplete 10-bit ZSCII character (double-shift to A2, then the
