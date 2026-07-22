@@ -93,9 +93,37 @@ export class ZText {
 
   /** Find a word in a dictionary; returns its entry address, or 0 if absent. */
   lookupWord(word: string, dictionaryAddress: number): number {
-    const resolution = this.resolution;
     const encoded = this.encodeWord(word);
+    const { base, entryCount, entryLength, sorted } = this.readDictionaryHeader(dictionaryAddress);
 
+    let lower = 0;
+    let upper = entryCount - 1;
+
+    while (lower <= upper) {
+      const entryNumber = sorted ? (lower + upper) >> 1 : lower;
+      const entryAddress = base + entryNumber * entryLength;
+      const cmp = this.compareEntry(encoded, entryAddress);
+
+      if (cmp === 0) return entryAddress;
+
+      if (sorted) {
+        if (cmp > 0) lower = entryNumber + 1;
+        else upper = entryNumber - 1;
+      } else {
+        lower++;
+      }
+    }
+
+    return 0;
+  }
+
+  /** Parse a dictionary's header, returning where its entries begin and how to scan them. */
+  private readDictionaryHeader(dictionaryAddress: number): {
+    base: number;
+    entryCount: number;
+    entryLength: number;
+    sorted: boolean;
+  } {
     let addr = dictionaryAddress;
     const sepCount = this.memory.readByte(addr++);
 
@@ -113,37 +141,15 @@ export class ZText {
       sorted = false;
     }
 
-    const base = addr;
-    let lower = 0;
-    let upper = entryCount - 1;
+    return { base: addr, entryCount, entryLength, sorted };
+  }
 
-    while (lower <= upper) {
-      const entryNumber = sorted ? (lower + upper) >> 1 : lower;
-      const entryAddress = base + entryNumber * entryLength;
-      let a = entryAddress;
-      let mismatch = false;
+  /** Compare `encoded` against the entry at `entryAddress`: negative, 0 (equal), or positive. */
+  private compareEntry(encoded: number[], entryAddress: number): number {
+    for (let i = 0; i < this.resolution; i++) {
+      const entry = this.memory.readWord(entryAddress + i * 2);
 
-      for (let i = 0; i < resolution; i++) {
-        const entry = this.memory.readWord(a);
-
-        if (encoded[i] !== entry) {
-          if (sorted) {
-            if (encoded[i] > entry) lower = entryNumber + 1;
-            else upper = entryNumber - 1;
-          } else {
-            lower++;
-          }
-
-          mismatch = true;
-          break;
-        }
-
-        a += 2;
-      }
-
-      if (!mismatch) {
-        return entryAddress;
-      }
+      if (encoded[i] !== entry) return encoded[i] > entry ? 1 : -1;
     }
 
     return 0;
@@ -151,48 +157,55 @@ export class ZText {
 
   /** Encode a word into `resolution` packed Z-words, for dictionary lookup. */
   encodeWord(word: string): number[] {
-    const resolution = this.resolution;
+    return this.packZChars(this.encodeToZChars(word));
+  }
 
-    if (word.length > resolution * 3) {
-      word = word.slice(0, resolution * 3);
-    }
+  /** Turn a word into exactly `resolution * 3` Z-characters (padded with shifts). */
+  private encodeToZChars(word: string): number[] {
+    const max = this.resolution * 3;
+
+    if (word.length > max) word = word.slice(0, max);
 
     const alphabet = this.newAlphabet();
     const zchars: number[] = [];
     let ti = 0;
 
-    while (zchars.length < resolution * 3) {
-      if (ti < word.length) {
-        const ch = word[ti++];
-
-        if (ch === " ") {
-          zchars.push(0);
-          continue;
-        }
-
-        const found = alphabet.findChar(ch);
-
-        if (found) {
-          if (found.set !== 0) zchars.push((this.version <= 2 ? 1 : 3) + found.set);
-          zchars.push(found.index);
-        } else {
-          const zc = ch.charCodeAt(0);
-          zchars.push(5, 6, (zc >> 5) & 0x1f, zc & 0x1f);
-        }
-      } else {
-        zchars.push(5);
-      }
+    while (zchars.length < max) {
+      zchars.push(...(ti < word.length ? this.encodeChar(word[ti++], alphabet) : [5]));
     }
 
-    zchars.length = resolution * 3;
+    zchars.length = max;
 
+    return zchars;
+  }
+
+  /** Encode a single character into its Z-characters (alphabet shift or 10-bit ZSCII escape). */
+  private encodeChar(ch: string, alphabet: AlphabetTable): number[] {
+    if (ch === " ") return [0];
+
+    const found = alphabet.findChar(ch);
+
+    if (!found) {
+      const zc = ch.charCodeAt(0);
+      return [5, 6, (zc >> 5) & 0x1f, zc & 0x1f];
+    }
+
+    if (found.set !== 0) {
+      return [(this.version <= 2 ? 1 : 3) + found.set, found.index];
+    }
+
+    return [found.index];
+  }
+
+  /** Pack `resolution * 3` Z-characters into packed Z-words, with the terminator bit set. */
+  private packZChars(zchars: number[]): number[] {
     const words: number[] = [];
 
-    for (let i = 0; i < resolution; i++) {
+    for (let i = 0; i < this.resolution; i++) {
       words.push(((zchars[i * 3] << 10) | (zchars[i * 3 + 1] << 5) | zchars[i * 3 + 2]) & 0xffff);
     }
 
-    words[resolution - 1] |= 0x8000;
+    words[this.resolution - 1] |= 0x8000;
 
     return words;
   }
