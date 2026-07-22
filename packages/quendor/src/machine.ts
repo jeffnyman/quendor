@@ -1,6 +1,21 @@
 import { HeaderOffset, unpackRoutineAddress } from "./header.ts";
+import { InstructionReader, OperandKind, type Instruction } from "./instruction.ts";
 import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
+
+/** The execution status of the machine, as seen by a debugger driver. */
+export const RunState = {
+  /** Ready to execute the next instruction. */
+  Running: "running",
+  /** Stopped permanently (quit, or returned from the main routine). */
+  Halted: "halted",
+  /** Blocked on a read opcode; call `provideInput` to continue. */
+  WaitingForInput: "waiting-input",
+  /** Stopped at a breakpoint; call `run`/`step` to continue. */
+  Paused: "paused",
+} as const;
+
+export type RunState = (typeof RunState)[keyof typeof RunState];
 
 export interface Frame {
   /** Address of the routine header this frame is executing (0 for main). */
@@ -23,6 +38,7 @@ export class Machine {
   /** Header interpreter version letter (0x1f) — defaults to 'A'. */
   readonly interpreterVersion: number;
 
+  private readonly globalsAddress: number;
   private readonly routinesOffset: number;
   private readonly initialProgramCounter: number;
 
@@ -30,6 +46,18 @@ export class Machine {
   private readonly stack: number[] = [];
   private readonly frames: Frame[] = [];
   private current: Frame;
+  private instructionCount = 0;
+  private currentInstruction!: Instruction;
+  private ops: number[] = [];
+
+  private runState: RunState = RunState.Running;
+
+  /** Breakpoints, keyed by instruction address. */
+  private skipBreakpointOnce = false;
+  readonly breakpoints = new Set<number>();
+
+  // Data watchpoints: break when a watched byte's value changes.
+  private watchTriggered = false;
 
   constructor(story: Story) {
     this.memory = story.memory;
@@ -39,6 +67,7 @@ export class Machine {
     this.interpreterNumber = 6; // IBM PC
     this.interpreterVersion = 0x41; // 'A'
     this.routinesOffset = story.header.routinesOffset;
+    this.globalsAddress = story.header.globalVariablesTableAddress;
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -47,6 +76,112 @@ export class Machine {
   /** The call frame currently executing. */
   get currentFrame(): Frame {
     return this.current;
+  }
+
+  onOutput: (text: string) => void = () => {};
+
+  /**
+   * Trace hook: fired for every instruction just before it executes, with the
+   * current call depth (main routine = 1) and its resolved operand values.
+   * Powers the CLI's `--trace` execution logger; a no-op (negligible) by default.
+   */
+  onTrace: (insn: Instruction, depth: number, ops: number[]) => void = () => {};
+
+  /**
+   * Run until the machine halts, blocks on input, or hits a breakpoint.
+   * Returns the resulting state. Safe to call again to resume from Paused.
+   */
+  run(maxInstructions = 1): RunState {
+    if (this.runState === RunState.Halted) {
+      return this.runState;
+    }
+
+    if (this.runState === RunState.Paused) {
+      // resuming: don't immediately re-break on the same address
+      this.skipBreakpointOnce = true;
+    }
+
+    this.runState = RunState.Running;
+
+    let steps = 0;
+
+    while ((this.runState as RunState) === RunState.Running) {
+      if (!this.skipBreakpointOnce && this.breakpoints.size > 0 && this.breakpoints.has(this.pc)) {
+        this.runState = RunState.Paused;
+        return this.runState;
+      }
+
+      this.skipBreakpointOnce = false;
+
+      this.stepInternal();
+
+      if (this.watchTriggered && (this.runState as RunState) === RunState.Running) {
+        // stopped just after a watched write
+        this.runState = RunState.Paused;
+        return this.runState;
+      }
+
+      if (++steps > maxInstructions) {
+        throw new Error("instruction limit exceeded (possible infinite loop)");
+      }
+    }
+
+    return this.runState;
+  }
+
+  private execute(name: string): void {
+    const o = this.ops;
+    console.log(o); // REMOVE
+
+    switch (name) {
+      default:
+        throw new Error(
+          `unimplemented opcode '${name}' at 0x${this.currentInstruction.address.toString(16)}`,
+        );
+    }
+  }
+
+  private stepInternal(): Instruction {
+    this.watchTriggered = false;
+
+    const reader = new InstructionReader(this.memory, this.version, this.pc);
+    const insn = reader.next();
+
+    this.pc = reader.address;
+    this.currentInstruction = insn;
+
+    // Resolve operand values in order (variable operands may pop the stack).
+    const ops: number[] = [];
+
+    for (const operand of insn.operands) {
+      ops.push(
+        operand.kind === OperandKind.Variable ? this.readVariable(operand.value) : operand.value,
+      );
+    }
+
+    this.ops = ops;
+
+    this.onTrace(insn, this.frames.length, ops);
+    this.execute(insn.opcode.name);
+    this.instructionCount++;
+
+    return insn;
+  }
+
+  private readVariable(n: number): number {
+    if (n === 0) {
+      if (this.stack.length <= this.current.stackBase) {
+        throw new Error("stack underflow");
+      }
+
+      return this.stack.pop() as number;
+    }
+
+    if (n < 0x10) {
+      return this.current.locals[n - 1];
+    }
+
+    return this.memory.readWord(this.globalsAddress + (n - 0x10) * 2);
   }
 
   private setupHeaderCapabilities(): void {

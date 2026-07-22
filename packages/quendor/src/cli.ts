@@ -36,7 +36,10 @@ async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-  new Machine(story);
+  const machine = new Machine(story);
+  machine.onOutput = (text): void => {
+    process.stdout.write(text);
+  };
 }
 
 main().catch((err) => {
