@@ -66,21 +66,61 @@ const F = OpcodeFlags;
 
 const ENTRIES: Entry[] = [
   // two-operand opcodes
+  [OpcodeKind.TwoOp, 0x01, "je", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x02, "jl", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x03, "jg", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x04, "dec_chk", F.Branch | F.FirstOpByRef, 1, 8],
+  [OpcodeKind.TwoOp, 0x05, "inc_chk", F.Branch | F.FirstOpByRef, 1, 8],
+  [OpcodeKind.TwoOp, 0x06, "jin", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x07, "test", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x09, "and", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x0a, "test_attr", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x0b, "set_attr", F.None, 1, 8],
+  [OpcodeKind.TwoOp, 0x0c, "clear_attr", F.None, 1, 8],
   [OpcodeKind.TwoOp, 0x0d, "store", F.FirstOpByRef, 1, 8],
   [OpcodeKind.TwoOp, 0x0e, "insert_obj", F.None, 1, 8],
+  [OpcodeKind.TwoOp, 0x0f, "loadw", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x10, "loadb", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x11, "get_prop", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x12, "get_prop_addr", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x14, "add", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x15, "sub", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x16, "mul", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x17, "div", F.Store, 1, 8],
 
   // one-operand opcodes
+  [OpcodeKind.OneOp, 0x00, "jz", F.Branch, 1, 8],
+  [OpcodeKind.OneOp, 0x01, "get_sibling", F.Store | F.Branch, 1, 8],
+  [OpcodeKind.OneOp, 0x02, "get_child", F.Store | F.Branch, 1, 8],
+  [OpcodeKind.OneOp, 0x03, "get_parent", F.Store, 1, 8],
+  [OpcodeKind.OneOp, 0x04, "get_prop_len", F.Store, 1, 8],
+  [OpcodeKind.OneOp, 0x05, "inc", F.FirstOpByRef, 1, 8],
+  [OpcodeKind.OneOp, 0x06, "dec", F.FirstOpByRef, 1, 8],
+  [OpcodeKind.OneOp, 0x07, "print_addr", F.None, 1, 8],
+  [OpcodeKind.OneOp, 0x0a, "print_obj", F.None, 1, 8],
+  [OpcodeKind.OneOp, 0x0b, "ret", F.Return, 1, 8],
   [OpcodeKind.OneOp, 0x0c, "jump", F.Jump, 1, 8],
+  [OpcodeKind.OneOp, 0x0d, "print_paddr", F.None, 1, 8],
 
   // zero-operand opcodes
+  [OpcodeKind.ZeroOp, 0x00, "rtrue", F.Return, 1, 8],
+  [OpcodeKind.ZeroOp, 0x01, "rfalse", F.Return, 1, 8],
+  [OpcodeKind.ZeroOp, 0x02, "print", F.ZText, 1, 8],
+  [OpcodeKind.ZeroOp, 0x03, "print_ret", F.Return | F.ZText, 1, 8],
+  [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
 
   // variable-operand opcodes
   [OpcodeKind.VarOp, 0x00, "call", F.Call | F.Store, 1, 4],
   [OpcodeKind.VarOp, 0x01, "storew", F.None, 1, 8],
+  [OpcodeKind.VarOp, 0x02, "storeb", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x03, "put_prop", F.None, 1, 8],
+  [OpcodeKind.VarOp, 0x04, "sread", F.None, 1, 4],
+  [OpcodeKind.VarOp, 0x05, "print_char", F.None, 1, 8],
+  [OpcodeKind.VarOp, 0x06, "print_num", F.None, 1, 8],
+  [OpcodeKind.VarOp, 0x07, "random", F.Store, 1, 8],
+  [OpcodeKind.VarOp, 0x08, "push", F.None, 1, 8],
+  [OpcodeKind.VarOp, 0x09, "pull", F.FirstOpByRef, 1, 5],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;
