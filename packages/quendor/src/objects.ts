@@ -99,6 +99,18 @@ export class ObjectTable {
     return (this.memory.readByte(addr) & mask) !== 0;
   }
 
+  setAttribute(objNum: number, attribute: number, value: boolean): void {
+    if (attribute < 0 || attribute >= this.attributeCount) {
+      throw new RangeError(`invalid attribute ${attribute}`);
+    }
+
+    const addr = this.getObjectAddress(objNum) + (attribute >> 3);
+    const mask = 1 << (7 - (attribute & 7));
+    const b = this.memory.readByte(addr);
+
+    this.memory.writeByte(addr, value ? b | mask : b & ~mask);
+  }
+
   getParent(objNum: number): number {
     return this.readNumber(this.getObjectAddress(objNum) + this.parentOffset);
   }
@@ -109,6 +121,22 @@ export class ObjectTable {
 
   getChild(objNum: number): number {
     return this.readNumber(this.getObjectAddress(objNum) + this.childOffset);
+  }
+
+  setSibling(objNum: number, value: number): void {
+    this.writeNumber(this.getObjectAddress(objNum) + this.siblingOffset, value);
+  }
+
+  setChild(objNum: number, value: number): void {
+    this.writeNumber(this.getObjectAddress(objNum) + this.childOffset, value);
+  }
+
+  setParent(objNum: number, value: number): void {
+    this.writeNumber(this.getObjectAddress(objNum) + this.parentOffset, value);
+  }
+
+  readPropertyDefault(propNum: number): number {
+    return this.memory.readWord(this.tableAddress + (propNum - 1) * 2);
   }
 
   /** Address of the first property entry (after the short name). */
@@ -175,7 +203,59 @@ export class ObjectTable {
     return result;
   }
 
+  private tryGetLeftSibling(objNum: number): number | undefined {
+    const parent = this.getParent(objNum);
+
+    if (parent === 0) return undefined;
+
+    let child = this.getChild(parent);
+
+    if (child === objNum) return undefined;
+
+    while (child !== 0) {
+      const sibling = this.getSibling(child);
+      if (sibling === objNum) return child;
+      child = sibling;
+    }
+
+    return undefined;
+  }
+
+  removeObject(objNum: number): void {
+    const left = this.tryGetLeftSibling(objNum);
+    const right = this.getSibling(objNum);
+
+    if (left !== undefined) this.setSibling(left, right);
+
+    const parent = this.getParent(objNum);
+
+    if (parent !== 0 && this.getChild(parent) === objNum) {
+      this.setChild(parent, right);
+    }
+
+    this.setParent(objNum, 0);
+    this.setSibling(objNum, 0);
+  }
+
+  moveObject(objNum: number, destNum: number): void {
+    this.removeObject(objNum);
+
+    if (destNum !== 0) {
+      this.setParent(objNum, destNum);
+      this.setSibling(objNum, this.getChild(destNum));
+      this.setChild(destNum, objNum);
+    }
+  }
+
   private readNumber(address: number): number {
     return this.numberSize === 1 ? this.memory.readByte(address) : this.memory.readWord(address);
+  }
+
+  private writeNumber(address: number, value: number): void {
+    if (this.numberSize === 1) {
+      this.memory.writeByte(address, value);
+    } else {
+      this.memory.writeWord(address, value);
+    }
   }
 }

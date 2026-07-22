@@ -3,6 +3,7 @@ import { HeaderOffset, unpackRoutineAddress } from "./header.ts";
 import { InstructionReader, OperandKind, type Instruction } from "./instruction.ts";
 import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
+import { ObjectTable } from "./objects.ts";
 
 /** The execution status of the machine, as seen by a debugger driver. */
 export const RunState = {
@@ -46,6 +47,7 @@ export class Machine {
   readonly memory: Memory;
   readonly version: number;
   readonly text: ZText;
+  readonly objects: ObjectTable;
 
   /** Header interpreter number (0x1e) — defaults to 6 (IBM PC). */
   readonly interpreterNumber: number;
@@ -64,6 +66,9 @@ export class Machine {
   private instructionCount = 0;
   private currentInstruction!: Instruction;
   private ops: number[] = [];
+
+  // output stream 3 (memory) redirection stack
+  private memoryStreams: { address: number; count: number }[] = [];
 
   private runState: RunState = RunState.Running;
 
@@ -98,6 +103,8 @@ export class Machine {
     this.routinesOffset = story.header.routinesOffset;
     this.globalsAddress = story.header.globalVariablesTableAddress;
     this.dictionaryAddress = story.header.dictionaryAddress;
+
+    this.objects = new ObjectTable(this.memory, this.version, story.header.objectTableAddress);
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -222,6 +229,19 @@ export class Machine {
       case "sub":
         return this.store((toS16(o[0]) - toS16(o[1])) & 0xffff);
 
+      // --- bitwise ---
+      case "and":
+        return this.store(o[0] & o[1]);
+
+      // --- inc / dec ---
+      case "inc":
+        this.incDec(o[0], +1);
+        return;
+      case "inc_chk": {
+        const v = this.incDec(o[0], +1);
+        return this.branchOn(v > toS16(o[1]));
+      }
+
       // --- jumps ---
       case "je": {
         let eq = false;
@@ -232,18 +252,87 @@ export class Machine {
 
         return this.branchOn(eq);
       }
+      case "jl":
+        return this.branchOn(toS16(o[0]) < toS16(o[1]));
       case "jz":
         return this.branchOn(o[0] === 0);
+      case "jin": {
+        if (o[0] === 0) return this.branchOn(o[1] === 0);
+        return this.branchOn(this.objects.getParent(o[0]) === o[1]);
+      }
+      case "jump": {
+        // PC is a full address (can exceed 0xffff in large stories) — no mask.
+        this.pc = this.pc + toS16(o[0]) - 2;
+        return;
+      }
 
       // --- calls / returns ---
       case "call":
         return this.call(o[0], o.slice(1), this.currentInstruction.storeVariable ?? -1);
       case "ret":
         return this.return_(o[0]);
+      case "rtrue":
+        return this.return_(1);
+      case "rfalse":
+        return this.return_(0);
+      case "ret_popped":
+        return this.return_(this.readVariable(0));
 
       // --- load / store / memory ---
+      case "store":
+        return this.writeVariableIndirect(o[0], o[1]);
+      case "loadw":
+        return this.store(this.memory.readWord((o[0] + o[1] * 2) & 0xffff));
+      case "loadb":
+        return this.store(this.memory.readByte((o[0] + o[1]) & 0xffff));
       case "storew":
         return this.memory.writeWord((o[0] + o[1] * 2) & 0xffff, o[2]);
+      case "push":
+        return this.writeVariable(0, o[0]);
+      case "pull":
+        return this.writeVariableIndirect(o[0], this.readVariable(0));
+
+      // --- objects ---
+      case "get_parent":
+        return this.store(o[0] === 0 ? 0 : this.objects.getParent(o[0]));
+      case "get_sibling": {
+        const s = o[0] === 0 ? 0 : this.objects.getSibling(o[0]);
+        this.store(s);
+        return this.branchOn(s > 0);
+      }
+      case "get_child": {
+        const c = o[0] === 0 ? 0 : this.objects.getChild(o[0]);
+        this.store(c);
+        return this.branchOn(c > 0);
+      }
+      case "test_attr":
+        return this.branchOn(o[0] !== 0 && this.objects.hasAttribute(o[0], o[1]));
+      case "set_attr":
+        if (o[0] !== 0) this.objects.setAttribute(o[0], o[1], true);
+        return;
+      case "insert_obj":
+        if (o[0] !== 0 && o[1] !== 0) this.objects.moveObject(o[0], o[1]);
+        return;
+      case "get_prop":
+        return this.store(this.getProp(o[0], o[1]));
+      case "put_prop":
+        return this.putProp(o[0], o[1], o[2]);
+
+      // --- output ---
+      case "print":
+        return this.print(this.decodeInline());
+      case "new_line":
+        return this.print("\n");
+      case "print_char":
+        return this.print(String.fromCharCode(o[0]));
+      case "print_num":
+        return this.print(String(toS16(o[0])));
+      case "print_obj":
+        return this.print(this.text.decodeAtAddress(this.objects.getShortNameAddress(o[0]) + 1));
+
+      // --- input ---
+      case "sread":
+        return this.sread(o);
 
       default:
         throw new Error(
@@ -251,6 +340,35 @@ export class Machine {
             ` (operands: ${o.map((v) => "0x" + v.toString(16).padStart(4, "0")).join(", ")})`,
         );
     }
+  }
+
+  private beginRead(
+    kind: "sread" | "aread",
+    textBuffer: number,
+    parseBuffer: number,
+    storeVariable: number,
+  ): void {
+    const request = { kind, textBuffer, parseBuffer, storeVariable };
+    const queued = this.inputQueue.shift();
+
+    if (queued !== undefined) {
+      this.completeRead(request, queued);
+    } else {
+      this.pendingRead = request;
+      this.runState = RunState.WaitingForInput;
+    }
+  }
+
+  private sread(o: number[]): void {
+    if (this.version <= 3) this.showStatus(); // v1-3 refresh the status bar
+    this.beginRead("sread", o[0], o[1], -1);
+  }
+
+  /** Draw the v1-3 status bar from globals 0 (location), 1 and 2 (score/time). */
+  private showStatus(): void {
+    if (this.version > 3) return;
+
+    // NOTE: NEED TO IMPLEMENT SCREEN TO MAKE THIS WORK
   }
 
   private call(packedAddress: number, args: number[], storeVariable: number): void {
@@ -282,6 +400,71 @@ export class Machine {
     }
 
     this.writeVariable(variable, value & 0xffff);
+  }
+
+  private print(text: string): void {
+    if (this.memoryStreams.length > 0) {
+      // Stream 3 (memory) captures output and suppresses the screen entirely.
+      const stream = this.memoryStreams[this.memoryStreams.length - 1];
+
+      for (let i = 0; i < text.length; i++) {
+        this.memory.writeByte(stream.address + 2 + stream.count, text.charCodeAt(i));
+        stream.count++;
+      }
+
+      return;
+    }
+
+    this.onOutput(text);
+  }
+
+  private putProp(objNum: number, propNum: number, value: number): void {
+    if (objNum === 0) return;
+    const { address, sizeByte, found } = this.findProp(objNum, propNum);
+
+    if (!found) {
+      throw new Error("put_prop: property not found");
+    }
+
+    const dataAddress = address + 1;
+    const oneByte = this.version <= 3 ? (sizeByte & 0xe0) === 0 : (sizeByte & 0xc0) === 0;
+
+    if (oneByte) {
+      this.memory.writeByte(dataAddress, value & 0xff);
+    } else {
+      this.memory.writeWord(dataAddress, value);
+    }
+  }
+
+  private getProp(objNum: number, propNum: number): number {
+    if (objNum === 0) return 0;
+
+    const { address, sizeByte, found } = this.findProp(objNum, propNum);
+
+    if (!found) return this.objects.readPropertyDefault(propNum);
+
+    const dataAddress = address + 1;
+    const oneByte = this.version <= 3 ? (sizeByte & 0xe0) === 0 : (sizeByte & 0xc0) === 0;
+
+    return oneByte ? this.memory.readByte(dataAddress) : this.memory.readWord(dataAddress);
+  }
+
+  private findProp(
+    objNum: number,
+    propNum: number,
+  ): { address: number; sizeByte: number; found: boolean } {
+    let address = this.objects.getFirstPropertyAddress(objNum);
+    const mask = this.version <= 3 ? 0x1f : 0x3f;
+
+    for (;;) {
+      const sizeByte = this.memory.readByte(address);
+
+      if ((sizeByte & mask) <= propNum) {
+        return { address, sizeByte, found: (sizeByte & mask) === propNum };
+      }
+
+      address = this.objects.getNextPropertyAddress(address);
+    }
   }
 
   private branchOn(condition: boolean): void {
@@ -330,6 +513,29 @@ export class Machine {
     }
 
     this.onExitFrame(frame.returnPC);
+  }
+
+  private incDec(varNum: number, delta: number): number {
+    const v = (toS16(this.readVariableIndirect(varNum)) + delta) & 0xffff;
+
+    this.writeVariableIndirect(varNum, v);
+
+    return toS16(v);
+  }
+
+  private decodeInline(): string {
+    const zwords = this.currentInstruction.zwords;
+
+    if (zwords === undefined) {
+      throw new Error(
+        `decodeInline on an opcode without inline text '${this.currentInstruction.opcode.name}'`,
+      );
+    }
+
+    return this.text.decode([...zwords], {
+      allowAbbreviations: true,
+      allowIncompleteMultibyte: true,
+    });
   }
 
   private stepInternal(): Instruction {
@@ -460,11 +666,42 @@ export class Machine {
     return this.memory.readWord(this.globalsAddress + (n - 0x10) * 2);
   }
 
+  private readVariableIndirect(n: number): number {
+    if (n === 0) {
+      if (this.stack.length <= this.current.stackBase) {
+        throw new Error("stack underflow");
+      }
+
+      return this.stack[this.stack.length - 1];
+    }
+    if (n < 0x10) {
+      return this.current.locals[n - 1];
+    }
+
+    return this.memory.readWord(this.globalsAddress + (n - 0x10) * 2);
+  }
+
   private writeVariable(n: number, value: number): void {
     value &= 0xffff;
 
     if (n === 0) {
       this.stack.push(value);
+    } else if (n < 0x10) {
+      this.current.locals[n - 1] = value;
+    } else {
+      this.memory.writeWord(this.globalsAddress + (n - 0x10) * 2, value);
+    }
+  }
+
+  private writeVariableIndirect(n: number, value: number): void {
+    value &= 0xffff;
+
+    if (n === 0) {
+      if (this.stack.length <= this.current.stackBase) {
+        throw new Error("stack underflow");
+      }
+
+      this.stack[this.stack.length - 1] = value;
     } else if (n < 0x10) {
       this.current.locals[n - 1] = value;
     } else {
