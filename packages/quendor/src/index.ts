@@ -15,7 +15,7 @@ export function fn(): string {
 }
 
 // --- execution -------------------------------------------------------------
-export { Machine } from "./machine.js";
+export { Machine, RunState } from "./machine.js";
 export type { Frame } from "./machine.js";
 export { Story } from "./story.js";
 export { Memory } from "./memory.js";
@@ -48,7 +48,7 @@ export {
 } from "./opcodes.js";
 export type { Opcode } from "./opcodes.js";
 
-export { formatInstruction, formatVariable } from "./disasm.js";
+export { formatInstruction, formatVariable, formatResolvedOperands } from "./disasm.js";
 export { disassembleReachable } from "./disassembler.js";
 export type { DisassembledRun } from "./disassembler.js";
 

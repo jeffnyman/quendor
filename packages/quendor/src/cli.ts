@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { Machine } from "./machine.ts";
-import { loadStoryFromFile } from "./node.ts";
+import { Machine, RunState } from "./machine.ts";
+import { loadStoryFromFile, readLineSync } from "./node.ts";
 
 const USAGE = `quendor — a terminal Z-Machine player
 
@@ -36,7 +36,23 @@ async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-  new Machine(story);
+  const machine = new Machine(story);
+
+  machine.onOutput = (text): void => {
+    process.stdout.write(text);
+  };
+
+  for (;;) {
+    const state = machine.run();
+
+    if (state !== RunState.WaitingForInput) break; // halted
+
+    const line = readLineSync();
+
+    if (line === null) break; // end of input
+
+    machine.provideInput(line);
+  }
 }
 
 main().catch((err) => {

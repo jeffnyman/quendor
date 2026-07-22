@@ -48,6 +48,172 @@ export class ZText {
     return chars;
   }
 
+  /** Split typed input into tokens, respecting the dictionary's separators. */
+  tokenizeCommand(
+    text: string,
+    dictionaryAddress: number,
+  ): { start: number; length: number; text: string }[] {
+    let addr = dictionaryAddress;
+    const sepCount = this.memory.readByte(addr++);
+    const seps = new Set<string>();
+
+    for (let i = 0; i < sepCount; i++) {
+      seps.add(String.fromCharCode(this.memory.readByte(addr++)));
+    }
+
+    const tokens: { start: number; length: number; text: string }[] = [];
+    let start = -1;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+
+      if (start < 0) {
+        if (ch !== " ") start = i;
+
+        if (seps.has(ch)) {
+          tokens.push({ start: i, length: 1, text: ch });
+          start = -1;
+        }
+      } else if (ch === " ") {
+        tokens.push({ start, length: i - start, text: text.slice(start, i) });
+        start = -1;
+      } else if (seps.has(ch)) {
+        tokens.push({ start, length: i - start, text: text.slice(start, i) });
+        tokens.push({ start: i, length: 1, text: ch });
+        start = -1;
+      }
+    }
+
+    if (start >= 0) {
+      tokens.push({ start, length: text.length - start, text: text.slice(start) });
+    }
+
+    return tokens;
+  }
+
+  /** Find a word in a dictionary; returns its entry address, or 0 if absent. */
+  lookupWord(word: string, dictionaryAddress: number): number {
+    const encoded = this.encodeWord(word);
+    const { base, entryCount, entryLength, sorted } = this.readDictionaryHeader(dictionaryAddress);
+
+    let lower = 0;
+    let upper = entryCount - 1;
+
+    while (lower <= upper) {
+      const entryNumber = sorted ? (lower + upper) >> 1 : lower;
+      const entryAddress = base + entryNumber * entryLength;
+      const cmp = this.compareEntry(encoded, entryAddress);
+
+      if (cmp === 0) return entryAddress;
+
+      if (sorted) {
+        if (cmp > 0) lower = entryNumber + 1;
+        else upper = entryNumber - 1;
+      } else {
+        lower++;
+      }
+    }
+
+    return 0;
+  }
+
+  /** Parse a dictionary's header, returning where its entries begin and how to scan them. */
+  private readDictionaryHeader(dictionaryAddress: number): {
+    base: number;
+    entryCount: number;
+    entryLength: number;
+    sorted: boolean;
+  } {
+    let addr = dictionaryAddress;
+    const sepCount = this.memory.readByte(addr++);
+
+    addr += sepCount;
+
+    const entryLength = this.memory.readByte(addr++);
+    let entryCount = this.memory.readWord(addr);
+
+    addr += 2;
+
+    let sorted = true;
+
+    if (entryCount >= 0x8000) {
+      entryCount = 0x10000 - entryCount; // negative count => unsorted
+      sorted = false;
+    }
+
+    return { base: addr, entryCount, entryLength, sorted };
+  }
+
+  /** Compare `encoded` against the entry at `entryAddress`: negative, 0 (equal), or positive. */
+  private compareEntry(encoded: number[], entryAddress: number): number {
+    for (let i = 0; i < this.resolution; i++) {
+      const entry = this.memory.readWord(entryAddress + i * 2);
+
+      if (encoded[i] !== entry) return encoded[i] > entry ? 1 : -1;
+    }
+
+    return 0;
+  }
+
+  /** Encode a word into `resolution` packed Z-words, for dictionary lookup. */
+  encodeWord(word: string): number[] {
+    return this.packZChars(this.encodeToZChars(word));
+  }
+
+  /** Turn a word into exactly `resolution * 3` Z-characters (padded with shifts). */
+  private encodeToZChars(word: string): number[] {
+    const max = this.resolution * 3;
+
+    if (word.length > max) word = word.slice(0, max);
+
+    const alphabet = this.newAlphabet();
+    const zchars: number[] = [];
+    let ti = 0;
+
+    while (zchars.length < max) {
+      zchars.push(...(ti < word.length ? this.encodeChar(word[ti++], alphabet) : [5]));
+    }
+
+    zchars.length = max;
+
+    return zchars;
+  }
+
+  /** Encode a single character into its Z-characters (alphabet shift or 10-bit ZSCII escape). */
+  private encodeChar(ch: string, alphabet: AlphabetTable): number[] {
+    if (ch === " ") return [0];
+
+    const found = alphabet.findChar(ch);
+
+    if (!found) {
+      const zc = ch.charCodeAt(0);
+      return [5, 6, (zc >> 5) & 0x1f, zc & 0x1f];
+    }
+
+    if (found.set !== 0) {
+      return [(this.version <= 2 ? 1 : 3) + found.set, found.index];
+    }
+
+    return [found.index];
+  }
+
+  /** Pack `resolution * 3` Z-characters into packed Z-words, with the terminator bit set. */
+  private packZChars(zchars: number[]): number[] {
+    const words: number[] = [];
+
+    for (let i = 0; i < this.resolution; i++) {
+      words.push(((zchars[i * 3] << 10) | (zchars[i * 3 + 1] << 5) | zchars[i * 3 + 2]) & 0xffff);
+    }
+
+    words[this.resolution - 1] |= 0x8000;
+
+    return words;
+  }
+
+  private get resolution(): number {
+    return this.version <= 3 ? 2 : 3;
+  }
+
   private readAbbreviation(index: number): number[] {
     if (index < 0 || index > 95) {
       throw new RangeError(`abbreviation index out of range: ${index}`);

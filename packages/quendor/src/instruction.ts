@@ -75,6 +75,10 @@ export class InstructionReader {
     this.opcodeTable = opcodeTableForVersion(version);
   }
 
+  get address(): number {
+    return this.addr;
+  }
+
   /** Unlike Memory.readByte, tracks a cursor rather than taking an explicit address. */
   private readByte(): number {
     return this.memory.readByte(this.addr++);

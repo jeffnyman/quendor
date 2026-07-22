@@ -251,3 +251,13 @@ test("main prints usage and exits 1 when no command is given", async () => {
 
   expect(process.exitCode).toBe(1);
 });
+
+test("main prints usage and exits 1 when run is missing a path", async () => {
+  process.argv = ["node", "zexp", "run"];
+
+  await main();
+
+  expect(console.error).toHaveBeenCalledWith("usage: zexp run <story-file> [--trace-file]");
+  expect(process.exitCode).toBe(1);
+  expect(loadStoryFromFile).not.toHaveBeenCalled();
+});
