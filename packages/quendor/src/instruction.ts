@@ -106,6 +106,9 @@ export class InstructionReader {
       case OperandKind.SmallConstant:
       case OperandKind.Variable:
         return { kind, value: this.readByte() };
+      // Unreachable: readOperands stops at the first Omitted kind, so it never
+      // asks readOperand for one. Kept as a loud guard against a future miscall.
+      /* v8 ignore next -- @preserve */
       default:
         throw new Error("Attempted to read an omitted operand.");
     }
