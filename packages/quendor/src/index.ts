@@ -15,7 +15,7 @@ export function fn(): string {
 }
 
 // --- execution -------------------------------------------------------------
-export { Machine } from "./machine.js";
+export { Machine, RunState } from "./machine.js";
 export type { Frame } from "./machine.js";
 export { Story } from "./story.js";
 export { Memory } from "./memory.js";

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import { Machine } from "./machine.ts";
-import { loadStoryFromFile } from "./node.ts";
-import { readSync } from "node:fs";
+import { Machine, RunState } from "./machine.ts";
+import { loadStoryFromFile, readLineSync } from "./node.ts";
 
 const USAGE = `quendor — a terminal Z-Machine player
 
@@ -13,35 +12,6 @@ Usage:
 `;
 
 type ParsedArgs = { help: true } | { help: false; path?: string };
-
-/** Read one line from stdin synchronously, to fit the tight run loop. Null at EOF. */
-function readLineSync(): string | null {
-  const buf = Buffer.alloc(1);
-  let line = "";
-  let sawAny = false;
-
-  for (;;) {
-    let n: number;
-
-    try {
-      n = readSync(0, buf, 0, 1, null);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
-      break; // EOF or closed stream
-    }
-
-    if (n === 0) break; // EOF
-
-    sawAny = true;
-
-    const ch = buf.toString("utf8");
-
-    if (ch === "\n") return line;
-    if (ch !== "\r") line += ch;
-  }
-
-  return sawAny ? line : null;
-}
 
 function parseArgs(args: string[]): ParsedArgs {
   if (args.some((a) => a === "--help" || a === "-h")) {
@@ -75,7 +45,7 @@ async function main(): Promise<void> {
   for (;;) {
     const state = machine.run();
 
-    if (state !== "waiting-input") break; // halted
+    if (state !== RunState.WaitingForInput) break; // halted
 
     const line = readLineSync();
 
