@@ -32,11 +32,11 @@ jobs:
       - name: Check (format, lint, types)
         run: vp check
 
-      - name: Codebase intelligence
-        run: vp exec fallow
-
-      - name: Test
-        run: vp run -r test
+      # Runs the test suite with coverage, then fallow against that coverage —
+      # fallow's CRAP score is meaningless without real coverage (it otherwise
+      # estimates private functions as untested). This subsumes the test run.
+      - name: Test and codebase intelligence
+        run: node .vite-hooks/fallow-coverage.mjs
 
       - name: Build
         run: vp run -r build

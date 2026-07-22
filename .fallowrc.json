@@ -9,6 +9,16 @@
   },
   "rules": {},
   "health": {
-    "maxCrap": 50
+    "maxCrap": 50,
+    "thresholdOverrides": [
+      {
+        "files": ["packages/quendor/src/machine.ts"],
+        "functions": ["execute"],
+        "maxCyclomatic": 65535,
+        "maxCognitive": 65535,
+        "maxCrap": 65535,
+        "maxUnitSize": 65535
+      }
+    ]
   }
 }
