@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadStoryFromFile } from "quendor/node";
-import { disassembleReachable, dumpAll, dumpHeader, formatInstruction } from "quendor";
+import { disassembleReachable, dumpAll, dumpHeader, formatInstruction, Machine } from "quendor";
 import { writeFileSync } from "node:fs";
 
 /**
@@ -72,6 +72,15 @@ async function cmdDisasm(path: string, addressArg: string | undefined): Promise<
   console.log(`${runs.length} runs, ${instructionCount} instructions total`);
 }
 
+async function cmdRun(path: string): Promise<void> {
+  const story = await loadStoryFromFile(path);
+  const machine = new Machine(story);
+
+  machine.onOutput = (text): void => {
+    process.stdout.write(text);
+  };
+}
+
 function hex(n: number, width = 4): string {
   return "0x" + n.toString(16).padStart(width, "0");
 }
@@ -129,6 +138,19 @@ export async function main(): Promise<void> {
       }
 
       await cmdDisasm(path, rest[1]);
+
+      return;
+    }
+    case "run": {
+      const path = rest[0];
+
+      if (!path) {
+        console.error("usage: zexp run <story-file>");
+        process.exitCode = 1;
+        return;
+      }
+
+      await cmdRun(path);
 
       return;
     }
