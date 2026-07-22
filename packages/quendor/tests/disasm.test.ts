@@ -4,7 +4,7 @@ import type { Header } from "../src/header.ts";
 import { ZText } from "../src/text.ts";
 import { OpcodeFlags, OpcodeKind, type Opcode } from "../src/opcodes.ts";
 import { OperandKind, type Instruction } from "../src/instruction.ts";
-import { formatInstruction, formatVariable } from "../src/disasm.ts";
+import { formatInstruction, formatVariable, formatResolvedOperands } from "../src/disasm.ts";
 
 function buildHeader(version: number, overrides: Partial<Header> = {}): Header {
   return {
@@ -142,4 +142,30 @@ test.each([
   [0xff, "gef"],
 ])("formatVariable(0x%s) is %s", (number, expected) => {
   expect(formatVariable(number)).toBe(expected);
+});
+
+test("formatResolvedOperands annotates variable operands with their resolved values", () => {
+  const insn = fakeInstruction({
+    operands: [
+      { kind: OperandKind.Variable, value: 0x10 }, // g00
+      { kind: OperandKind.LargeConstant, value: 0x1234 }, // omitted (already literal)
+      { kind: OperandKind.Variable, value: 0x01 }, // local0
+    ],
+  });
+
+  expect(formatResolvedOperands(insn, [0x23e9, 0x1234, 0x8010])).toBe("g00=0x23e9 local0=0x8010");
+});
+
+test("formatResolvedOperands returns an empty string when there are no variable operands", () => {
+  const insn = fakeInstruction({
+    operands: [{ kind: OperandKind.LargeConstant, value: 0x1234 }],
+  });
+
+  expect(formatResolvedOperands(insn, [0x1234])).toBe("");
+});
+
+test("formatResolvedOperands falls back to 0x0000 when a resolved value is missing", () => {
+  const insn = fakeInstruction({ operands: [{ kind: OperandKind.Variable, value: 0x10 }] });
+
+  expect(formatResolvedOperands(insn, [])).toBe("g00=0x0000");
 });

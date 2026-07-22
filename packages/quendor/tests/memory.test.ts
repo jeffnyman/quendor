@@ -93,3 +93,37 @@ test("writeByte does not require onWrite to be set", () => {
 
   expect(() => memory.writeByte(1, 20)).not.toThrow();
 });
+
+test("writeWord stores a big-endian 16-bit value", () => {
+  const memory = new Memory(new Uint8Array(2));
+
+  memory.writeWord(0, 0x0102);
+
+  expect(memory.readWord(0)).toBe(0x0102);
+  expect(memory.bytes[0]).toBe(0x01);
+  expect(memory.bytes[1]).toBe(0x02);
+});
+
+test("writeWord masks the value to 16 bits", () => {
+  const memory = new Memory(new Uint8Array(2));
+
+  memory.writeWord(0, 0x10102);
+
+  expect(memory.readWord(0)).toBe(0x0102);
+});
+
+test("writeWord throws when the address is out of range", () => {
+  const memory = new Memory(new Uint8Array(1));
+
+  expect(() => memory.writeWord(0, 0x0102)).toThrow(RangeError);
+});
+
+test("writeWord notifies onWrite with the address and word size", () => {
+  const memory = new Memory(new Uint8Array(2));
+  const onWrite = vi.fn<(address: number, size: number) => void>();
+
+  memory.onWrite = onWrite;
+  memory.writeWord(0, 0x0102);
+
+  expect(onWrite).toHaveBeenCalledWith(0, 2);
+});

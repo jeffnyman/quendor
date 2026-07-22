@@ -154,3 +154,128 @@ test("decodeAtAddress reads Z-words from memory until the terminator bit", () =>
   expect(text.decodeAtAddress(0)).toBe("a d");
   expect(text.readZWords(0)).toEqual([word1, word2]);
 });
+
+// --- dictionary encoding / lookup / tokenizing ---
+
+/** A ZText whose memory holds only a word-separator header at address 0. */
+function withSeparators(seps: string[], version = 3): { text: ZText; dictAddress: number } {
+  const bytes = new Uint8Array(1 + seps.length);
+
+  bytes[0] = seps.length;
+  seps.forEach((s, i) => {
+    bytes[1 + i] = s.charCodeAt(0);
+  });
+
+  return { text: newText(version, {}, new Memory(bytes)), dictAddress: 0 };
+}
+
+/**
+ * A ZText whose memory holds a real dictionary at address 0, its entries built
+ * from `encodeWord(word)` (no data bytes). `words` must be in ascending encoded
+ * order when `sorted` (for lowercase words that matches alphabetical order).
+ */
+function buildDictionary(
+  words: string[],
+  version = 3,
+  sorted = true,
+): { text: ZText; dictAddress: number; base: number; entryLength: number } {
+  const encoder = newText(version); // encodeWord is memory-independent
+  const resolution = version <= 3 ? 2 : 3;
+  const entryLength = resolution * 2;
+  const base = 4;
+  const bytes = new Uint8Array(base + words.length * entryLength);
+
+  bytes[0] = 0; // no word separators
+  bytes[1] = entryLength;
+
+  const count = sorted ? words.length : 0x10000 - words.length; // negative => unsorted
+  bytes[2] = (count >> 8) & 0xff;
+  bytes[3] = count & 0xff;
+
+  words.forEach((word, i) => {
+    let p = base + i * entryLength;
+
+    for (const w of encoder.encodeWord(word)) {
+      bytes[p++] = (w >> 8) & 0xff;
+      bytes[p++] = w & 0xff;
+    }
+  });
+
+  return { text: newText(version, {}, new Memory(bytes)), dictAddress: 0, base, entryLength };
+}
+
+test("encodeWord round-trips a lowercase word through decode", () => {
+  const text = newText(3);
+
+  expect(text.decode(text.encodeWord("north"))).toBe("north");
+});
+
+test("encodeWord round-trips a character from a shifted alphabet", () => {
+  const text = newText(3);
+
+  expect(text.decode(text.encodeWord("1"))).toBe("1");
+});
+
+test("encodeWord truncates a word longer than the dictionary resolution", () => {
+  const text = newText(3); // resolution 2 -> at most 6 Z-characters
+
+  expect(text.decode(text.encodeWord("abcdefghij"))).toBe("abcdef");
+});
+
+test("encodeWord packs into `resolution` words and sets the terminator bit", () => {
+  const words = newText(3).encodeWord("north");
+
+  expect(words).toHaveLength(2);
+  expect(words[words.length - 1] & 0x8000).not.toBe(0);
+});
+
+test("encodeWord uses three words for version 4 and later", () => {
+  expect(newText(5).encodeWord("north")).toHaveLength(3);
+});
+
+test("lookupWord finds a word in a sorted dictionary and returns its entry address", () => {
+  const { text, dictAddress, base, entryLength } = buildDictionary(["north", "south"]);
+
+  expect(text.lookupWord("north", dictAddress)).toBe(base);
+  expect(text.lookupWord("south", dictAddress)).toBe(base + entryLength);
+});
+
+test("lookupWord returns 0 for a word not in the dictionary", () => {
+  const { text, dictAddress } = buildDictionary(["north", "south"]);
+
+  expect(text.lookupWord("east", dictAddress)).toBe(0);
+});
+
+test("lookupWord scans an unsorted dictionary (negative entry count)", () => {
+  const { text, dictAddress, base, entryLength } = buildDictionary(["south", "north"], 3, false);
+
+  expect(text.lookupWord("north", dictAddress)).toBe(base + entryLength);
+  expect(text.lookupWord("zzz", dictAddress)).toBe(0);
+});
+
+test("tokenizeCommand splits on spaces, tracking start and length", () => {
+  const { text, dictAddress } = withSeparators([]);
+
+  expect(text.tokenizeCommand("go north", dictAddress)).toEqual([
+    { start: 0, length: 2, text: "go" },
+    { start: 3, length: 5, text: "north" },
+  ]);
+});
+
+test("tokenizeCommand emits a separator as its own single-character token", () => {
+  const { text, dictAddress } = withSeparators(["."]);
+
+  expect(text.tokenizeCommand("wait.", dictAddress)).toEqual([
+    { start: 0, length: 4, text: "wait" },
+    { start: 4, length: 1, text: "." },
+  ]);
+});
+
+test("tokenizeCommand handles a separator that opens the input", () => {
+  const { text, dictAddress } = withSeparators([","]);
+
+  expect(text.tokenizeCommand(",x", dictAddress)).toEqual([
+    { start: 0, length: 1, text: "," },
+    { start: 1, length: 1, text: "x" },
+  ]);
+});
