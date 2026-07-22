@@ -18,6 +18,13 @@ export const RunState = {
 
 export type RunState = (typeof RunState)[keyof typeof RunState];
 
+export interface StepResult {
+  /** The instruction that just executed. */
+  executed: Instruction;
+  /** The machine's state after the step. */
+  state: RunState;
+}
+
 export interface Frame {
   /** Address of the routine header this frame is executing (0 for main). */
   routineAddress: number;
@@ -29,6 +36,11 @@ export interface Frame {
   /** Index into the value stack at which this frame's evaluation stack begins. */
   stackBase: number;
 }
+
+const toS16 = (x: number): number => {
+  x &= 0xffff;
+  return x >= 0x8000 ? x - 0x10000 : x;
+};
 
 export class Machine {
   readonly memory: Memory;
@@ -98,6 +110,9 @@ export class Machine {
 
   onOutput: (text: string) => void = () => {};
 
+  /** Called when a routine returns. */
+  onExitFrame: (returnPC: number) => void = () => {};
+
   /**
    * Trace hook: fired for every instruction just before it executes, with the
    * current call depth (main routine = 1) and its resolved operand values.
@@ -105,11 +120,14 @@ export class Machine {
    */
   onTrace: (insn: Instruction, depth: number, ops: number[]) => void = () => {};
 
+  /** Called when a routine is entered (call). */
+  onEnterFrame: (routineAddress: number, returnPC: number) => void = () => {};
+
   /**
    * Run until the machine halts, blocks on input, or hits a breakpoint.
    * Returns the resulting state. Safe to call again to resume from Paused.
    */
-  run(maxInstructions = 1): RunState {
+  run(maxInstructions = 100_000_000): RunState {
     if (this.runState === RunState.Halted) {
       return this.runState;
     }
@@ -173,16 +191,145 @@ export class Machine {
     }
   }
 
+  /**
+   * Execute a single instruction and return what happened. Valid when the
+   * machine is Running or Paused (single-stepping past a breakpoint). A read
+   * opcode with no queued input leaves the machine WaitingForInput.
+   */
+  step(): StepResult {
+    if (this.runState === RunState.Halted) {
+      throw new Error("cannot step: machine has halted");
+    }
+
+    if (this.runState === RunState.WaitingForInput) {
+      throw new Error("cannot step: waiting for input (call provideInput)");
+    }
+
+    this.runState = RunState.Running;
+
+    const executed = this.stepInternal();
+
+    return { executed, state: this.runState };
+  }
+
   private execute(name: string): void {
     const o = this.ops;
 
     switch (name) {
+      // --- arithmetic ---
+      case "add":
+        return this.store((toS16(o[0]) + toS16(o[1])) & 0xffff);
+      case "sub":
+        return this.store((toS16(o[0]) - toS16(o[1])) & 0xffff);
+
+      // --- jumps ---
+      case "je": {
+        let eq = false;
+
+        for (let i = 1; i < o.length; i++) {
+          if (o[0] === o[i]) eq = true;
+        }
+
+        return this.branchOn(eq);
+      }
+      case "jz":
+        return this.branchOn(o[0] === 0);
+
+      // --- calls / returns ---
+      case "call":
+        return this.call(o[0], o.slice(1), this.currentInstruction.storeVariable ?? -1);
+      case "ret":
+        return this.return_(o[0]);
+
+      // --- load / store / memory ---
+      case "storew":
+        return this.memory.writeWord((o[0] + o[1] * 2) & 0xffff, o[2]);
+
       default:
         throw new Error(
           `unimplemented opcode '${name}' at 0x${this.currentInstruction.address.toString(16)}` +
-            ` (operands: ${o.join(", ")})`,
+            ` (operands: ${o.map((v) => "0x" + v.toString(16).padStart(4, "0")).join(", ")})`,
         );
     }
+  }
+
+  private call(packedAddress: number, args: number[], storeVariable: number): void {
+    if (packedAddress === 0) {
+      // Calling packed routine 0 does nothing and yields false. (Test the
+      // packed address, not the unpacked one: in v6 unpackRoutine(0) is the
+      // nonzero routines offset, so an unpacked check would miss this.)
+      if (storeVariable >= 0) this.writeVariable(storeVariable, 0);
+      return;
+    }
+
+    const address = unpackRoutineAddress(this.version, packedAddress, this.routinesOffset);
+    const returnPC = this.pc;
+
+    this.pc = address;
+
+    const frame = this.enterRoutineHeader(address, args, storeVariable, returnPC);
+
+    this.frames.push(frame);
+    this.current = frame;
+    this.onEnterFrame(address, returnPC);
+  }
+
+  private store(value: number): void {
+    const variable = this.currentInstruction.storeVariable;
+
+    if (variable === undefined) {
+      throw new Error(`store from a non-storing opcode '${this.currentInstruction.opcode.name}'`);
+    }
+
+    this.writeVariable(variable, value & 0xffff);
+  }
+
+  private branchOn(condition: boolean): void {
+    const b = this.currentInstruction.branch;
+
+    if (b === undefined) {
+      throw new Error(`branch on a non-branching opcode '${this.currentInstruction.opcode.name}'`);
+    }
+
+    if (condition !== b.whenTrue) return;
+
+    if (b.offset === 0) {
+      this.return_(0);
+    } else if (b.offset === 1) {
+      this.return_(1);
+    } else {
+      if (b.targetAddress === undefined) {
+        throw new Error("branch offset with no resolved target address");
+      }
+
+      this.pc = b.targetAddress;
+    }
+  }
+
+  private return_(value: number): void {
+    const frame = this.frames.pop();
+
+    if (frame === undefined) {
+      throw new Error("return with no active call frame");
+    }
+
+    // discard this frame's evaluation stack
+    this.stack.length = frame.stackBase;
+    this.pc = frame.returnPC;
+
+    if (this.frames.length === 0) {
+      // returned out of the main routine
+      this.runState = RunState.Halted;
+      return;
+    }
+
+    this.current = this.frames[this.frames.length - 1];
+
+    if (frame.storeVariable >= 0) {
+      this.writeVariable(frame.storeVariable, value);
+    }
+
+    this.onExitFrame(frame.returnPC);
   }
 
   private stepInternal(): Instruction {
