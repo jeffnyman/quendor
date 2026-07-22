@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadStoryFromFile } from "quendor/node";
+import { loadStoryFromFile, readLineSync } from "quendor/node";
 import {
   disassembleReachable,
   dumpAll,
@@ -8,8 +8,9 @@ import {
   formatInstruction,
   formatResolvedOperands,
   Machine,
+  RunState,
 } from "quendor";
-import { readSync, appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 interface ZexpOptions {
   trace?: string;
@@ -129,7 +130,7 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
 
     flushTrace();
 
-    if (state === "waiting-input") {
+    if (state === RunState.WaitingForInput) {
       const line = readLineSync();
 
       if (line === null) break; // end of input: stop cleanly
@@ -146,38 +147,6 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   if (tracePath) {
     process.stderr.write(`\n[trace written to ${tracePath}]\n`);
   }
-}
-
-/**
- * Read one line from stdin synchronously (so it fits the tight run loop).
- * Returns null at end of input.
- */
-function readLineSync(): string | null {
-  const buf = Buffer.alloc(1);
-  let line = "";
-  let sawAny = false;
-
-  for (;;) {
-    let n: number;
-
-    try {
-      n = readSync(0, buf, 0, 1, null);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
-      break; // EOF or closed stream
-    }
-
-    if (n === 0) break; // EOF
-
-    sawAny = true;
-
-    const ch = buf.toString("utf8");
-
-    if (ch === "\n") return line;
-    if (ch !== "\r") line += ch;
-  }
-
-  return sawAny ? line : null;
 }
 
 function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
