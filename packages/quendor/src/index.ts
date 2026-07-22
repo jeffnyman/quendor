@@ -48,7 +48,7 @@ export {
 } from "./opcodes.js";
 export type { Opcode } from "./opcodes.js";
 
-export { formatInstruction, formatVariable } from "./disasm.js";
+export { formatInstruction, formatVariable, formatResolvedOperands } from "./disasm.js";
 export { disassembleReachable } from "./disassembler.js";
 export type { DisassembledRun } from "./disassembler.js";
 

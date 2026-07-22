@@ -70,6 +70,23 @@ export function formatVariable(number: number): string {
   }
 }
 
+/**
+ * Annotate an instruction's *variable* operands with the runtime values they
+ * resolved to (e.g. `g84=0x23e9 local0=0x8010`), or `""` if it has none.
+ * Constants are omitted as they're already literal in the disassembly. `ops` are
+ * the resolved input-operand values, in operand order (from the trace hook).
+ */
+export function formatResolvedOperands(insn: Instruction, ops: number[]): string {
+  return insn.operands
+    .map((op, i) =>
+      op.kind === OperandKind.Variable
+        ? `${formatVariable(op.value)}=0x${hex(ops[i] ?? 0, 4)}`
+        : null,
+    )
+    .filter((s): s is string => s !== null)
+    .join(" ");
+}
+
 function formatOperand(operand: Operand): string {
   switch (operand.kind) {
     case OperandKind.LargeConstant:
