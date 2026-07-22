@@ -48,6 +48,159 @@ export class ZText {
     return chars;
   }
 
+  /** Split typed input into tokens, respecting the dictionary's separators. */
+  tokenizeCommand(
+    text: string,
+    dictionaryAddress: number,
+  ): { start: number; length: number; text: string }[] {
+    let addr = dictionaryAddress;
+    const sepCount = this.memory.readByte(addr++);
+    const seps = new Set<string>();
+
+    for (let i = 0; i < sepCount; i++) {
+      seps.add(String.fromCharCode(this.memory.readByte(addr++)));
+    }
+
+    const tokens: { start: number; length: number; text: string }[] = [];
+    let start = -1;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+
+      if (start < 0) {
+        if (ch !== " ") start = i;
+
+        if (seps.has(ch)) {
+          tokens.push({ start: i, length: 1, text: ch });
+          start = -1;
+        }
+      } else if (ch === " ") {
+        tokens.push({ start, length: i - start, text: text.slice(start, i) });
+        start = -1;
+      } else if (seps.has(ch)) {
+        tokens.push({ start, length: i - start, text: text.slice(start, i) });
+        tokens.push({ start: i, length: 1, text: ch });
+        start = -1;
+      }
+    }
+
+    if (start >= 0) {
+      tokens.push({ start, length: text.length - start, text: text.slice(start) });
+    }
+
+    return tokens;
+  }
+
+  /** Find a word in a dictionary; returns its entry address, or 0 if absent. */
+  lookupWord(word: string, dictionaryAddress: number): number {
+    const resolution = this.resolution;
+    const encoded = this.encodeWord(word);
+
+    let addr = dictionaryAddress;
+    const sepCount = this.memory.readByte(addr++);
+
+    addr += sepCount;
+
+    const entryLength = this.memory.readByte(addr++);
+    let entryCount = this.memory.readWord(addr);
+
+    addr += 2;
+
+    let sorted = true;
+
+    if (entryCount >= 0x8000) {
+      entryCount = 0x10000 - entryCount; // negative count => unsorted
+      sorted = false;
+    }
+
+    const base = addr;
+    let lower = 0;
+    let upper = entryCount - 1;
+
+    while (lower <= upper) {
+      const entryNumber = sorted ? (lower + upper) >> 1 : lower;
+      const entryAddress = base + entryNumber * entryLength;
+      let a = entryAddress;
+      let mismatch = false;
+
+      for (let i = 0; i < resolution; i++) {
+        const entry = this.memory.readWord(a);
+
+        if (encoded[i] !== entry) {
+          if (sorted) {
+            if (encoded[i] > entry) lower = entryNumber + 1;
+            else upper = entryNumber - 1;
+          } else {
+            lower++;
+          }
+
+          mismatch = true;
+          break;
+        }
+
+        a += 2;
+      }
+
+      if (!mismatch) {
+        return entryAddress;
+      }
+    }
+
+    return 0;
+  }
+
+  /** Encode a word into `resolution` packed Z-words, for dictionary lookup. */
+  encodeWord(word: string): number[] {
+    const resolution = this.resolution;
+
+    if (word.length > resolution * 3) {
+      word = word.slice(0, resolution * 3);
+    }
+
+    const alphabet = this.newAlphabet();
+    const zchars: number[] = [];
+    let ti = 0;
+
+    while (zchars.length < resolution * 3) {
+      if (ti < word.length) {
+        const ch = word[ti++];
+
+        if (ch === " ") {
+          zchars.push(0);
+          continue;
+        }
+
+        const found = alphabet.findChar(ch);
+
+        if (found) {
+          if (found.set !== 0) zchars.push((this.version <= 2 ? 1 : 3) + found.set);
+          zchars.push(found.index);
+        } else {
+          const zc = ch.charCodeAt(0);
+          zchars.push(5, 6, (zc >> 5) & 0x1f, zc & 0x1f);
+        }
+      } else {
+        zchars.push(5);
+      }
+    }
+
+    zchars.length = resolution * 3;
+
+    const words: number[] = [];
+
+    for (let i = 0; i < resolution; i++) {
+      words.push(((zchars[i * 3] << 10) | (zchars[i * 3 + 1] << 5) | zchars[i * 3 + 2]) & 0xffff);
+    }
+
+    words[resolution - 1] |= 0x8000;
+
+    return words;
+  }
+
+  private get resolution(): number {
+    return this.version <= 3 ? 2 : 3;
+  }
+
   private readAbbreviation(index: number): number[] {
     if (index < 0 || index > 95) {
       throw new RangeError(`abbreviation index out of range: ${index}`);

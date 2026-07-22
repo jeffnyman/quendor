@@ -64,4 +64,17 @@ export class Memory {
     this.bytes[address] = value & 0xff;
     this.onWrite?.(address, 1);
   }
+
+  /** Write an unsigned 16-bit word, big-endian; value is masked to 16 bits. */
+  writeWord(address: number, value: number): void {
+    if (address < 0 || address + 1 >= this.bytes.length) {
+      throw new RangeError(`writeWord out of range: 0x${address.toString(16)}`);
+    }
+
+    const v = value & 0xffff;
+
+    this.bytes[address] = (v >> 8) & 0xff;
+    this.bytes[address + 1] = v & 0xff;
+    this.onWrite?.(address, 2);
+  }
 }
