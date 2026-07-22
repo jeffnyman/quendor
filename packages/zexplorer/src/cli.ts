@@ -1,8 +1,19 @@
 #!/usr/bin/env node
 
 import { loadStoryFromFile } from "quendor/node";
-import { disassembleReachable, dumpAll, dumpHeader, formatInstruction, Machine } from "quendor";
-import { writeFileSync } from "node:fs";
+import {
+  disassembleReachable,
+  dumpAll,
+  dumpHeader,
+  formatInstruction,
+  formatResolvedOperands,
+  Machine,
+} from "quendor";
+import { readSync, appendFileSync, writeFileSync } from "node:fs";
+
+interface ZexpOptions {
+  trace?: string;
+}
 
 /**
  * Write a header dump (infodump-style).
@@ -72,13 +83,116 @@ async function cmdDisasm(path: string, addressArg: string | undefined): Promise<
   console.log(`${runs.length} runs, ${instructionCount} instructions total`);
 }
 
-async function cmdRun(path: string): Promise<void> {
+async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   const story = await loadStoryFromFile(path);
   const machine = new Machine(story);
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
   };
+
+  // --trace: stream every executed instruction to a file, indented by call
+  // depth so the routine call chain reads at a glance. Batched per run() to
+  // avoid a filesystem write per instruction.
+  const tracePath = opts.trace;
+  const traceBatch: string[] = [];
+
+  if (tracePath) {
+    // truncate any previous trace
+    writeFileSync(tracePath, "");
+
+    machine.onTrace = (insn, depth, ops): void => {
+      const indent = "  ".repeat(Math.max(0, depth - 1));
+      let line = `${indent}${hex(insn.address)}: ${formatInstruction(insn, story.text)}`;
+
+      // Annotate what each variable operand actually resolved to at runtime,
+      // the one thing the static disassembly can't show.
+      const resolved = formatResolvedOperands(insn, ops);
+
+      if (resolved) {
+        line += `  ; ${resolved}`;
+      }
+
+      traceBatch.push(line);
+    };
+  }
+
+  const flushTrace = (): void => {
+    if (tracePath && traceBatch.length) {
+      appendFileSync(tracePath, traceBatch.join("\n") + "\n");
+      traceBatch.length = 0;
+    }
+  };
+
+  for (;;) {
+    const state = machine.run();
+
+    flushTrace();
+
+    if (state === "waiting-input") {
+      const line = readLineSync();
+
+      if (line === null) break; // end of input: stop cleanly
+
+      machine.provideInput(line);
+    } else {
+      // halted (or paused, though plain run sets no breakpoints)
+      break;
+    }
+  }
+
+  flushTrace();
+
+  if (tracePath) {
+    process.stderr.write(`\n[trace written to ${tracePath}]\n`);
+  }
+}
+
+/**
+ * Read one line from stdin synchronously (so it fits the tight run loop).
+ * Returns null at end of input.
+ */
+function readLineSync(): string | null {
+  const buf = Buffer.alloc(1);
+  let line = "";
+  let sawAny = false;
+
+  for (;;) {
+    let n: number;
+
+    try {
+      n = readSync(0, buf, 0, 1, null);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
+      break; // EOF or closed stream
+    }
+
+    if (n === 0) break; // EOF
+
+    sawAny = true;
+
+    const ch = buf.toString("utf8");
+
+    if (ch === "\n") return line;
+    if (ch !== "\r") line += ch;
+  }
+
+  return sawAny ? line : null;
+}
+
+function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
+  const opts: ZexpOptions = {};
+  const positional: string[] = [];
+
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "--trace" && i + 1 < rest.length) {
+      opts.trace = rest[++i];
+    } else {
+      positional.push(rest[i]);
+    }
+  }
+
+  return { path: positional[0], opts };
 }
 
 function hex(n: number, width = 4): string {
@@ -142,28 +256,31 @@ export async function main(): Promise<void> {
       return;
     }
     case "run": {
-      const path = rest[0];
+      const { path, opts } = parseArgs(rest);
 
       if (!path) {
-        console.error("usage: zexp run <story-file>");
+        console.error("usage: zexp run <story-file> [--trace-file]");
         process.exitCode = 1;
         return;
       }
 
-      await cmdRun(path);
+      await cmdRun(path, opts);
 
       return;
     }
     default:
       console.error("usage: zexp <command> [args]");
       console.error("commands:");
-      console.error("  header <story-file>               parse and print the story header");
-      console.error("  abbrevs <story-file>              decode the abbreviation table");
+      console.error("  header <story-file>                parse and print the story header");
+      console.error("  abbrevs <story-file>               decode the abbreviation table");
       console.error(
-        "  dump <story-file> [output-file]   dump header + objects/properties (to a file or stdout)",
+        "  dump <story-file> [output-file]    dump header + objects/properties (to a file or stdout)",
       );
       console.error(
-        "  disasm <story-file> [addr]        disassemble every reachable routine/jump/branch target",
+        "  disasm <story-file> [addr]         disassemble every reachable routine/jump/branch target",
+      );
+      console.error(
+        "  run <story-file> [--trace <file>]  execute the story (headless); --trace logs the opcode path",
       );
 
       process.exitCode = 1;
