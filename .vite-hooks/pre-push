@@ -1,2 +1,2 @@
 vp run -w ready
-vp exec fallow
+node .vite-hooks/fallow-coverage.mjs
