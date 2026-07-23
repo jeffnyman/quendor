@@ -9,19 +9,32 @@ Usage:
   quendor <story-file>
 
   <story-file>   a Z-code game (.z1-.z8)
+  --seed N       fix the RNG seed (reproducible playthroughs)
 `;
 
-type ParsedArgs = { help: true } | { help: false; path?: string };
+type ParsedArgs = { help: true } | { help: false; path?: string; seed?: number };
 
-function parseArgs(args: string[]): ParsedArgs {
-  if (args.some((a) => a === "--help" || a === "-h")) {
-    return { help: true };
+export function parseArgs(args: string[]): ParsedArgs {
+  let path: string | undefined;
+  let seed: number | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+
+    if (a === "--help" || a === "-h") {
+      return { help: true };
+    } else if (a === "--seed" && i + 1 < args.length) {
+      const n = parseInt(args[++i], 10);
+      if (!Number.isNaN(n)) seed = n;
+    } else if (!a.startsWith("-")) {
+      path ??= a;
+    }
   }
 
-  return { help: false, path: args.find((a) => !a.startsWith("-")) };
+  return { help: false, path, seed };
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
 
   if (parsed.help) {
@@ -36,7 +49,7 @@ async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-  const machine = new Machine(story);
+  const machine = new Machine(story, { randomSeed: parsed.seed });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
@@ -55,7 +68,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(`quendor: ${(err as Error).message}`);
-  process.exitCode = 1;
-});
+/* v8 ignore next -- @preserve */
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(`quendor: ${(err as Error).message}`);
+    process.exitCode = 1;
+  });
+}
