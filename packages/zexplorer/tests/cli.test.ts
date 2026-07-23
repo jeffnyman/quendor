@@ -56,6 +56,7 @@ function fakeStory(
       fileLength: 0,
       alphabetTableAddress: 0,
       routinesOffset: 0,
+      stringsOffset: 0,
       checksum: 0,
     },
     readAbbreviations: () => abbreviations,

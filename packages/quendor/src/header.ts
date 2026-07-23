@@ -22,6 +22,7 @@ export const HeaderOffset = {
   InterpreterNumber: 0x1e,
   InterpreterVersion: 0x1f,
   RoutinesOffset: 0x28, // v6/v7; divided by 8 to get the real offset
+  StringsOffset: 0x2a, // v6/v7; divided by 8 to get the real offset
   AlphabetTableAddress: 0x34, // v5+; 0 means use the default alphabets
 } as const;
 
@@ -42,6 +43,8 @@ export interface Header {
   alphabetTableAddress: number;
   /** v6/v7 routine-packing base, stored divided by 8 (see unpackRoutineAddress). */
   routinesOffset: number;
+  /** v6/v7 string-packing base, stored divided by 8 (see unpackString). */
+  stringsOffset: number;
   checksum: number;
 }
 
@@ -64,6 +67,7 @@ export function readHeader(memory: Memory): Header {
     fileLength: memory.readWord(HeaderOffset.FileLength) * fileLengthScale(version),
     alphabetTableAddress: version >= 5 ? memory.readWord(HeaderOffset.AlphabetTableAddress) : 0,
     routinesOffset: memory.readWord(HeaderOffset.RoutinesOffset),
+    stringsOffset: memory.readWord(HeaderOffset.StringsOffset),
     checksum: memory.readWord(HeaderOffset.Checksum),
   };
 }
@@ -107,6 +111,33 @@ export function unpackRoutineAddress(
     case 6:
     case 7:
       return packedAddress * 4 + routinesOffset * 8;
+    default:
+      return packedAddress * 8;
+  }
+}
+
+/**
+ * Unpack a packed string address into a real byte address. Mirrors
+ * unpackRoutineAddress: version-dependent packing, with v6/v7 adding the
+ * header's Strings Offset (stored divided by 8). See the Z-Machine Standards
+ * Document 1.1, section 1.2.3.
+ */
+export function unpackString(
+  version: number,
+  packedAddress: number,
+  stringsOffset: number,
+): number {
+  switch (version) {
+    case 1:
+    case 2:
+    case 3:
+      return packedAddress * 2;
+    case 4:
+    case 5:
+      return packedAddress * 4;
+    case 6:
+    case 7:
+      return packedAddress * 4 + stringsOffset * 8;
     default:
       return packedAddress * 8;
   }

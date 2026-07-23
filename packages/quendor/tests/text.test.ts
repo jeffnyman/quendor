@@ -18,6 +18,7 @@ function buildHeader(version: number, overrides: Partial<Header> = {}): Header {
     fileLength: 0,
     alphabetTableAddress: 0,
     routinesOffset: 0,
+    stringsOffset: 0,
     checksum: 0,
     ...overrides,
   };
