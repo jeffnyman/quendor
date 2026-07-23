@@ -100,7 +100,7 @@ export class Machine {
   /** The seed governing all randomness (for reproducible playthroughs). */
   readonly randomSeed: number;
 
-  constructor(story: Story) {
+  constructor(story: Story, options: { randomSeed?: number } = {}) {
     this.memory = story.memory;
     this.version = story.header.version;
     this.text = story.text;
@@ -119,7 +119,9 @@ export class Machine {
     this.staticBase = this.memory.readWord(0x0e);
     this.originalDynamic = this.memory.bytes.slice(0, this.staticBase);
 
-    this.randomSeed = 0;
+    // Default seed 1 keeps runs reproducible; --seed (or any consumer) overrides it.
+    this.randomSeed = (options.randomSeed ?? 1) >>> 0 || 1;
+    this.rngState = this.randomSeed;
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -914,6 +916,8 @@ export class Machine {
     this.setupHeaderCapabilities();
     this.stack.length = 0;
     this.frames.length = 0;
+    // keep restarts reproducible
+    this.rngState = this.randomSeed;
     this.memoryStreams.length = 0;
     this.charBuffer.length = 0;
     this.pendingRead = null;
