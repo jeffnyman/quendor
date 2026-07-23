@@ -280,3 +280,11 @@ test("tokenizeCommand handles a separator that opens the input", () => {
     { start: 1, length: 1, text: "x" },
   ]);
 });
+
+test("encodeWord escapes a character outside the alphabets as a 10-bit ZSCII sequence", () => {
+  const text = newText(3);
+
+  // '@' is in none of the alphabets (A0/A1/A2), so it encodes as the 5,6,hi,lo
+  // ZSCII escape — and must survive a decode round-trip.
+  expect(text.decode(text.encodeWord("@"))).toBe("@");
+});
