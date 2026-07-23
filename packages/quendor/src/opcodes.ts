@@ -73,6 +73,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x05, "inc_chk", F.Branch | F.FirstOpByRef, 1, 8],
   [OpcodeKind.TwoOp, 0x06, "jin", F.Branch, 1, 8],
   [OpcodeKind.TwoOp, 0x07, "test", F.Branch, 1, 8],
+  [OpcodeKind.TwoOp, 0x08, "or", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x09, "and", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x0a, "test_attr", F.Branch, 1, 8],
   [OpcodeKind.TwoOp, 0x0b, "set_attr", F.None, 1, 8],
@@ -88,6 +89,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x15, "sub", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x16, "mul", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x17, "div", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x18, "mod", F.Store, 1, 8],
 
   // one-operand opcodes
   [OpcodeKind.OneOp, 0x00, "jz", F.Branch, 1, 8],
@@ -104,6 +106,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.OneOp, 0x0c, "jump", F.Jump, 1, 8],
   [OpcodeKind.OneOp, 0x0d, "print_paddr", F.None, 1, 8],
   [OpcodeKind.OneOp, 0x0e, "load", F.FirstOpByRef | F.Store, 1, 8],
+  [OpcodeKind.OneOp, 0x0f, "not", F.Store, 1, 4],
 
   // zero-operand opcodes
   [OpcodeKind.ZeroOp, 0x00, "rtrue", F.Return, 1, 8],
@@ -112,8 +115,10 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x03, "print_ret", F.Return | F.ZText, 1, 8],
   [OpcodeKind.ZeroOp, 0x07, "restart", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
+  [OpcodeKind.ZeroOp, 0x09, "pop", F.None, 1, 4],
   [OpcodeKind.ZeroOp, 0x0a, "quit", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
+  [OpcodeKind.ZeroOp, 0x0d, "verify", F.Branch, 3, 8],
 
   // variable-operand opcodes
   [OpcodeKind.VarOp, 0x00, "call", F.Call | F.Store, 1, 4],
