@@ -1,6 +1,6 @@
 {
   "name": "quendor",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A Specification-Accurate Z-Machine Implementation",
   "keywords": [
     "infocom",
