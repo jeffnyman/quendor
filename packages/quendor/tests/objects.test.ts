@@ -193,3 +193,156 @@ test("readProperties decodes all three v4+ size-byte forms", () => {
     { number: 20, dataAddress: 148, length: 64 },
   ]);
 });
+
+// --- mutation: attributes, links, and tree surgery -------------------------
+
+/**
+ * A small, valid v1-3 object tree for exercising mutation:
+ *
+ *     1 (root)
+ *     └── 2 ── 3 ── 4   (a sibling chain; 2 is the first child)
+ *
+ * Only the parent/sibling/child link bytes are set — mutation never reads
+ * property tables — which keeps the fixture focused on tree shape.
+ */
+/** Build a v1-3 object table from [object, parent, sibling, child] link rows. */
+function tree(links: readonly [number, number, number, number][]): ObjectTable {
+  const bytes = new Uint8Array(128);
+
+  for (const [obj, parent, sibling, child] of links) {
+    const addr = 62 + (obj - 1) * 9; // entries start at 62 (31 default words); parent/sibling/child at +4/+5/+6
+    bytes[addr + 4] = parent;
+    bytes[addr + 5] = sibling;
+    bytes[addr + 6] = child;
+  }
+
+  return new ObjectTable(new Memory(bytes), 3, 0);
+}
+
+function buildTree(): ObjectTable {
+  return tree([
+    [1, 0, 0, 2], // root, first child 2
+    [2, 1, 3, 0], // 2 → sibling 3
+    [3, 1, 4, 0], // 3 → sibling 4
+    [4, 1, 0, 0], // 4, end of the chain
+  ]);
+}
+
+test("setAttribute sets then clears a bit, round-tripping with hasAttribute", () => {
+  const objects = buildV3Table();
+
+  expect(objects.hasAttribute(1, 5)).toBe(false);
+
+  objects.setAttribute(1, 5, true);
+  expect(objects.hasAttribute(1, 5)).toBe(true);
+
+  objects.setAttribute(1, 5, false);
+  expect(objects.hasAttribute(1, 5)).toBe(false);
+});
+
+test("setAttribute leaves neighbouring attributes untouched", () => {
+  const objects = buildV3Table();
+
+  objects.setAttribute(1, 5, true); // object 1 already has attribute 3
+
+  expect(objects.getSetAttributes(1)).toEqual([3, 5]);
+});
+
+test("setAttribute rejects out-of-range attribute numbers", () => {
+  const objects = buildV3Table();
+
+  expect(() => objects.setAttribute(1, 32, true)).toThrow(RangeError);
+});
+
+test("setParent/setSibling/setChild write the links (v1-3, single byte)", () => {
+  const objects = buildV3Table();
+
+  objects.setParent(1, 7);
+  objects.setSibling(1, 8);
+  objects.setChild(1, 9);
+
+  expect([objects.getParent(1), objects.getSibling(1), objects.getChild(1)]).toEqual([7, 8, 9]);
+});
+
+test("setParent writes a 2-byte object number (v4+)", () => {
+  const objects = buildV4Table();
+
+  objects.setParent(1, 500);
+
+  expect(objects.getParent(1)).toBe(500);
+});
+
+test("readPropertyDefault reads a property's default word from the table header", () => {
+  const bytes = new Uint8Array(260);
+
+  bytes[0] = 0x12; // property 1's default word = 0x1234
+  bytes[1] = 0x34;
+  bytes[4] = 0xab; // property 3's default word (at (3-1)*2 = offset 4) = 0xabcd
+  bytes[5] = 0xcd;
+
+  const objects = new ObjectTable(new Memory(bytes), 3, 0);
+
+  expect(objects.readPropertyDefault(1)).toBe(0x1234);
+  expect(objects.readPropertyDefault(3)).toBe(0xabcd);
+});
+
+test("removeObject unlinks a middle child, relinking its left sibling across the gap", () => {
+  const objects = buildTree(); // 1 → 2 → 3 → 4
+
+  objects.removeObject(3);
+
+  expect(objects.getParent(3)).toBe(0); // detached from the tree
+  expect(objects.getSibling(3)).toBe(0);
+  expect(objects.getSibling(2)).toBe(4); // 2 now skips the removed 3, pointing at 4
+  expect(objects.getChild(1)).toBe(2); // the parent's first child is unaffected
+});
+
+test("removeObject unlinks the first child, advancing the parent's child pointer", () => {
+  const objects = buildTree();
+
+  objects.removeObject(2);
+
+  expect(objects.getParent(2)).toBe(0);
+  expect(objects.getChild(1)).toBe(3); // parent's child now points at the old second child
+});
+
+test("moveObject makes the object the destination's first child, pushing the old child aside", () => {
+  const objects = buildTree();
+
+  objects.moveObject(4, 1); // detach 4 from the chain, re-insert at the front of 1's children
+
+  expect(objects.getParent(4)).toBe(1);
+  expect(objects.getChild(1)).toBe(4); // 4 is now the first child
+  expect(objects.getSibling(4)).toBe(2); // the old first child becomes 4's sibling
+  expect(objects.getSibling(3)).toBe(0); // and 4 was cleanly removed from its old position
+});
+
+test("moveObject to 0 detaches the object and gives it no new parent", () => {
+  const objects = buildTree();
+
+  objects.moveObject(2, 0);
+
+  expect(objects.getParent(2)).toBe(0);
+  expect(objects.getChild(1)).toBe(3); // 1's first child advances to the old second child
+});
+
+test("removeObject degrades gracefully when an object isn't in its parent's child chain", () => {
+  // A malformed tree: object 2 claims parent 1, but 1's real children are just 3.
+  const objects = tree([
+    [1, 0, 0, 3], // 1's only child is 3
+    [2, 1, 0, 0], // 2 claims parent 1 — but 1 doesn't list it
+    [3, 1, 0, 0], // 3 is 1's actual child
+  ]);
+
+  objects.removeObject(2); // no left sibling can be found for 2 in 1's chain
+
+  expect(objects.getParent(2)).toBe(0); // 2 is still detached
+  expect(objects.getChild(1)).toBe(3); // the real child chain is left intact
+});
+
+test("removeObject on a parentless object is a safe no-op", () => {
+  const objects = tree([[1, 0, 0, 0]]); // object 1: no parent, no siblings, no children
+
+  expect(() => objects.removeObject(1)).not.toThrow();
+  expect(objects.getParent(1)).toBe(0);
+});
