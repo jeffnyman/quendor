@@ -23,7 +23,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jeffnyman/quendor.git"
+    "url": "git+https://github.com/jeffnyman/quendor.git",
+    "directory": "packages/quendor"
   },
   "bin": {
     "qdor": "./dist/qdor.mjs",
