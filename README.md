@@ -172,6 +172,8 @@ This codebase was created and is maintained 100% without AI assistance. I believ
 
 That said, I want to make contributing as seamless as possible for everyone. I have included AI instruction files (such as `CLAUDE.md`) in the repository. If you use AI coding assistants, these files will guide your tools to respect the project architecture, testing paradigms, and style constraints. This keeps your local workflow fast and any incoming pull requests clean. The goal here isn't to restrict how you write code, but to ensure that whether a feature is drafted by a human or an assistant, it ultimately respects the foundational engineering decisions of this repository.
 
+To round that out, the repository also ships a [repomix](https://repomix.com) config: `vp dlx repomix` packs the whole codebase into a single, LLM-friendly file (`repomix-output.xml`) you can paste into a chat assistant. Where the instruction files above guide assistants that read the repo directly, this covers the ones that work from pasted context in a chat window rather than your editor.
+
 ## 👨‍💻 Author
 
 <p align="center">
