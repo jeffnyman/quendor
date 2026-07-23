@@ -96,6 +96,10 @@ export class Machine {
   // Data watchpoints: break when a watched byte's value changes.
   private watchTriggered = false;
 
+  private rngState = 1;
+  /** The seed governing all randomness (for reproducible playthroughs). */
+  readonly randomSeed: number;
+
   constructor(story: Story) {
     this.memory = story.memory;
     this.version = story.header.version;
@@ -114,6 +118,8 @@ export class Machine {
     // Snapshot pristine dynamic memory before we mutate any header bytes.
     this.staticBase = this.memory.readWord(0x0e);
     this.originalDynamic = this.memory.bytes.slice(0, this.staticBase);
+
+    this.randomSeed = 0;
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -252,6 +258,9 @@ export class Machine {
       case "inc":
         this.incDec(o[0], +1);
         return;
+      case "dec":
+        this.incDec(o[0], -1);
+        return;
       case "inc_chk": {
         const v = this.incDec(o[0], +1);
         return this.branchOn(v > toS16(o[1]));
@@ -300,6 +309,8 @@ export class Machine {
         return this.return_(this.readVariable(0));
 
       // --- load / store / memory ---
+      case "load":
+        return this.store(this.readVariableIndirect(o[0]));
       case "store":
         return this.writeVariableIndirect(o[0], o[1]);
       case "loadw":
@@ -339,12 +350,17 @@ export class Machine {
       case "insert_obj":
         if (o[0] !== 0 && o[1] !== 0) this.objects.moveObject(o[0], o[1]);
         return;
+      case "remove_obj":
+        if (o[0] !== 0) this.objects.removeObject(o[0]);
+        return;
       case "get_prop":
         return this.store(this.getProp(o[0], o[1]));
       case "get_prop_addr":
         return this.store(this.getPropAddr(o[0], o[1]));
       case "get_prop_len":
         return this.store(this.getPropLen(o[0]));
+      case "get_next_prop":
+        return this.store(this.getNextProp(o[0], o[1]));
       case "put_prop":
         return this.putProp(o[0], o[1], o[2]);
 
@@ -374,6 +390,8 @@ export class Machine {
         return this.sread(o);
 
       // --- game state ---
+      case "random":
+        return this.random(toS16(o[0]));
       case "quit":
         this.runState = RunState.Halted;
         return;
@@ -493,6 +511,26 @@ export class Machine {
     const oneByte = this.version <= 3 ? (sizeByte & 0xe0) === 0 : (sizeByte & 0xc0) === 0;
 
     return oneByte ? this.memory.readByte(dataAddress) : this.memory.readWord(dataAddress);
+  }
+
+  private getNextProp(objNum: number, propNum: number): number {
+    if (objNum === 0) return 0;
+
+    const mask = this.version <= 3 ? 0x1f : 0x3f;
+    let address = this.objects.getFirstPropertyAddress(objNum);
+
+    if (propNum !== 0) {
+      let value: number;
+
+      do {
+        value = this.memory.readByte(address);
+        address = this.objects.getNextPropertyAddress(address);
+      } while ((value & mask) > propNum);
+
+      if ((value & mask) !== propNum) throw new Error("get_next_prop: not found");
+    }
+
+    return this.memory.readByte(address) & mask;
   }
 
   private getPropAddr(objNum: number, propNum: number): number {
@@ -880,5 +918,31 @@ export class Machine {
     this.charBuffer.length = 0;
     this.pendingRead = null;
     this.current = this.setupInitialFrame(this.initialProgramCounter);
+  }
+
+  private seed(value: number): void {
+    this.rngState = value >>> 0 || 1;
+  }
+
+  private nextRandom(range: number): number {
+    // Simple deterministic LCG; adequate for range output and reproducible
+    // when re-seeded with the same value.
+    this.rngState = (Math.imul(this.rngState, 1103515245) + 12345) & 0x7fffffff;
+    return (this.rngState % range) + 1;
+  }
+
+  private random(range: number): void {
+    if (range > 0) {
+      this.store(this.nextRandom(range));
+    } else if (range < 0) {
+      this.seed(-range);
+      this.store(0);
+    } else {
+      // range == 0: the game asks to re-seed with fresh entropy.
+      // For a reproducible interpreter this will re-seed from the
+      // configured seed instead.
+      this.seed(this.randomSeed);
+      this.store(0);
+    }
   }
 }
