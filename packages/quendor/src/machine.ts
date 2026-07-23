@@ -1,5 +1,5 @@
 import type { ZText } from "./text.ts";
-import { HeaderOffset, unpackRoutineAddress } from "./header.ts";
+import { HeaderOffset, unpackRoutineAddress, unpackString } from "./header.ts";
 import { InstructionReader, OperandKind, type Instruction } from "./instruction.ts";
 import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
@@ -56,6 +56,7 @@ export class Machine {
 
   private readonly globalsAddress: number;
   private readonly routinesOffset: number;
+  private readonly stringsOffset: number;
   private readonly initialProgramCounter: number;
   private readonly dictionaryAddress: number;
 
@@ -101,6 +102,7 @@ export class Machine {
     this.interpreterNumber = 6; // IBM PC
     this.interpreterVersion = 0x41; // 'A'
     this.routinesOffset = story.header.routinesOffset;
+    this.stringsOffset = story.header.stringsOffset;
     this.globalsAddress = story.header.globalVariablesTableAddress;
     this.dictionaryAddress = story.header.dictionaryAddress;
 
@@ -228,10 +230,16 @@ export class Machine {
         return this.store((toS16(o[0]) + toS16(o[1])) & 0xffff);
       case "sub":
         return this.store((toS16(o[0]) - toS16(o[1])) & 0xffff);
+      case "mul":
+        return this.store((toS16(o[0]) * toS16(o[1])) & 0xffff);
+      case "div":
+        return this.store(Math.trunc(toS16(o[0]) / toS16(o[1])) & 0xffff);
 
       // --- bitwise ---
       case "and":
         return this.store(o[0] & o[1]);
+      case "test":
+        return this.branchOn((o[0] & o[1]) === o[1]);
 
       // --- inc / dec ---
       case "inc":
@@ -240,6 +248,10 @@ export class Machine {
       case "inc_chk": {
         const v = this.incDec(o[0], +1);
         return this.branchOn(v > toS16(o[1]));
+      }
+      case "dec_chk": {
+        const v = this.incDec(o[0], -1);
+        return this.branchOn(v < toS16(o[1]));
       }
 
       // --- jumps ---
@@ -254,6 +266,8 @@ export class Machine {
       }
       case "jl":
         return this.branchOn(toS16(o[0]) < toS16(o[1]));
+      case "jg":
+        return this.branchOn(toS16(o[0]) > toS16(o[1]));
       case "jz":
         return this.branchOn(o[0] === 0);
       case "jin": {
@@ -287,6 +301,8 @@ export class Machine {
         return this.store(this.memory.readByte((o[0] + o[1]) & 0xffff));
       case "storew":
         return this.memory.writeWord((o[0] + o[1] * 2) & 0xffff, o[2]);
+      case "storeb":
+        return this.memory.writeByte((o[0] + o[1]) & 0xffff, o[2]);
       case "push":
         return this.writeVariable(0, o[0]);
       case "pull":
@@ -310,17 +326,27 @@ export class Machine {
       case "set_attr":
         if (o[0] !== 0) this.objects.setAttribute(o[0], o[1], true);
         return;
+      case "clear_attr":
+        if (o[0] !== 0) this.objects.setAttribute(o[0], o[1], false);
+        return;
       case "insert_obj":
         if (o[0] !== 0 && o[1] !== 0) this.objects.moveObject(o[0], o[1]);
         return;
       case "get_prop":
         return this.store(this.getProp(o[0], o[1]));
+      case "get_prop_addr":
+        return this.store(this.getPropAddr(o[0], o[1]));
+      case "get_prop_len":
+        return this.store(this.getPropLen(o[0]));
       case "put_prop":
         return this.putProp(o[0], o[1], o[2]);
 
       // --- output ---
       case "print":
         return this.print(this.decodeInline());
+      case "print_ret":
+        this.print(this.decodeInline() + "\n");
+        return this.return_(1);
       case "new_line":
         return this.print("\n");
       case "print_char":
@@ -329,6 +355,12 @@ export class Machine {
         return this.print(String(toS16(o[0])));
       case "print_obj":
         return this.print(this.text.decodeAtAddress(this.objects.getShortNameAddress(o[0]) + 1));
+      case "print_addr":
+        return this.print(this.text.decodeAtAddress(o[0]));
+      case "print_paddr":
+        return this.print(
+          this.text.decodeAtAddress(unpackString(this.version, o[0], this.stringsOffset)),
+        );
 
       // --- input ---
       case "sread":
@@ -447,6 +479,36 @@ export class Machine {
     const oneByte = this.version <= 3 ? (sizeByte & 0xe0) === 0 : (sizeByte & 0xc0) === 0;
 
     return oneByte ? this.memory.readByte(dataAddress) : this.memory.readWord(dataAddress);
+  }
+
+  private getPropAddr(objNum: number, propNum: number): number {
+    if (objNum === 0) return 0;
+
+    const { address, sizeByte, found } = this.findProp(objNum, propNum);
+
+    if (!found) return 0;
+
+    let dataAddress = address;
+
+    if (this.version >= 4 && (sizeByte & 0x80) !== 0) dataAddress++;
+
+    return dataAddress + 1;
+  }
+
+  private getPropLen(dataAddress: number): number {
+    if (dataAddress === 0) return 0;
+
+    let value = this.memory.readByte(dataAddress - 1);
+
+    if (this.version <= 3) {
+      value = (value >> 5) + 1;
+    } else if ((value & 0x80) === 0) {
+      value = (value >> 6) + 1;
+    } else {
+      value &= 0x3f;
+    }
+
+    return value === 0 ? 64 : value;
   }
 
   private findProp(
