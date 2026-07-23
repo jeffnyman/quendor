@@ -478,3 +478,59 @@ test("sread blocks for input, then fills the text and parse buffers", () => {
   expect(machine.memory.readByte(PARSEBUF + 8)).toBe(4);
   expect(machine.memory.readByte(PARSEBUF + 9)).toBe(6);
 });
+
+// --- execution: quit / restart ---------------------------------------------
+
+/** 0OP `quit` (0xba). */
+function quitInsn(): number[] {
+  return [0xba];
+}
+
+/** 0OP `restart` (0xb7). */
+function restartInsn(): number[] {
+  return [0xb7];
+}
+
+/** A v3 story whose main calls a routine, with the whole buffer marked dynamic
+ *  so restart's memory-restore is observable. The routine body is caller-supplied. */
+function buildRestartProgram(routineBytes: number[]): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 3;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+  bytes[HeaderOffset.StaticMemoryBase] = (0x100 >> 8) & 0xff; // all memory dynamic
+  bytes[HeaderOffset.StaticMemoryBase + 1] = 0x100 & 0xff;
+
+  bytes.set([...callInsn(ROUTINE_PACKED, [], G_FIRST), ...retConst(0)], MAIN);
+  bytes.set(routineBytes, ROUTINE);
+
+  return new Story(bytes);
+}
+
+test("quit halts the machine", () => {
+  const machine = new Machine(buildProgram(quitInsn()));
+
+  expect(machine.run()).toBe(RunState.Halted);
+});
+
+test("restart restores dynamic memory and returns to a fresh main frame", () => {
+  // Restart from *inside* a routine: main calls R, R writes a global then restarts.
+  const machine = new Machine(
+    buildRestartProgram(routine([], [...storeInsn(G_FIRST, 0x42), ...restartInsn()])),
+  );
+
+  machine.step(); // call R -> now inside the routine
+  machine.step(); // store 0x42 into global 0x10 (dynamic memory)
+  expect(machine.memory.readWord(GLOBALS)).toBe(0x42); // sanity: the write landed
+
+  machine.step(); // restart
+
+  // Frame reset: current is the fresh main frame, not the routine's. (Regression
+  // guard: discarding setupInitialFrame's return leaves this pointing at R.)
+  expect(machine.currentFrame.routineAddress).toBe(MAIN);
+  // Memory reset: the global is restored to its original value.
+  expect(machine.memory.readWord(GLOBALS)).toBe(0);
+});

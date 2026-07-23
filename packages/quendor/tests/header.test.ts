@@ -5,6 +5,7 @@ import {
   HeaderOffset,
   readHeader,
   unpackRoutineAddress,
+  unpackString,
   type Header,
 } from "../src/header.ts";
 
@@ -102,6 +103,21 @@ test.each([6, 7])(
     expect(unpackRoutineAddress(version, 100, 5)).toBe(100 * 4 + 5 * 8);
   },
 );
+
+test.each([
+  [1, 2],
+  [2, 2],
+  [3, 2],
+  [4, 4],
+  [5, 4],
+  [8, 8],
+])("unpackString scales version %i's packed address by %i", (version, factor) => {
+  expect(unpackString(version, 100, 0)).toBe(100 * factor);
+});
+
+test.each([6, 7])("unpackString adds the strings offset (x8) for version %i", (version) => {
+  expect(unpackString(version, 100, 5)).toBe(100 * 4 + 5 * 8);
+});
 
 test("throws when memory is too short to contain the header", () => {
   const memory = new Memory(new Uint8Array(0));

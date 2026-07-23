@@ -83,6 +83,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x10, "loadb", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x11, "get_prop", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x12, "get_prop_addr", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x13, "get_next_prop", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x14, "add", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x15, "sub", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x16, "mul", F.Store, 1, 8],
@@ -97,17 +98,21 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.OneOp, 0x05, "inc", F.FirstOpByRef, 1, 8],
   [OpcodeKind.OneOp, 0x06, "dec", F.FirstOpByRef, 1, 8],
   [OpcodeKind.OneOp, 0x07, "print_addr", F.None, 1, 8],
+  [OpcodeKind.OneOp, 0x09, "remove_obj", F.None, 1, 8],
   [OpcodeKind.OneOp, 0x0a, "print_obj", F.None, 1, 8],
   [OpcodeKind.OneOp, 0x0b, "ret", F.Return, 1, 8],
   [OpcodeKind.OneOp, 0x0c, "jump", F.Jump, 1, 8],
   [OpcodeKind.OneOp, 0x0d, "print_paddr", F.None, 1, 8],
+  [OpcodeKind.OneOp, 0x0e, "load", F.FirstOpByRef | F.Store, 1, 8],
 
   // zero-operand opcodes
   [OpcodeKind.ZeroOp, 0x00, "rtrue", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x01, "rfalse", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x02, "print", F.ZText, 1, 8],
   [OpcodeKind.ZeroOp, 0x03, "print_ret", F.Return | F.ZText, 1, 8],
+  [OpcodeKind.ZeroOp, 0x07, "restart", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
+  [OpcodeKind.ZeroOp, 0x0a, "quit", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
 
   // variable-operand opcodes

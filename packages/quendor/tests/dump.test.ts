@@ -92,7 +92,7 @@ test("dumpAbbreviations reports none for v1 (the format has no abbreviations)", 
 });
 
 test("dumpAbbreviations reports none when the table address is zero", () => {
-  const bytes = new Uint8Array(42);
+  const bytes = new Uint8Array(64); // a real story always has a full 64-byte header
 
   bytes[HeaderOffset.Version] = 3;
 

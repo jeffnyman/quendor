@@ -1,5 +1,5 @@
 import type { ZText } from "./text.ts";
-import { HeaderOffset, unpackRoutineAddress } from "./header.ts";
+import { HeaderOffset, unpackRoutineAddress, unpackString } from "./header.ts";
 import { InstructionReader, OperandKind, type Instruction } from "./instruction.ts";
 import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
@@ -56,6 +56,7 @@ export class Machine {
 
   private readonly globalsAddress: number;
   private readonly routinesOffset: number;
+  private readonly stringsOffset: number;
   private readonly initialProgramCounter: number;
   private readonly dictionaryAddress: number;
 
@@ -66,6 +67,9 @@ export class Machine {
   private instructionCount = 0;
   private currentInstruction!: Instruction;
   private ops: number[] = [];
+
+  private readonly staticBase: number;
+  private readonly originalDynamic: Uint8Array;
 
   // output stream 3 (memory) redirection stack
   private memoryStreams: { address: number; count: number }[] = [];
@@ -92,6 +96,10 @@ export class Machine {
   // Data watchpoints: break when a watched byte's value changes.
   private watchTriggered = false;
 
+  private rngState = 1;
+  /** The seed governing all randomness (for reproducible playthroughs). */
+  readonly randomSeed: number;
+
   constructor(story: Story) {
     this.memory = story.memory;
     this.version = story.header.version;
@@ -101,10 +109,17 @@ export class Machine {
     this.interpreterNumber = 6; // IBM PC
     this.interpreterVersion = 0x41; // 'A'
     this.routinesOffset = story.header.routinesOffset;
+    this.stringsOffset = story.header.stringsOffset;
     this.globalsAddress = story.header.globalVariablesTableAddress;
     this.dictionaryAddress = story.header.dictionaryAddress;
 
     this.objects = new ObjectTable(this.memory, this.version, story.header.objectTableAddress);
+
+    // Snapshot pristine dynamic memory before we mutate any header bytes.
+    this.staticBase = this.memory.readWord(0x0e);
+    this.originalDynamic = this.memory.bytes.slice(0, this.staticBase);
+
+    this.randomSeed = 0;
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -228,18 +243,31 @@ export class Machine {
         return this.store((toS16(o[0]) + toS16(o[1])) & 0xffff);
       case "sub":
         return this.store((toS16(o[0]) - toS16(o[1])) & 0xffff);
+      case "mul":
+        return this.store((toS16(o[0]) * toS16(o[1])) & 0xffff);
+      case "div":
+        return this.store(Math.trunc(toS16(o[0]) / toS16(o[1])) & 0xffff);
 
       // --- bitwise ---
       case "and":
         return this.store(o[0] & o[1]);
+      case "test":
+        return this.branchOn((o[0] & o[1]) === o[1]);
 
       // --- inc / dec ---
       case "inc":
         this.incDec(o[0], +1);
         return;
+      case "dec":
+        this.incDec(o[0], -1);
+        return;
       case "inc_chk": {
         const v = this.incDec(o[0], +1);
         return this.branchOn(v > toS16(o[1]));
+      }
+      case "dec_chk": {
+        const v = this.incDec(o[0], -1);
+        return this.branchOn(v < toS16(o[1]));
       }
 
       // --- jumps ---
@@ -254,6 +282,8 @@ export class Machine {
       }
       case "jl":
         return this.branchOn(toS16(o[0]) < toS16(o[1]));
+      case "jg":
+        return this.branchOn(toS16(o[0]) > toS16(o[1]));
       case "jz":
         return this.branchOn(o[0] === 0);
       case "jin": {
@@ -279,6 +309,8 @@ export class Machine {
         return this.return_(this.readVariable(0));
 
       // --- load / store / memory ---
+      case "load":
+        return this.store(this.readVariableIndirect(o[0]));
       case "store":
         return this.writeVariableIndirect(o[0], o[1]);
       case "loadw":
@@ -287,6 +319,8 @@ export class Machine {
         return this.store(this.memory.readByte((o[0] + o[1]) & 0xffff));
       case "storew":
         return this.memory.writeWord((o[0] + o[1] * 2) & 0xffff, o[2]);
+      case "storeb":
+        return this.memory.writeByte((o[0] + o[1]) & 0xffff, o[2]);
       case "push":
         return this.writeVariable(0, o[0]);
       case "pull":
@@ -310,17 +344,32 @@ export class Machine {
       case "set_attr":
         if (o[0] !== 0) this.objects.setAttribute(o[0], o[1], true);
         return;
+      case "clear_attr":
+        if (o[0] !== 0) this.objects.setAttribute(o[0], o[1], false);
+        return;
       case "insert_obj":
         if (o[0] !== 0 && o[1] !== 0) this.objects.moveObject(o[0], o[1]);
         return;
+      case "remove_obj":
+        if (o[0] !== 0) this.objects.removeObject(o[0]);
+        return;
       case "get_prop":
         return this.store(this.getProp(o[0], o[1]));
+      case "get_prop_addr":
+        return this.store(this.getPropAddr(o[0], o[1]));
+      case "get_prop_len":
+        return this.store(this.getPropLen(o[0]));
+      case "get_next_prop":
+        return this.store(this.getNextProp(o[0], o[1]));
       case "put_prop":
         return this.putProp(o[0], o[1], o[2]);
 
       // --- output ---
       case "print":
         return this.print(this.decodeInline());
+      case "print_ret":
+        this.print(this.decodeInline() + "\n");
+        return this.return_(1);
       case "new_line":
         return this.print("\n");
       case "print_char":
@@ -329,10 +378,25 @@ export class Machine {
         return this.print(String(toS16(o[0])));
       case "print_obj":
         return this.print(this.text.decodeAtAddress(this.objects.getShortNameAddress(o[0]) + 1));
+      case "print_addr":
+        return this.print(this.text.decodeAtAddress(o[0]));
+      case "print_paddr":
+        return this.print(
+          this.text.decodeAtAddress(unpackString(this.version, o[0], this.stringsOffset)),
+        );
 
       // --- input ---
       case "sread":
         return this.sread(o);
+
+      // --- game state ---
+      case "random":
+        return this.random(toS16(o[0]));
+      case "quit":
+        this.runState = RunState.Halted;
+        return;
+      case "restart":
+        return this.doRestart();
 
       default:
         throw new Error(
@@ -447,6 +511,56 @@ export class Machine {
     const oneByte = this.version <= 3 ? (sizeByte & 0xe0) === 0 : (sizeByte & 0xc0) === 0;
 
     return oneByte ? this.memory.readByte(dataAddress) : this.memory.readWord(dataAddress);
+  }
+
+  private getNextProp(objNum: number, propNum: number): number {
+    if (objNum === 0) return 0;
+
+    const mask = this.version <= 3 ? 0x1f : 0x3f;
+    let address = this.objects.getFirstPropertyAddress(objNum);
+
+    if (propNum !== 0) {
+      let value: number;
+
+      do {
+        value = this.memory.readByte(address);
+        address = this.objects.getNextPropertyAddress(address);
+      } while ((value & mask) > propNum);
+
+      if ((value & mask) !== propNum) throw new Error("get_next_prop: not found");
+    }
+
+    return this.memory.readByte(address) & mask;
+  }
+
+  private getPropAddr(objNum: number, propNum: number): number {
+    if (objNum === 0) return 0;
+
+    const { address, sizeByte, found } = this.findProp(objNum, propNum);
+
+    if (!found) return 0;
+
+    let dataAddress = address;
+
+    if (this.version >= 4 && (sizeByte & 0x80) !== 0) dataAddress++;
+
+    return dataAddress + 1;
+  }
+
+  private getPropLen(dataAddress: number): number {
+    if (dataAddress === 0) return 0;
+
+    let value = this.memory.readByte(dataAddress - 1);
+
+    if (this.version <= 3) {
+      value = (value >> 5) + 1;
+    } else if ((value & 0x80) === 0) {
+      value = (value >> 6) + 1;
+    } else {
+      value &= 0x3f;
+    }
+
+    return value === 0 ? 64 : value;
   }
 
   private findProp(
@@ -787,5 +901,48 @@ export class Machine {
       returnPC,
       stackBase: this.stack.length,
     };
+  }
+
+  /**
+   * restart: reset dynamic memory and machine state to the initial load.
+   * restart has no store/branch and doesn't return; execution resumes at
+   * the initial PC (already set by setupInitialFrame).
+   */
+  private doRestart(): void {
+    this.memory.bytes.set(this.originalDynamic, 0);
+    // Rst: re-establish interpreter header fields
+    this.setupHeaderCapabilities();
+    this.stack.length = 0;
+    this.frames.length = 0;
+    this.memoryStreams.length = 0;
+    this.charBuffer.length = 0;
+    this.pendingRead = null;
+    this.current = this.setupInitialFrame(this.initialProgramCounter);
+  }
+
+  private seed(value: number): void {
+    this.rngState = value >>> 0 || 1;
+  }
+
+  private nextRandom(range: number): number {
+    // Simple deterministic LCG; adequate for range output and reproducible
+    // when re-seeded with the same value.
+    this.rngState = (Math.imul(this.rngState, 1103515245) + 12345) & 0x7fffffff;
+    return (this.rngState % range) + 1;
+  }
+
+  private random(range: number): void {
+    if (range > 0) {
+      this.store(this.nextRandom(range));
+    } else if (range < 0) {
+      this.seed(-range);
+      this.store(0);
+    } else {
+      // range == 0: the game asks to re-seed with fresh entropy.
+      // For a reproducible interpreter this will re-seed from the
+      // configured seed instead.
+      this.seed(this.randomSeed);
+      this.store(0);
+    }
   }
 }
