@@ -2,7 +2,7 @@
  * Quendor — the public API of the Z-Machine engine.
  *
  * This is the boundary between the interpreter/engine and anything built on top
- * of it (the zdebug web debugger, the CLI, tests). Everything re-exported here is
+ * of it (the zdebug web debugger and the CLI). Everything re-exported here is
  * pure — no DOM, no node — so it runs in a browser or in node unchanged. The
  * node-only story loader lives in a separate entry, `./node.ts` (`quendor/node`),
  * so importing the engine never pulls in `node:fs`.
@@ -10,21 +10,23 @@
  * Consumers should import from here rather than reaching into `./<module>.js`.
  */
 
-export function fn(): string {
-  return "Quendor Z-Machine Interpreter and Debugger";
-}
-
-// --- execution -------------------------------------------------------------
+// --- engine — everything needed to load and run a story --------------------
 export { Machine, RunState } from "./machine.js";
 export type { Frame } from "./machine.js";
 export { Story } from "./story.js";
 export { Memory } from "./memory.js";
 
-// --- header ----------------------------------------------------------------
+// Everything below is the inspection toolkit — decode, disassemble, and dump a
+// story's internals. Its audience is tools built on the engine (the zexplorer
+// debugger), not code that just plays a game. It's exported deliberately, not
+// for the tests (those import from ./src directly); pruning can wait for the
+// 0.x surface to settle, since removals are a pre-1.0 concern.
+
+// --- toolkit: header --------------------------------------------------------
 export { HeaderOffset, readHeader, computeChecksum, unpackRoutineAddress } from "./header.js";
 export type { Header } from "./header.js";
 
-// --- decode / disassemble ---------------------------------------------------
+// --- toolkit: decode / disassemble -----------------------------------------
 export {
   VariableKind,
   OperandKind,
@@ -52,11 +54,11 @@ export { formatInstruction, formatVariable, formatResolvedOperands } from "./dis
 export { disassembleReachable } from "./disassembler.js";
 export type { DisassembledRun } from "./disassembler.js";
 
-// --- text / objects --------------------------------------------------------
+// --- toolkit: text / objects ------------------------------------------------
 export { DEFAULT_FLAGS, ZText } from "./text.js";
 export type { DecodeFlags } from "./text.js";
 export { AlphabetTable } from "./alphabet.js";
 export { ObjectTable } from "./objects.js";
 
-// --- tooling ---------------------------------------------------------------
+// --- toolkit: dumps ---------------------------------------------------------
 export { dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary } from "./dump.js";

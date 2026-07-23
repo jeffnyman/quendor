@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readLineSync } from "./node.ts";
 
@@ -66,12 +64,4 @@ export async function main(): Promise<void> {
 
     machine.provideInput(line);
   }
-}
-
-/* v8 ignore next -- @preserve */
-if (import.meta.main) {
-  main().catch((err) => {
-    console.error(`quendor: ${(err as Error).message}`);
-    process.exitCode = 1;
-  });
 }
