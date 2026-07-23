@@ -1,0 +1,7 @@
+# Extra excludes beyond .gitignore and repomix's defaults (which already cover
+# node_modules, dist, coverage, the test-* output dirs, lockfiles, and binaries).
+
+# The `entharion` reference submodule is vendored material (spec PDFs, binary
+# story files, ztools C source, ZIL/Inform source) — not quendor's own code, and
+# it isn't gitignored, so exclude it explicitly.
+entharion/
