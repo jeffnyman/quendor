@@ -21,6 +21,7 @@ dist-ssr
 coverage
 **/test-quendor
 **/test-zexplorer
+repomix-output.*
 
 # Tool caches
 .fallow

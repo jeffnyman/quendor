@@ -22,6 +22,11 @@
   <a href="https://viteplus.dev"><img src="https://img.shields.io/badge/vite+-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white" alt="Vite+"></a>
   <a href="https://oxc.rs"><img src="https://img.shields.io/badge/oxc-%233451b2.svg?style=for-the-badge&logo=oxc&logoColor=white&logoSize=auto" alt="OXC"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjeffnyman%2Fquendor%2Fmain%2Fpackage.json&query=%24.engines.node&label=node&style=for-the-badge&logo=node.js&logoColor=white&color=339933" alt="Node.js"></a>
+  <a href="https://www.npmjs.com/package/quendor"><img src="https://img.shields.io/npm/v/quendor?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm version"></a>
+</p>
+
+<p align="center">
+  <a href="https://vscode.dev/github/jeffnyman/quendor"><img alt="Open with vscode" src="https://img.shields.io/static/v1?logo=visualstudiocode&label=&message=Open%20in%20Visual%20Studio%20Code&labelColor=2c2c32&color=007acc&logoColor=007acc"></a>
 </p>
 
 <div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/></div>
@@ -166,6 +171,8 @@ If you use one, [AGENTS.md](AGENTS.md) is the source of truth for project conven
 This codebase was created and is maintained 100% without AI assistance. I believe in the value of human-written code for this project. To be clear: this isn't an anti-AI stance. I fully support developers using whatever tools help them build best. I simply wanted to see if, as a personal goal, I could tackle this project entirely on my own.
 
 That said, I want to make contributing as seamless as possible for everyone. I have included AI instruction files (such as `CLAUDE.md`) in the repository. If you use AI coding assistants, these files will guide your tools to respect the project architecture, testing paradigms, and style constraints. This keeps your local workflow fast and any incoming pull requests clean. The goal here isn't to restrict how you write code, but to ensure that whether a feature is drafted by a human or an assistant, it ultimately respects the foundational engineering decisions of this repository.
+
+To round that out, the repository also ships a [repomix](https://repomix.com) config: `vp dlx repomix` packs the whole codebase into a single, LLM-friendly file (`repomix-output.xml`) you can paste into a chat assistant. Where the instruction files above guide assistants that read the repo directly, this covers the ones that work from pasted context in a chat window rather than your editor.
 
 ## 👨‍💻 Author
 

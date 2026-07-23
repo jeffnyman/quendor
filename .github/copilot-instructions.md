@@ -28,12 +28,14 @@ This project uses [pnpm catalogs](https://pnpm.io/catalogs) to pin shared depend
 
 ## Cutting a Release
 
-`main` is protected: direct pushes are rejected, and `bumpp` (used by `quendor`'s `release` script) can only push a commit and a tag together, not separately. Releasing `quendor` is therefore a two-step process:
+`main` is protected: direct pushes are rejected, so the version bump, tag, and publish are three separate steps. `quendor` is the only published package (`zexplorer` is `private`).
 
-- [ ] On a branch, run `pnpm run release` (from `packages/quendor`). This bumps the version and creates a commit, but does not tag or push. Open a PR and merge it like any other change.
-- [ ] After that PR is merged, on an up-to-date `main`, create and push the tag against the commit that actually landed: `git tag quendor@X.Y.Z && git push origin quendor@X.Y.Z`. Tags are not covered by the branch ruleset, so this push is unaffected by it.
+- [ ] **Bump (its own PR).** On a branch, from `packages/quendor`, run `vp run release --release X.Y.Z --yes`. Use `vp run` (not `pnpm run`), and pass the version explicitly: `bumpp`'s interactive prompt does not receive keystrokes through the `vp run` wrapper (the list renders, but the arrow keys are dead and it aborts), so `--release X.Y.Z --yes` is required to skip it. This commits the bump only (the script passes `--no-tag --no-push`); open a PR and merge it like any other change.
+- [ ] **Tag the merged commit.** After the bump PR merges, on an up-to-date `main`, run `git tag quendor@X.Y.Z && git push origin quendor@X.Y.Z`. Tags are not covered by the branch ruleset, so this push is unaffected by it. Do not tag before the bump commit is merged — depending on the PR merge method, the commit that lands on `main` may not be the one `bumpp` created on the branch.
+- [ ] **Publish (manual — no CI does it).** Raw `npm` is blocked by the repo's `devEngines.packageManager: pnpm`, so use pnpm. From `packages/quendor`: `pnpm login` if not already authenticated (`pnpm whoami` to check), then `pnpm publish --dry-run` to rehearse (builds via `prepublishOnly`, packs, no upload), then `pnpm publish` for the real, irreversible upload. `publishConfig.access` is `public`; have your npm OTP ready if 2FA is on (`pnpm publish --otp=<code>` if the prompt misbehaves).
+- [ ] **(Optional) GitHub Release.** Cut one from the tag for public notes: `gh release create quendor@X.Y.Z --verify-tag --latest --title "..." --notes "..."`.
 
-Do not tag before the version-bump commit is merged — depending on the PR merge method, the commit that lands on `main` may not be the same commit `bumpp` created on the branch.
+On Windows, the `pre-commit`/`pre-push` hooks can crash with `env.exe: ... MapViewOfFileEx ... Win32 error 487` — an intermittent Git-for-Windows `fork()` failure, not a real hook failure. Just re-run the git command; it usually clears on the next attempt.
 
 ## Reference Material (`entharion`)
 
