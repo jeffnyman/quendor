@@ -59,6 +59,8 @@ export class Machine {
   private readonly stringsOffset: number;
   private readonly initialProgramCounter: number;
   private readonly dictionaryAddress: number;
+  private readonly headerChecksum: number;
+  private readonly computedChecksum: number;
 
   private pc = 0;
   private readonly stack: number[] = [];
@@ -112,6 +114,8 @@ export class Machine {
     this.stringsOffset = story.header.stringsOffset;
     this.globalsAddress = story.header.globalVariablesTableAddress;
     this.dictionaryAddress = story.header.dictionaryAddress;
+    this.headerChecksum = story.header.checksum;
+    this.computedChecksum = story.computedChecksum();
 
     this.objects = new ObjectTable(this.memory, this.version, story.header.objectTableAddress);
 
@@ -249,10 +253,16 @@ export class Machine {
         return this.store((toS16(o[0]) * toS16(o[1])) & 0xffff);
       case "div":
         return this.store(Math.trunc(toS16(o[0]) / toS16(o[1])) & 0xffff);
+      case "mod":
+        return this.store((toS16(o[0]) % toS16(o[1])) & 0xffff);
 
       // --- bitwise ---
       case "and":
         return this.store(o[0] & o[1]);
+      case "or":
+        return this.store(o[0] | o[1]);
+      case "not":
+        return this.store(~o[0] & 0xffff);
       case "test":
         return this.branchOn((o[0] & o[1]) === o[1]);
 
@@ -327,6 +337,10 @@ export class Machine {
         return this.writeVariable(0, o[0]);
       case "pull":
         return this.writeVariableIndirect(o[0], this.readVariable(0));
+      case "pop":
+        this.readVariable(0);
+        // discard top of stack (v1-4)
+        return;
 
       // --- objects ---
       case "get_parent":
@@ -394,6 +408,8 @@ export class Machine {
       // --- game state ---
       case "random":
         return this.random(toS16(o[0]));
+      case "verify":
+        return this.branchOn(this.computedChecksum === this.headerChecksum);
       case "quit":
         this.runState = RunState.Halted;
         return;

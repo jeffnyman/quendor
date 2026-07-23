@@ -1,4 +1,4 @@
-import { readHeader, type Header } from "./header.ts";
+import { computeChecksum, readHeader, type Header } from "./header.ts";
 import { Memory } from "./memory.ts";
 import { ZText } from "./text.ts";
 
@@ -28,5 +28,10 @@ export class Story {
     }
 
     return result;
+  }
+
+  /** The checksum computed over the story image (compare to header.checksum). */
+  computedChecksum(): number {
+    return computeChecksum(this.memory, this.header);
   }
 }
