@@ -2,15 +2,15 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: {
-    entry: ["src/index.ts", "src/node.ts", "src/cli.ts", "src/qdor.ts"],
+    entry: ["src/index.ts", "src/node.ts", "src/quendor.ts", "src/qdor.ts"],
     dts: {
       tsgo: true,
     },
     exports: {
-      exclude: ["cli", "qdor"],
+      exclude: ["quendor", "qdor"],
       bin: {
         qdor: "./src/qdor.ts",
-        quendor: "./src/cli.ts",
+        quendor: "./src/quendor.ts",
       },
     },
   },

@@ -27,7 +27,7 @@
   },
   "bin": {
     "qdor": "./dist/qdor.mjs",
-    "quendor": "./dist/cli.mjs"
+    "quendor": "./dist/quendor.mjs"
   },
   "files": [
     "dist"
@@ -55,5 +55,8 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }

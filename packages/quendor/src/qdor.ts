@@ -1,5 +1,5 @@
 #!/usr/bin/env node
 
-// Separate file so this can be its own `bin` entry: two bin names
-// pointing at the same source file collapse into one during pack.
-export * from "./cli.ts";
+// Second bin name (`qdor`) for the same player. Kept as its own file so pack
+// emits a distinct bin; importing the entry is what runs the player.
+import "./quendor.ts";
