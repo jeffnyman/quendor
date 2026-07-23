@@ -68,6 +68,9 @@ export class Machine {
   private currentInstruction!: Instruction;
   private ops: number[] = [];
 
+  private readonly staticBase: number;
+  private readonly originalDynamic: Uint8Array;
+
   // output stream 3 (memory) redirection stack
   private memoryStreams: { address: number; count: number }[] = [];
 
@@ -107,6 +110,10 @@ export class Machine {
     this.dictionaryAddress = story.header.dictionaryAddress;
 
     this.objects = new ObjectTable(this.memory, this.version, story.header.objectTableAddress);
+
+    // Snapshot pristine dynamic memory before we mutate any header bytes.
+    this.staticBase = this.memory.readWord(0x0e);
+    this.originalDynamic = this.memory.bytes.slice(0, this.staticBase);
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -365,6 +372,13 @@ export class Machine {
       // --- input ---
       case "sread":
         return this.sread(o);
+
+      // --- game state ---
+      case "quit":
+        this.runState = RunState.Halted;
+        return;
+      case "restart":
+        return this.doRestart();
 
       default:
         throw new Error(
@@ -849,5 +863,22 @@ export class Machine {
       returnPC,
       stackBase: this.stack.length,
     };
+  }
+
+  /**
+   * restart: reset dynamic memory and machine state to the initial load.
+   * restart has no store/branch and doesn't return; execution resumes at
+   * the initial PC (already set by setupInitialFrame).
+   */
+  private doRestart(): void {
+    this.memory.bytes.set(this.originalDynamic, 0);
+    // Rst: re-establish interpreter header fields
+    this.setupHeaderCapabilities();
+    this.stack.length = 0;
+    this.frames.length = 0;
+    this.memoryStreams.length = 0;
+    this.charBuffer.length = 0;
+    this.pendingRead = null;
+    this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
 }

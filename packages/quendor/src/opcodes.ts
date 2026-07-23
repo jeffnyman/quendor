@@ -107,7 +107,9 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x01, "rfalse", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x02, "print", F.ZText, 1, 8],
   [OpcodeKind.ZeroOp, 0x03, "print_ret", F.Return | F.ZText, 1, 8],
+  [OpcodeKind.ZeroOp, 0x07, "restart", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
+  [OpcodeKind.ZeroOp, 0x0a, "quit", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
 
   // variable-operand opcodes
