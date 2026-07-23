@@ -215,6 +215,9 @@ export class ZText {
   }
 
   private readAbbreviation(index: number): number[] {
+    // Unreachable in practice: `index` is 32*(z-1)+next with z in 1..3 and next
+    // in 0..31, so it is always 0..95. Kept as a guard against a decoder bug.
+    /* v8 ignore next 3 -- @preserve */
     if (index < 0 || index > 95) {
       throw new RangeError(`abbreviation index out of range: ${index}`);
     }
@@ -343,6 +346,8 @@ export class ZText {
         out += result.text;
         i += result.consumed;
       } else if (zchar > 31) {
+        // Unreachable: zWordsToZChars masks each Z-character to 5 bits (0..31).
+        /* v8 ignore next -- @preserve */
         throw new Error(`Unexpected Z-character value: ${zchar}`);
       } else {
         out += alphabet.readChar(zchar);
