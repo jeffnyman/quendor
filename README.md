@@ -22,6 +22,11 @@
   <a href="https://viteplus.dev"><img src="https://img.shields.io/badge/vite+-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white" alt="Vite+"></a>
   <a href="https://oxc.rs"><img src="https://img.shields.io/badge/oxc-%233451b2.svg?style=for-the-badge&logo=oxc&logoColor=white&logoSize=auto" alt="OXC"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjeffnyman%2Fquendor%2Fmain%2Fpackage.json&query=%24.engines.node&label=node&style=for-the-badge&logo=node.js&logoColor=white&color=339933" alt="Node.js"></a>
+  <a href="https://www.npmjs.com/package/quendor"><img src="https://img.shields.io/npm/v/quendor?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm version"></a>
+</p>
+
+<p align="center">
+  <a href="https://vscode.dev/github/jeffnyman/quendor"><img alt="Open with vscode" src="https://img.shields.io/static/v1?logo=visualstudiocode&label=&message=Open%20in%20Visual%20Studio%20Code&labelColor=2c2c32&color=007acc&logoColor=007acc"></a>
 </p>
 
 <div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/></div>
