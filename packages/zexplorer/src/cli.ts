@@ -14,6 +14,8 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 interface ZexpOptions {
   trace?: string;
+  seed?: number;
+  tandy?: boolean;
 }
 
 /**
@@ -86,7 +88,7 @@ async function cmdDisasm(path: string, addressArg: string | undefined): Promise<
 
 async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   const story = await loadStoryFromFile(path);
-  const machine = new Machine(story);
+  const machine = new Machine(story, { randomSeed: opts.seed, tandy: opts.tandy });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
@@ -149,13 +151,18 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   }
 }
 
-function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
+export function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
   const opts: ZexpOptions = {};
   const positional: string[] = [];
 
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === "--trace" && i + 1 < rest.length) {
       opts.trace = rest[++i];
+    } else if (rest[i] === "--seed" && i + 1 < rest.length) {
+      const n = parseInt(rest[++i], 10);
+      if (!Number.isNaN(n)) opts.seed = n;
+    } else if (rest[i] === "--tandy") {
+      opts.tandy = true;
     } else {
       positional.push(rest[i]);
     }
@@ -228,7 +235,7 @@ export async function main(): Promise<void> {
       const { path, opts } = parseArgs(rest);
 
       if (!path) {
-        console.error("usage: zexp run <story-file> [--trace-file]");
+        console.error("usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy]");
         process.exitCode = 1;
         return;
       }
@@ -249,7 +256,7 @@ export async function main(): Promise<void> {
         "  disasm <story-file> [addr]         disassemble every reachable routine/jump/branch target",
       );
       console.error(
-        "  run <story-file> [--trace <file>]  execute the story (headless); --trace logs the opcode path",
+        "  run <story-file> [--trace <file>] [--seed N] [--tandy]   execute the story (headless); --trace logs the opcode path",
       );
 
       process.exitCode = 1;
