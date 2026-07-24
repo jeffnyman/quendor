@@ -10,17 +10,26 @@ import { Machine } from "../src/machine.ts";
 // fixed seed so czech's `random` test is reproducible. The header section of
 // czech's output is interpreter identity ("No tests"), so we assert the summary
 // line rather than diffing the whole transcript (see fixtures/README.md).
-test("passes the czech v3 conformance suite", async () => {
-  const path = fileURLToPath(new URL("./fixtures/czech.z3", import.meta.url));
-  const story = await loadStoryFromFile(path);
-  const machine = new Machine(story, { randomSeed: 1 });
+// One suite per vendored Z-code version. v4 exercises more opcodes, so czech
+// reports a higher passing count — hence the distinct expected verdicts.
+const suites = [
+  { version: 3, file: "czech.z3", verdict: "Passed: 349, Failed: 0, Print tests: 19" },
+  { version: 4, file: "czech.z4", verdict: "Passed: 367, Failed: 0, Print tests: 19" },
+];
 
-  let out = "";
-  machine.onOutput = (text): void => {
-    out += text;
-  };
+for (const { version, file, verdict } of suites) {
+  test(`passes the czech v${version} conformance suite`, async () => {
+    const path = fileURLToPath(new URL(`./fixtures/${file}`, import.meta.url));
+    const story = await loadStoryFromFile(path);
+    const machine = new Machine(story, { randomSeed: 1 });
 
-  machine.run();
+    let out = "";
+    machine.onOutput = (text): void => {
+      out += text;
+    };
 
-  expect(out).toContain("Passed: 349, Failed: 0, Print tests: 19");
-});
+    machine.run();
+
+    expect(out).toContain(verdict);
+  });
+}
