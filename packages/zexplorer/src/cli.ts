@@ -16,6 +16,8 @@ interface ZexpOptions {
   trace?: string;
   seed?: number;
   tandy?: boolean;
+  interpreterNumber?: number;
+  interpreterVersion?: number;
 }
 
 /**
@@ -88,7 +90,12 @@ async function cmdDisasm(path: string, addressArg: string | undefined): Promise<
 
 async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   const story = await loadStoryFromFile(path);
-  const machine = new Machine(story, { randomSeed: opts.seed, tandy: opts.tandy });
+  const machine = new Machine(story, {
+    randomSeed: opts.seed,
+    tandy: opts.tandy,
+    interpreterNumber: opts.interpreterNumber,
+    interpreterVersion: opts.interpreterVersion,
+  });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
@@ -163,6 +170,12 @@ export function parseArgs(rest: string[]): { path: string | undefined; opts: Zex
       if (!Number.isNaN(n)) opts.seed = n;
     } else if (rest[i] === "--tandy") {
       opts.tandy = true;
+    } else if (rest[i] === "--interpreter" && i + 1 < rest.length) {
+      const n = parseInt(rest[++i], 10);
+      if (!Number.isNaN(n)) opts.interpreterNumber = n;
+    } else if (rest[i] === "--interpreter-version" && i + 1 < rest.length) {
+      const code = rest[++i].charCodeAt(0); // version is a byte, conventionally a letter
+      if (!Number.isNaN(code)) opts.interpreterVersion = code;
     } else {
       positional.push(rest[i]);
     }
@@ -235,7 +248,9 @@ export async function main(): Promise<void> {
       const { path, opts } = parseArgs(rest);
 
       if (!path) {
-        console.error("usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy]");
+        console.error(
+          "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]",
+        );
         process.exitCode = 1;
         return;
       }
@@ -256,7 +271,7 @@ export async function main(): Promise<void> {
         "  disasm <story-file> [addr]         disassemble every reachable routine/jump/branch target",
       );
       console.error(
-        "  run <story-file> [--trace <file>] [--seed N] [--tandy]   execute the story (headless); --trace logs the opcode path",
+        "  run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]   execute the story (headless); --trace logs the opcode path",
       );
 
       process.exitCode = 1;
