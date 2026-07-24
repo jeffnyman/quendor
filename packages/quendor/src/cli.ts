@@ -8,7 +8,7 @@ const USAGE = `quendor — a terminal Z-Machine interpreter
 Usage:
   quendor <story-file>
 
-  <story-file>             a Z-code game (.z1-.z3)
+  <story-file>             a Z-code game (.z1-.z4)
   --seed N                 fix the RNG seed (reproducible playthroughs)
   --tandy                  set the v1-3 "Tandy" flag
   --interpreter N          set the interpreter number (default 6 = IBM PC)
@@ -80,6 +80,36 @@ export function promptForSaveFile(def: string): string {
   return name.length > 0 ? name : def;
 }
 
+// --- terminal status bar (v4+ upper window) --------------------------------
+
+const ESC = "\x1b";
+
+/** Reserve the top `height` rows with a DECSTBM scroll region (0 resets to full screen). */
+function setScrollRegion(height: number): void {
+  const rows = process.stdout.rows;
+
+  if (height > 0 && rows) {
+    // Setting the region homes the cursor as a side effect, so wrap it in
+    // save (ESC 7) / restore (ESC 8) to leave the cursor where the transcript
+    // left it — right after the prompt — instead of moving it.
+    process.stdout.write(`${ESC}7${ESC}[${height + 1};${rows}r${ESC}8`);
+  } else {
+    process.stdout.write(`${ESC}[r`); // reset to the full screen
+  }
+}
+
+/** Redraw the upper window as a reverse-video bar at the top, preserving the cursor. */
+function drawStatusBar(rows: string[]): void {
+  const width = process.stdout.columns; // defined: only called under the isTTY guard
+
+  process.stdout.write(`${ESC}7`); // save cursor
+  rows.forEach((text, r) => {
+    const line = text.padEnd(width).slice(0, width);
+    process.stdout.write(`${ESC}[${r + 1};1H${ESC}[7m${line}${ESC}[0m`);
+  });
+  process.stdout.write(`${ESC}8`); // restore cursor
+}
+
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
 
@@ -100,6 +130,8 @@ export async function main(): Promise<void> {
     tandy: parsed.tandy,
     interpreterNumber: parsed.interpreterNumber,
     interpreterVersion: parsed.interpreterVersion,
+    screenWidth: process.stdout.columns, // undefined off a TTY -> engine default (80)
+    screenHeight: process.stdout.rows,
   });
 
   machine.onOutput = (text): void => {
@@ -132,15 +164,33 @@ export async function main(): Promise<void> {
     }
   };
 
+  let statusHeight = 0;
+
   for (;;) {
     const state = machine.run();
 
     if (state !== RunState.WaitingForInput) break; // halted
+
+    // Redraw the v4+ status line (the upper window) before prompting. TTY only —
+    // piped/headless output must stay free of escape codes.
+    if (process.stdout.isTTY) {
+      if (machine.screen.upperHeight !== statusHeight) {
+        statusHeight = machine.screen.upperHeight;
+        setScrollRegion(statusHeight);
+      }
+
+      if (statusHeight > 0) drawStatusBar(machine.screen.upperRows());
+    }
 
     const line = readLineSync();
 
     if (line === null) break; // end of input
 
     machine.provideInput(line);
+  }
+
+  // Leave the terminal clean: drop any scroll region we set.
+  if (process.stdout.isTTY && statusHeight > 0) {
+    process.stdout.write(`${ESC}[r`);
   }
 }
