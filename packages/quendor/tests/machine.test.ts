@@ -33,6 +33,20 @@ test("exposes the interpreter number and version it wrote", () => {
   expect(machine.interpreterVersion).toBe(0x41);
 });
 
+test("uses the interpreter number and version from options when provided", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+    { interpreterNumber: 2, interpreterVersion: 0x42 }, // Apple IIe, 'B'
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.InterpreterNumber)).toBe(2);
+  expect(machine.memory.readByte(HeaderOffset.InterpreterVersion)).toBe(0x42);
+  expect(machine.interpreterNumber).toBe(2);
+  expect(machine.interpreterVersion).toBe(0x42);
+});
+
 test("shares the story's memory rather than copying it", () => {
   const story = buildStory(64, (bytes) => {
     bytes[HeaderOffset.Version] = 3;

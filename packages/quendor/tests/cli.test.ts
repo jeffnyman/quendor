@@ -65,6 +65,21 @@ test("--tandy is an accumulating flag (unlike --help), coexisting with the path"
   });
 });
 
+test("parses --interpreter (number) and --interpreter-version (letter -> byte)", () => {
+  expect(parseArgs(["--interpreter", "2", "--interpreter-version", "B", "game.z3"])).toEqual({
+    help: false,
+    path: "game.z3",
+    seed: undefined,
+    tandy: undefined,
+    interpreterNumber: 2,
+    interpreterVersion: 0x42, // 'B'
+  });
+});
+
+test("drops --interpreter with a non-numeric value", () => {
+  expect(parseArgs(["--interpreter", "xyz", "game.z3"]).interpreterNumber).toBeUndefined();
+});
+
 // --- main early exits ------------------------------------------------------
 
 const originalArgv = process.argv;
