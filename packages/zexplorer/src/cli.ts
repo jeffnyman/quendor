@@ -158,27 +158,42 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   }
 }
 
+/** Parse an integer argument, yielding undefined for a non-numeric value. */
+function intArg(value: string): number | undefined {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
 export function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
   const opts: ZexpOptions = {};
   const positional: string[] = [];
 
+  // Flags that consume the following argument. Adding an option is a new entry
+  // here, not another branch in the loop below.
+  const withValue: Record<string, (value: string) => void> = {
+    "--trace": (v): void => {
+      opts.trace = v;
+    },
+    "--seed": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) opts.seed = n;
+    },
+    "--interpreter": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) opts.interpreterNumber = n;
+    },
+    "--interpreter-version": (v): void => {
+      const c = v.charCodeAt(0); // version is a byte, conventionally a letter
+      if (!Number.isNaN(c)) opts.interpreterVersion = c;
+    },
+  };
+
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === "--trace" && i + 1 < rest.length) {
-      opts.trace = rest[++i];
-    } else if (rest[i] === "--seed" && i + 1 < rest.length) {
-      const n = parseInt(rest[++i], 10);
-      if (!Number.isNaN(n)) opts.seed = n;
-    } else if (rest[i] === "--tandy") {
-      opts.tandy = true;
-    } else if (rest[i] === "--interpreter" && i + 1 < rest.length) {
-      const n = parseInt(rest[++i], 10);
-      if (!Number.isNaN(n)) opts.interpreterNumber = n;
-    } else if (rest[i] === "--interpreter-version" && i + 1 < rest.length) {
-      const code = rest[++i].charCodeAt(0); // version is a byte, conventionally a letter
-      if (!Number.isNaN(code)) opts.interpreterVersion = code;
-    } else {
-      positional.push(rest[i]);
-    }
+    const a = rest[i];
+
+    if (a === "--tandy") opts.tandy = true;
+    else if (a in withValue && i + 1 < rest.length) withValue[a](rest[++i]);
+    else positional.push(a);
   }
 
   return { path: positional[0], opts };
