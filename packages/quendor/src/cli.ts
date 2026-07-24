@@ -26,35 +26,43 @@ interface ParsedArgs {
   interpreterVersion?: number;
 }
 
+/** Parse an integer argument, yielding undefined for a non-numeric value. */
+function intArg(value: string): number | undefined {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
 export function parseArgs(args: string[]): ParsedArgs {
-  let path: string | undefined;
-  let seed: number | undefined;
-  let tandy: boolean | undefined;
-  let interpreterNumber: number | undefined;
-  let interpreterVersion: number | undefined;
+  const parsed: ParsedArgs = { help: false };
+
+  // Flags that consume the following argument, keyed by name. Adding an option
+  // is a new entry here, not another branch in the loop below.
+  const withValue: Record<string, (value: string) => void> = {
+    "--seed": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) parsed.seed = n;
+    },
+    "--interpreter": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) parsed.interpreterNumber = n;
+    },
+    "--interpreter-version": (v): void => {
+      const c = v.charCodeAt(0); // version is a byte, conventionally a letter
+      if (!Number.isNaN(c)) parsed.interpreterVersion = c;
+    },
+  };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
 
-    if (a === "--help" || a === "-h") {
-      return { help: true }; // help short-circuits; other flags accumulate
-    } else if (a === "--seed" && i + 1 < args.length) {
-      const n = parseInt(args[++i], 10);
-      if (!Number.isNaN(n)) seed = n;
-    } else if (a === "--tandy") {
-      tandy = true;
-    } else if (a === "--interpreter" && i + 1 < args.length) {
-      const n = parseInt(args[++i], 10);
-      if (!Number.isNaN(n)) interpreterNumber = n;
-    } else if (a === "--interpreter-version" && i + 1 < args.length) {
-      const code = args[++i].charCodeAt(0); // version is a byte, conventionally a letter
-      if (!Number.isNaN(code)) interpreterVersion = code;
-    } else if (!a.startsWith("-")) {
-      path ??= a;
-    }
+    if (a === "--help" || a === "-h")
+      return { help: true }; // short-circuits
+    else if (a === "--tandy") parsed.tandy = true;
+    else if (a in withValue && i + 1 < args.length) withValue[a](args[++i]);
+    else if (!a.startsWith("-")) parsed.path ??= a;
   }
 
-  return { help: false, path, seed, tandy, interpreterNumber, interpreterVersion };
+  return parsed;
 }
 
 /** Default save filename derived from the story: base name, no directory, no extension. */
