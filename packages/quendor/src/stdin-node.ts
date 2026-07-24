@@ -7,14 +7,13 @@
 import { readSync } from "node:fs";
 
 /**
- * Read one line from stdin synchronously, to fit the tight run loop (the
- * machine blocks on input between instructions). Returns the line without its
- * trailing newline, or null at end of input.
+ * Read one byte from stdin (fd 0) synchronously, retrying on EAGAIN (a
+ * non-blocking stdin under some shells). Returns the decoded character, or null
+ * at end of input / on a closed stream. The synchronous read fits the tight run
+ * loop, where the machine blocks on input between instructions.
  */
-export function readLineSync(): string | null {
+function readByteSync(): string | null {
   const buf = Buffer.alloc(1);
-  let line = "";
-  let sawAny = false;
 
   for (;;) {
     let n: number;
@@ -23,14 +22,29 @@ export function readLineSync(): string | null {
       n = readSync(0, buf, 0, 1, null);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
-      break; // EOF or closed stream
+      return null; // EOF or closed stream
     }
 
-    if (n === 0) break; // EOF
+    if (n === 0) return null; // EOF
+
+    return buf.toString("utf8");
+  }
+}
+
+/**
+ * Read one line from stdin synchronously. Returns the line without its trailing
+ * newline, or null at end of input.
+ */
+export function readLineSync(): string | null {
+  let line = "";
+  let sawAny = false;
+
+  for (;;) {
+    const ch = readByteSync();
+
+    if (ch === null) break; // EOF or closed stream
 
     sawAny = true;
-
-    const ch = buf.toString("utf8");
 
     if (ch === "\n") return line;
     if (ch !== "\r") line += ch;
@@ -49,24 +63,7 @@ export function readCharSync(): string | null {
 
   if (stdin.isTTY) stdin.setRawMode(true);
 
-  const buf = Buffer.alloc(1);
-  let ch: string | null = null;
-
-  for (;;) {
-    let n: number;
-
-    try {
-      n = readSync(0, buf, 0, 1, null);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
-      break; // EOF or closed stream
-    }
-
-    if (n === 0) break; // EOF
-
-    ch = buf.toString("utf8");
-    break;
-  }
+  const ch = readByteSync();
 
   if (stdin.isTTY) stdin.setRawMode(false);
 

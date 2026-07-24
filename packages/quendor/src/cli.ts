@@ -129,6 +129,113 @@ function drawUpperWindow(grid: Cell[][]): void {
   process.stdout.write(`${ESC}8`); // restore cursor
 }
 
+/**
+ * Wire the machine's host callbacks to the terminal: text output, screen
+ * clears, the sound bell, and the save/restore file prompts.
+ */
+function installHostCallbacks(machine: Machine, defaultSave: string): void {
+  machine.onOutput = (text): void => {
+    process.stdout.write(text);
+  };
+
+  // Fired by erase_window on the lower window. Clear from the first lower-window
+  // row to the end of screen, leaving any status bar above it intact. (For
+  // erase_window -1, Screen resets upperHeight to 0 first, so this clears all.)
+  machine.onClearScreen = (): void => {
+    if (!process.stdout.isTTY) return;
+    process.stdout.write(`${ESC}[${machine.screen.upperHeight + 1};1H${ESC}[J`);
+  };
+
+  // sound_effect: bleeps (1 = high, 2 = low) map to the terminal bell; sampled
+  // sounds (3+) need audio we don't have yet (Blorb pending), so ignore them.
+  machine.onSoundEffect = (number): void => {
+    if (number === 1 || number === 2) process.stdout.write("\x07");
+  };
+
+  // Frotz-style: prompt for a filename on each save/restore, defaulting to the
+  // story's base name. The prompt is synchronous like the main input loop —
+  // save/restore are synchronous opcodes, so blocking on input here is fine.
+  machine.onSave = (data): boolean => {
+    const file = promptForSaveFile(defaultSave);
+
+    try {
+      writeFileSync(file, data);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  machine.onRestore = (): Uint8Array | null => {
+    const file = promptForSaveFile(defaultSave);
+
+    try {
+      return existsSync(file) ? new Uint8Array(readFileSync(file)) : null;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/**
+ * Deliver whatever input the machine is waiting for: a single keystroke (any
+ * key) for read_char, or a line for sread/aread. Returns false at end of input.
+ */
+function deliverInput(machine: Machine): boolean {
+  if (machine.awaitingCharInput) {
+    const ch = readCharSync();
+    if (ch === null) return false;
+    machine.provideChar(ch);
+  } else {
+    const line = readLineSync();
+    if (line === null) return false;
+    machine.provideInput(line);
+  }
+
+  return true;
+}
+
+/**
+ * Run the fetch/prompt loop until the machine halts or input ends. The v4+
+ * upper window (a status line, or a transient quote box) is repainted both at
+ * each prompt and mid-run via onScreenRefresh — a quote box is drawn and torn
+ * down between prompts, so the prompt-time paint alone would never catch it
+ * (repaints are idempotent). Leaves the terminal clean on exit.
+ */
+function runTerminalLoop(machine: Machine): void {
+  let statusHeight = 0;
+
+  const refreshUpperWindow = (): void => {
+    if (!process.stdout.isTTY) return;
+
+    if (machine.screen.upperHeight !== statusHeight) {
+      statusHeight = machine.screen.upperHeight;
+      setScrollRegion(statusHeight);
+    }
+
+    if (statusHeight > 0) drawUpperWindow(machine.screen.upper);
+  };
+  machine.onScreenRefresh = refreshUpperWindow;
+
+  for (;;) {
+    const state = machine.run();
+
+    if (state !== RunState.WaitingForInput) break; // halted
+
+    refreshUpperWindow();
+
+    if (!deliverInput(machine)) break; // end of input
+  }
+
+  // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /
+  // restore (ESC 8). ESC[r homes the cursor as a side effect, and we want the
+  // shell prompt to resume where the game left off — below the transcript, not
+  // jumped to the top.
+  if (process.stdout.isTTY && statusHeight > 0) {
+    process.stdout.write(`${ESC}7${ESC}[r${ESC}8`);
+  }
+}
+
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
 
@@ -153,49 +260,7 @@ export async function main(): Promise<void> {
     screenHeight: process.stdout.rows,
   });
 
-  machine.onOutput = (text): void => {
-    process.stdout.write(text);
-  };
-
-  // Fired by erase_window on the lower window. Clear from the first lower-window
-  // row to the end of screen, leaving any status bar above it intact. (For
-  // erase_window -1, Screen resets upperHeight to 0 first, so this clears all.)
-  machine.onClearScreen = (): void => {
-    if (!process.stdout.isTTY) return;
-    process.stdout.write(`${ESC}[${machine.screen.upperHeight + 1};1H${ESC}[J`);
-  };
-
-  // sound_effect: bleeps (1 = high, 2 = low) map to the terminal bell; sampled
-  // sounds (3+) need audio we don't have yet (Blorb pending), so ignore them.
-  machine.onSoundEffect = (number): void => {
-    if (number === 1 || number === 2) process.stdout.write("\x07");
-  };
-
-  // Frotz-style: prompt for a filename on each save/restore, defaulting to the
-  // story's base name. The prompt is synchronous like the main input loop —
-  // save/restore are synchronous opcodes, so blocking on input here is fine.
-  const defaultSave = defaultSaveName(parsed.path);
-
-  machine.onSave = (data): boolean => {
-    const file = promptForSaveFile(defaultSave);
-
-    try {
-      writeFileSync(file, data);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  machine.onRestore = (): Uint8Array | null => {
-    const file = promptForSaveFile(defaultSave);
-
-    try {
-      return existsSync(file) ? new Uint8Array(readFileSync(file)) : null;
-    } catch {
-      return null;
-    }
-  };
+  installHostCallbacks(machine, defaultSaveName(parsed.path));
 
   // Start on a fresh screen (Std §8: clear on start) so the game isn't drawn
   // over prior terminal output. TTY only, so piped output stays clean.
@@ -203,48 +268,5 @@ export async function main(): Promise<void> {
     process.stdout.write(`${ESC}[2J${ESC}[H`);
   }
 
-  // Repaint the v4+ upper window (a status line, or a transient quote box). TTY
-  // only — piped/headless output must stay free of escape codes. Called both at
-  // each prompt and mid-run via onScreenRefresh: a quote box is drawn and torn
-  // down between prompts, so the prompt-time paint alone would never catch it.
-  // Repaints are idempotent, so firing on both paths is safe.
-  let statusHeight = 0;
-  const refreshUpperWindow = (): void => {
-    if (!process.stdout.isTTY) return;
-
-    if (machine.screen.upperHeight !== statusHeight) {
-      statusHeight = machine.screen.upperHeight;
-      setScrollRegion(statusHeight);
-    }
-
-    if (statusHeight > 0) drawUpperWindow(machine.screen.upper);
-  };
-  machine.onScreenRefresh = refreshUpperWindow;
-
-  for (;;) {
-    const state = machine.run();
-
-    if (state !== RunState.WaitingForInput) break; // halted
-
-    refreshUpperWindow();
-
-    // read_char wants a single keystroke (any key); sread/aread want a line.
-    if (machine.awaitingCharInput) {
-      const ch = readCharSync();
-      if (ch === null) break; // end of input
-      machine.provideChar(ch);
-    } else {
-      const line = readLineSync();
-      if (line === null) break; // end of input
-      machine.provideInput(line);
-    }
-  }
-
-  // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /
-  // restore (ESC 8). ESC[r homes the cursor as a side effect, and we want the
-  // shell prompt to resume where the game left off — below the transcript, not
-  // jumped to the top.
-  if (process.stdout.isTTY && statusHeight > 0) {
-    process.stdout.write(`${ESC}7${ESC}[r${ESC}8`);
-  }
+  runTerminalLoop(machine);
 }

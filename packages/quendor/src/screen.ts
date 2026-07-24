@@ -6,7 +6,7 @@ export const TextStyle = {
   FixedPitch: 8,
 } as const;
 
-export const DEFAULT_COLOR = 1;
+const DEFAULT_COLOR = 1;
 
 /** Attributes attached to lower-window (transcript) output. */
 export interface OutputAttrs {
