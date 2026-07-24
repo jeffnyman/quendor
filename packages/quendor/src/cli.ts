@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
-import { loadStoryFromFile, readLineSync } from "./node.ts";
+import { loadStoryFromFile, readCharSync, readLineSync } from "./node.ts";
 
 const USAGE = `quendor — a terminal Z-Machine interpreter
 
@@ -202,11 +202,16 @@ export async function main(): Promise<void> {
       if (statusHeight > 0) drawStatusBar(machine.screen.upperRows());
     }
 
-    const line = readLineSync();
-
-    if (line === null) break; // end of input
-
-    machine.provideInput(line);
+    // read_char wants a single keystroke (any key); sread/aread want a line.
+    if (machine.awaitingCharInput) {
+      const ch = readCharSync();
+      if (ch === null) break; // end of input
+      machine.provideChar(ch);
+    } else {
+      const line = readLineSync();
+      if (line === null) break; // end of input
+      machine.provideInput(line);
+    }
   }
 
   // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /

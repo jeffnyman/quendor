@@ -265,6 +265,25 @@ export class Machine {
     }
   }
 
+  /** True while blocked on read_char — a single keystroke, not a full line. */
+  get awaitingCharInput(): boolean {
+    return this.pendingRead?.kind === "read_char";
+  }
+
+  /** Satisfy a pending read_char with a single keystroke (no line semantics). */
+  provideChar(ch: string): void {
+    if (this.pendingRead?.kind !== "read_char") return;
+
+    const storeVariable = this.pendingRead.storeVariable;
+
+    this.pendingRead = null;
+    this.storeCharCode(ch, storeVariable);
+
+    if (this.runState === RunState.WaitingForInput) {
+      this.runState = RunState.Running;
+    }
+  }
+
   /**
    * Execute a single instruction and return what happened. Valid when the
    * machine is Running or Paused (single-stepping past a breakpoint). A read

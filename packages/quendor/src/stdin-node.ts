@@ -38,3 +38,37 @@ export function readLineSync(): string | null {
 
   return sawAny ? line : null;
 }
+
+/**
+ * Read a single keystroke synchronously in raw mode, so no Enter is needed
+ * (for read_char / "press any key"). Returns the character, or null at end of
+ * input. Restores the terminal's cooked mode afterward.
+ */
+export function readCharSync(): string | null {
+  const stdin = process.stdin;
+
+  if (stdin.isTTY) stdin.setRawMode(true);
+
+  const buf = Buffer.alloc(1);
+  let ch: string | null = null;
+
+  for (;;) {
+    let n: number;
+
+    try {
+      n = readSync(0, buf, 0, 1, null);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
+      break; // EOF or closed stream
+    }
+
+    if (n === 0) break; // EOF
+
+    ch = buf.toString("utf8");
+    break;
+  }
+
+  if (stdin.isTTY) stdin.setRawMode(false);
+
+  return ch;
+}
