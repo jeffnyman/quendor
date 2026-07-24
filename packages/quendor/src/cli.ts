@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readCharSync, readLineSync } from "./node.ts";
+import { type Cell, TextStyle } from "./screen.ts";
 
 const USAGE = `quendor — a terminal Z-Machine interpreter
 
@@ -98,14 +99,32 @@ function setScrollRegion(height: number): void {
   }
 }
 
-/** Redraw the upper window as a reverse-video bar at the top, preserving the cursor. */
-function drawStatusBar(rows: string[]): void {
-  const width = process.stdout.columns; // defined: only called under the isTTY guard
-
+/**
+ * Redraw the upper window at the top of the screen, preserving the cursor.
+ * Each cell is drawn in reverse video only if the game set that style on it, so
+ * a full-width reverse row renders a status bar while a game that writes reverse
+ * cells over just part of a row (leaving the margins untouched) renders a
+ * centered quote box. Adjacent same-style cells are coalesced into one run to
+ * keep the escape output compact.
+ */
+function drawUpperWindow(grid: Cell[][]): void {
   process.stdout.write(`${ESC}7`); // save cursor
-  rows.forEach((text, r) => {
-    const line = text.padEnd(width).slice(0, width);
-    process.stdout.write(`${ESC}[${r + 1};1H${ESC}[7m${line}${ESC}[0m`);
+  grid.forEach((row, r) => {
+    let line = `${ESC}[${r + 1};1H${ESC}[0m`;
+    let reverse = false;
+
+    for (const cell of row) {
+      const wantReverse = (cell.style & TextStyle.Reverse) !== 0;
+
+      if (wantReverse !== reverse) {
+        line += wantReverse ? `${ESC}[7m` : `${ESC}[0m`;
+        reverse = wantReverse;
+      }
+
+      line += cell.ch;
+    }
+
+    process.stdout.write(`${line}${ESC}[0m`);
   });
   process.stdout.write(`${ESC}8`); // restore cursor
 }
@@ -184,23 +203,30 @@ export async function main(): Promise<void> {
     process.stdout.write(`${ESC}[2J${ESC}[H`);
   }
 
+  // Repaint the v4+ upper window (a status line, or a transient quote box). TTY
+  // only — piped/headless output must stay free of escape codes. Called both at
+  // each prompt and mid-run via onScreenRefresh: a quote box is drawn and torn
+  // down between prompts, so the prompt-time paint alone would never catch it.
+  // Repaints are idempotent, so firing on both paths is safe.
   let statusHeight = 0;
+  const refreshUpperWindow = (): void => {
+    if (!process.stdout.isTTY) return;
+
+    if (machine.screen.upperHeight !== statusHeight) {
+      statusHeight = machine.screen.upperHeight;
+      setScrollRegion(statusHeight);
+    }
+
+    if (statusHeight > 0) drawUpperWindow(machine.screen.upper);
+  };
+  machine.onScreenRefresh = refreshUpperWindow;
 
   for (;;) {
     const state = machine.run();
 
     if (state !== RunState.WaitingForInput) break; // halted
 
-    // Redraw the v4+ status line (the upper window) before prompting. TTY only —
-    // piped/headless output must stay free of escape codes.
-    if (process.stdout.isTTY) {
-      if (machine.screen.upperHeight !== statusHeight) {
-        statusHeight = machine.screen.upperHeight;
-        setScrollRegion(statusHeight);
-      }
-
-      if (statusHeight > 0) drawStatusBar(machine.screen.upperRows());
-    }
+    refreshUpperWindow();
 
     // read_char wants a single keystroke (any key); sread/aread want a line.
     if (machine.awaitingCharInput) {

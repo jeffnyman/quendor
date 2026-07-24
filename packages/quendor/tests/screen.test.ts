@@ -109,3 +109,21 @@ test("eraseWindow(-1) unsplits, empties the upper grid, and clears the lower win
   expect(screen.upperHeight).toBe(0); // unsplit
   expect(screen.upperRows()).toEqual([]); // grid emptied
 });
+
+// onUpperUpdate lets the host repaint the upper window the moment it changes,
+// not just at the next input prompt — the only way to catch a quote box that a
+// game draws and tears down between prompts.
+
+test("onUpperUpdate fires on the structural upper-window ops", () => {
+  const screen = new Screen(10);
+  let updates = 0;
+  screen.onUpperUpdate = (): void => {
+    updates++;
+  };
+
+  screen.splitWindow(3, true);
+  screen.setWindow(1);
+  screen.eraseWindow(1);
+
+  expect(updates).toBe(3);
+});

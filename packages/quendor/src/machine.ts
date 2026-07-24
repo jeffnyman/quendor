@@ -79,6 +79,11 @@ export class Machine {
   // output stream 3 (memory) redirection stack
   private memoryStreams: { address: number; count: number }[] = [];
 
+  // output stream 1 (the screen), selectable via output_stream ±1. Games disable
+  // it to print transcript-only text (e.g. the bracketed copy of a quote box) via
+  // stream 2 without it appearing on screen.
+  private screenStreamEnabled = true;
+
   private runState: RunState = RunState.Running;
 
   private readonly inputQueue: string[] = [];
@@ -157,6 +162,7 @@ export class Machine {
     this.screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void =>
       this.onOutput(text, attrs);
     this.screen.onClearLower = (): void => this.onClearScreen();
+    this.screen.onUpperUpdate = (): void => this.onScreenRefresh();
 
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
@@ -174,6 +180,14 @@ export class Machine {
 
   /** Called when the lower window (transcript) should be cleared. */
   onClearScreen: () => void = () => {};
+
+  /**
+   * Fired when the upper window changes structurally (split/set_window/erase), so
+   * the host can repaint it immediately. Necessary for transient content like a
+   * quote box, which a game draws and tears down within a single run() burst —
+   * long before the next input prompt, where the upper window is otherwise drawn.
+   */
+  onScreenRefresh: () => void = () => {};
 
   /** Called when a routine returns. */
   onExitFrame: (returnPC: number) => void = () => {};
@@ -581,7 +595,14 @@ export class Machine {
     } else if (which === -3) {
       const stream = this.memoryStreams.pop();
       if (stream) this.memory.writeWord(stream.address, stream.count);
+    } else if (which === 1) {
+      this.screenStreamEnabled = true;
+    } else if (which === -1) {
+      this.screenStreamEnabled = false;
     }
+    // Stream ±2 (transcript/printer) is not yet implemented: text meant only for
+    // it (e.g. a quote box's bracketed copy, printed while the screen is off)
+    // simply goes nowhere, which keeps it off the screen as intended.
   }
 
   /** Draw the v1-3 status bar from globals 0 (location), 1 and 2 (score/time). */
@@ -635,7 +656,7 @@ export class Machine {
       return;
     }
 
-    this.screen.print(text);
+    if (this.screenStreamEnabled) this.screen.print(text);
   }
 
   private putProp(objNum: number, propNum: number, value: number): void {
@@ -1091,6 +1112,7 @@ export class Machine {
     // keep restarts reproducible
     this.rngState = this.randomSeed;
     this.memoryStreams.length = 0;
+    this.screenStreamEnabled = true;
     this.charBuffer.length = 0;
     this.pendingRead = null;
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -1205,6 +1227,11 @@ export class Machine {
 
     // Interpreter-owned header fields must survive a restore.
     this.setupHeaderCapabilities();
+
+    // Output-stream state is interpreter-side, not part of the save: reset it so
+    // a save taken mid-redirect (e.g. inside a quote box) resumes with the screen on.
+    this.memoryStreams.length = 0;
+    this.screenStreamEnabled = true;
 
     // Rebuild the call stack.
     this.stack.length = 0;

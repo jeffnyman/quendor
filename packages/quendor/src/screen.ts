@@ -38,6 +38,13 @@ export class Screen {
   /** Called when the lower window should be cleared. */
   onClearLower: () => void = () => {};
 
+  /**
+   * Called when the upper window changes structurally (split/set_window/erase),
+   * letting a host repaint it right away rather than only at the next input
+   * prompt — needed to catch transient content such as a quote box.
+   */
+  onUpperUpdate: () => void = () => {};
+
   constructor(width: number) {
     this.width = Math.max(1, width);
   }
@@ -58,6 +65,8 @@ export class Screen {
       this.cursorRow = 0;
       this.cursorCol = 0;
     }
+
+    this.onUpperUpdate();
   }
 
   setWindow(window: number): void {
@@ -68,6 +77,8 @@ export class Screen {
       this.cursorRow = 0;
       this.cursorCol = 0;
     }
+
+    this.onUpperUpdate();
   }
 
   /** Position the upper-window cursor (0-based). */
@@ -119,6 +130,8 @@ export class Screen {
     } else if (window === 0) {
       this.onClearLower();
     }
+
+    this.onUpperUpdate();
   }
 
   /** The upper window's rows as plain strings (one per row), for a host to render. */

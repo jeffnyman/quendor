@@ -315,6 +315,60 @@ test("print emits inline text through onOutput, and new_line emits a newline", (
   expect(out).toBe("hello world\n");
 });
 
+// --- execution: output streams and upper-window refresh --------------------
+
+/** VAR `output_stream` (0xf3) with a single large-constant operand (may be negative). */
+function outputStreamInsn(value: number): number[] {
+  return [0xf3, 0x3f, (value >> 8) & 0xff, value & 0xff]; // types: large const, rest omitted
+}
+
+/** VAR `split_window` (0xea) with a single small-constant operand. */
+function splitWindowInsn(lines: number): number[] {
+  return [0xea, 0x7f, lines & 0xff]; // types: small const, rest omitted
+}
+
+/** VAR `set_window` (0xeb) with a single small-constant operand. */
+function setWindowInsn(window: number): number[] {
+  return [0xeb, 0x7f, window & 0xff];
+}
+
+test("output_stream -1 suppresses screen output until stream 1 is reselected", () => {
+  const machine = new Machine(
+    buildProgram([
+      ...printInsn("a"),
+      ...outputStreamInsn(-1), // disable the screen
+      ...printInsn("b"), // goes nowhere on screen
+      ...outputStreamInsn(1), // re-enable it
+      ...printInsn("c"),
+      ...retConst(0),
+    ]),
+  );
+
+  let out = "";
+  machine.onOutput = (text): void => {
+    out += text;
+  };
+
+  machine.run();
+
+  expect(out).toBe("ac"); // the "b" printed while the screen stream was off is dropped
+});
+
+test("upper-window opcodes fire onScreenRefresh so the host can repaint mid-run", () => {
+  const machine = new Machine(
+    buildProgram([...splitWindowInsn(2), ...setWindowInsn(1), ...setWindowInsn(0), ...retConst(0)]),
+  );
+
+  let refreshes = 0;
+  machine.onScreenRefresh = (): void => {
+    refreshes++;
+  };
+
+  machine.run();
+
+  expect(refreshes).toBe(3); // split_window + two set_window
+});
+
 // --- execution: opcode exerciser -------------------------------------------
 //
 // Straight-line programs that drive the arithmetic/memory/branch opcodes and
