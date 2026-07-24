@@ -534,3 +534,109 @@ test("restart restores dynamic memory and returns to a fresh main frame", () => 
   // Memory reset: the global is restored to its original value.
   expect(machine.memory.readWord(GLOBALS)).toBe(0);
 });
+
+// --- execution: save / restore ---------------------------------------------
+//
+// save/restore go through the injected onSave/onRestore byte callbacks — the
+// engine never touches a file — so the whole round-trip runs in memory. The
+// story marks all memory dynamic so a restore's memory-revert is observable.
+
+/** 0OP `save` (0xb5) followed by a branch byte. */
+function saveInsn(branch: number): number[] {
+  return [0xb5, branch & 0xff];
+}
+
+/** 0OP `restore` (0xb6) followed by a branch byte. */
+function restoreInsn(branch: number): number[] {
+  return [0xb6, branch & 0xff];
+}
+
+// Branch bytes (on-true, one-byte offset): 0xc1 => offset 1 (return true);
+// 0xc2 => offset 2, which lands on the next instruction whether or not it's
+// taken, keeping save's control flow linear for the round-trip test.
+const BRANCH_RTRUE = 0xc1;
+const BRANCH_CONTINUE = 0xc2;
+
+/** buildProgram, but with all memory dynamic so save/restore memory changes show. */
+function buildSaveProgram(main: number[], routineBytes?: number[]): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 3;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+  bytes[HeaderOffset.StaticMemoryBase] = (0x100 >> 8) & 0xff; // all memory dynamic
+  bytes[HeaderOffset.StaticMemoryBase + 1] = 0x100 & 0xff;
+
+  bytes.set(main, MAIN);
+
+  if (routineBytes) bytes.set(routineBytes, ROUTINE);
+
+  return new Story(bytes);
+}
+
+test("save hands a Quetzal blob to onSave, and restore reverts memory to that point", () => {
+  const machine = new Machine(
+    buildSaveProgram([
+      ...storeInsn(G_FIRST, 0x11), // G16 = 0x11  (the state we save)
+      ...saveInsn(BRANCH_CONTINUE), // capture the blob, continue
+      ...storeInsn(G_FIRST, 0x22), // G16 = 0x22  (mutate after saving)
+      ...restoreInsn(BRANCH_CONTINUE), // revert to the saved state
+      ...quitInsn(),
+    ]),
+  );
+
+  let blob: Uint8Array | null = null;
+  machine.onSave = (data): boolean => {
+    blob = data;
+    return true;
+  };
+  machine.onRestore = (): Uint8Array | null => blob;
+
+  machine.step(); // store 0x11
+  expect(machine.memory.readWord(GLOBALS)).toBe(0x11);
+
+  machine.step(); // save
+  // onSave received the blob; its IFZS format is covered in quetzal.test.ts.
+  expect(blob).not.toBeNull();
+
+  machine.step(); // store 0x22
+  expect(machine.memory.readWord(GLOBALS)).toBe(0x22); // mutated after the save
+
+  machine.step(); // restore
+  expect(machine.memory.readWord(GLOBALS)).toBe(0x11); // memory reverted to the save point
+});
+
+test("save branches on success (onSave true) and falls through on failure", () => {
+  // Routine body `save ?rtrue; ret 7`: success -> return 1, failure -> return 7.
+  const build = (): Story =>
+    buildSaveProgram(
+      [...callInsn(ROUTINE_PACKED, [], G_FIRST), ...quitInsn()],
+      routine([], [...saveInsn(BRANCH_RTRUE), ...retConst(7)]),
+    );
+
+  const ok = new Machine(build());
+  ok.onSave = (): boolean => true;
+  ok.run();
+  expect(ok.memory.readWord(GLOBALS)).toBe(1); // succeeded -> branch to rtrue
+
+  const fail = new Machine(build());
+  fail.onSave = (): boolean => false;
+  fail.run();
+  expect(fail.memory.readWord(GLOBALS)).toBe(7); // failed -> fell through to ret 7
+});
+
+test("restore fails cleanly (result 0) when onRestore offers no save", () => {
+  const machine = new Machine(
+    buildSaveProgram(
+      [...callInsn(ROUTINE_PACKED, [], G_FIRST), ...quitInsn()],
+      routine([], [...restoreInsn(BRANCH_RTRUE), ...retConst(7)]),
+    ),
+  );
+
+  machine.onRestore = (): Uint8Array | null => null;
+  machine.run();
+
+  expect(machine.memory.readWord(GLOBALS)).toBe(7); // no save -> restore fell through to ret 7
+});
