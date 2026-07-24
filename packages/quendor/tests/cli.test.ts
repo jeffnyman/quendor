@@ -1,5 +1,13 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { main, parseArgs } from "../src/cli.ts";
+import { defaultSaveName, main, parseArgs, promptForSaveFile } from "../src/cli.ts";
+import { readLineSync } from "../src/node.ts";
+
+// promptForSaveFile reads a line synchronously via readLineSync; mock the node
+// entry so the tests can drive it without real stdin.
+vi.mock("../src/node.ts", () => ({
+  loadStoryFromFile: vi.fn(),
+  readLineSync: vi.fn(),
+}));
 
 // --- parseArgs -------------------------------------------------------------
 
@@ -76,4 +84,44 @@ test("main errors and exits 1 when no story path is given", async () => {
 
   expect(error).toHaveBeenCalled();
   expect(process.exitCode).toBe(1);
+});
+
+// --- defaultSaveName -------------------------------------------------------
+
+test("defaultSaveName drops the directory and the Z-code extension", () => {
+  expect(defaultSaveName("entharion/zcode-infocom/zork1-r88-s840726.z3")).toBe(
+    "zork1-r88-s840726.qzl",
+  );
+});
+
+test("defaultSaveName handles a bare filename and other Z-code versions", () => {
+  expect(defaultSaveName("game.z5")).toBe("game.qzl");
+  expect(defaultSaveName("story.z8")).toBe("story.qzl");
+});
+
+test("defaultSaveName appends .qzl when the story has no extension", () => {
+  expect(defaultSaveName("game")).toBe("game.qzl");
+});
+
+// --- promptForSaveFile -----------------------------------------------------
+
+test("promptForSaveFile takes the default when the line is empty", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("");
+
+  expect(promptForSaveFile("zork1.qzl")).toBe("zork1.qzl");
+});
+
+test("promptForSaveFile takes the default on end-of-input (null)", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue(null);
+
+  expect(promptForSaveFile("zork1.qzl")).toBe("zork1.qzl");
+});
+
+test("promptForSaveFile returns the typed name, trimmed", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("  mysave.qzl  ");
+
+  expect(promptForSaveFile("zork1.qzl")).toBe("mysave.qzl");
 });

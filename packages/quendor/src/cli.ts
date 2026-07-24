@@ -35,12 +35,12 @@ export function parseArgs(args: string[]): ParsedArgs {
 }
 
 /** Default save filename derived from the story: base name, no directory, no extension. */
-function defaultSaveName(storyPath: string): string {
+export function defaultSaveName(storyPath: string): string {
   return basename(storyPath, extname(storyPath)) + ".qzl";
 }
 
 /** Prompt (Frotz-style) for a save/restore filename; empty input takes the default. */
-function promptForSaveFile(def: string): string {
+export function promptForSaveFile(def: string): string {
   process.stdout.write(`Enter a file name.\nDefault is "${def}": `);
 
   const line = readLineSync();
