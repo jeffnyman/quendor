@@ -103,7 +103,10 @@ export class Machine {
   /** The seed governing all randomness (for reproducible playthroughs). */
   readonly randomSeed: number;
 
-  constructor(story: Story, options: { randomSeed?: number } = {}) {
+  /** Whether to set the v1-3 "Tandy" header bit (Flags 1, bit 3). */
+  private readonly tandy: boolean;
+
+  constructor(story: Story, options: { randomSeed?: number; tandy?: boolean } = {}) {
     this.memory = story.memory;
     this.version = story.header.version;
     this.text = story.text;
@@ -127,6 +130,8 @@ export class Machine {
     // Default seed 1 keeps runs reproducible; --seed (or any consumer) overrides it.
     this.randomSeed = (options.randomSeed ?? 1) >>> 0 || 1;
     this.rngState = this.randomSeed;
+
+    this.tandy = options.tandy ?? false;
 
     this.setupHeaderCapabilities();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -855,6 +860,17 @@ export class Machine {
   private setupHeaderCapabilities(): void {
     this.memory.writeByte(HeaderOffset.InterpreterNumber, this.interpreterNumber);
     this.memory.writeByte(HeaderOffset.InterpreterVersion, this.interpreterVersion);
+
+    // The "Tandy" flag (Flags 1 bit 3). Some games (e.g. The Witness) produce
+    // cleaner, less-offensive prose when it's set. (In v4+ this bit means
+    // "italic available" instead, so it's only set for v1-3.) The interpreter
+    // owns this bit, so setting it here means it survives restart/restore
+    // (both re-run this method).
+    if (this.version <= 3) {
+      const flags1 = this.memory.readByte(HeaderOffset.Flags1);
+
+      this.memory.writeByte(HeaderOffset.Flags1, this.tandy ? flags1 | 0x08 : flags1 & 0xf7);
+    }
   }
 
   private setupInitialFrame(initialPC: number): Frame {

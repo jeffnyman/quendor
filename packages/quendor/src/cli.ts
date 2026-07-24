@@ -3,35 +3,46 @@ import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readLineSync } from "./node.ts";
 
-const USAGE = `quendor — a terminal Z-Machine player
+const USAGE = `quendor — a terminal Z-Machine interpreter
 
 Usage:
   quendor <story-file>
 
-  <story-file>   a Z-code game (.z1-.z8)
+  <story-file>   a Z-code game (.z1-.z3)
   --seed N       fix the RNG seed (reproducible playthroughs)
+  --tandy        set the v1-3 "Tandy" flag
+
+  Save/restore prompt for a filename, defaulting to the story name + ".qzl".
 `;
 
-type ParsedArgs = { help: true } | { help: false; path?: string; seed?: number };
+interface ParsedArgs {
+  help: boolean;
+  path?: string;
+  seed?: number;
+  tandy?: boolean;
+}
 
 export function parseArgs(args: string[]): ParsedArgs {
   let path: string | undefined;
   let seed: number | undefined;
+  let tandy: boolean | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
 
     if (a === "--help" || a === "-h") {
-      return { help: true };
+      return { help: true }; // help short-circuits; other flags accumulate
     } else if (a === "--seed" && i + 1 < args.length) {
       const n = parseInt(args[++i], 10);
       if (!Number.isNaN(n)) seed = n;
+    } else if (a === "--tandy") {
+      tandy = true;
     } else if (!a.startsWith("-")) {
       path ??= a;
     }
   }
 
-  return { help: false, path, seed };
+  return { help: false, path, seed, tandy };
 }
 
 /** Default save filename derived from the story: base name, no directory, no extension. */
@@ -64,7 +75,7 @@ export async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-  const machine = new Machine(story, { randomSeed: parsed.seed });
+  const machine = new Machine(story, { randomSeed: parsed.seed, tandy: parsed.tandy });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
