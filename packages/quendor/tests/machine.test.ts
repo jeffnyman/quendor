@@ -47,6 +47,30 @@ test("uses the interpreter number and version from options when provided", () =>
   expect(machine.interpreterVersion).toBe(0x42);
 });
 
+test("v4+ writes the screen dimensions into the header (0x20/0x21)", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+    }),
+    { screenWidth: 100, screenHeight: 30 },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.ScreenWidth)).toBe(100);
+  expect(machine.memory.readByte(HeaderOffset.ScreenHeight)).toBe(30);
+});
+
+test("v1-3 leaves the screen-dimension bytes alone (they're a v4+ header field)", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+    { screenWidth: 100, screenHeight: 30 },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.ScreenWidth)).toBe(0);
+  expect(machine.memory.readByte(HeaderOffset.ScreenHeight)).toBe(0);
+});
+
 test("shares the story's memory rather than copying it", () => {
   const story = buildStory(64, (bytes) => {
     bytes[HeaderOffset.Version] = 3;
@@ -289,6 +313,60 @@ test("print emits inline text through onOutput, and new_line emits a newline", (
   machine.run();
 
   expect(out).toBe("hello world\n");
+});
+
+// --- execution: output streams and upper-window refresh --------------------
+
+/** VAR `output_stream` (0xf3) with a single large-constant operand (may be negative). */
+function outputStreamInsn(value: number): number[] {
+  return [0xf3, 0x3f, (value >> 8) & 0xff, value & 0xff]; // types: large const, rest omitted
+}
+
+/** VAR `split_window` (0xea) with a single small-constant operand. */
+function splitWindowInsn(lines: number): number[] {
+  return [0xea, 0x7f, lines & 0xff]; // types: small const, rest omitted
+}
+
+/** VAR `set_window` (0xeb) with a single small-constant operand. */
+function setWindowInsn(window: number): number[] {
+  return [0xeb, 0x7f, window & 0xff];
+}
+
+test("output_stream -1 suppresses screen output until stream 1 is reselected", () => {
+  const machine = new Machine(
+    buildProgram([
+      ...printInsn("a"),
+      ...outputStreamInsn(-1), // disable the screen
+      ...printInsn("b"), // goes nowhere on screen
+      ...outputStreamInsn(1), // re-enable it
+      ...printInsn("c"),
+      ...retConst(0),
+    ]),
+  );
+
+  let out = "";
+  machine.onOutput = (text): void => {
+    out += text;
+  };
+
+  machine.run();
+
+  expect(out).toBe("ac"); // the "b" printed while the screen stream was off is dropped
+});
+
+test("upper-window opcodes fire onScreenRefresh so the host can repaint mid-run", () => {
+  const machine = new Machine(
+    buildProgram([...splitWindowInsn(2), ...setWindowInsn(1), ...setWindowInsn(0), ...retConst(0)]),
+  );
+
+  let refreshes = 0;
+  machine.onScreenRefresh = (): void => {
+    refreshes++;
+  };
+
+  machine.run();
+
+  expect(refreshes).toBe(3); // split_window + two set_window
 });
 
 // --- execution: opcode exerciser -------------------------------------------
@@ -691,4 +769,30 @@ test("re-asserts the Tandy bit after a restart", () => {
   machine.step(); // restart: restores original memory (bit clear), then re-asserts it
 
   expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08);
+});
+
+// --- execution: read_char (single keystroke) -------------------------------
+
+test("read_char blocks awaiting a single keystroke, and provideChar delivers it", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 4; // read_char is a v4+ opcode
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+      // read_char 1 -> G_FIRST ; quit
+      // 0xf6 = VAR read_char; 0x7f = one small-constant operand then three omitted.
+      bytes.set([0xf6, 0x7f, 0x01, G_FIRST, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.run()).toBe(RunState.WaitingForInput);
+  expect(machine.awaitingCharInput).toBe(true);
+
+  machine.provideChar("x");
+
+  expect(machine.awaitingCharInput).toBe(false);
+  expect(machine.run()).toBe(RunState.Halted);
+  expect(machine.memory.readWord(GLOBALS)).toBe("x".charCodeAt(0)); // 'x' = 120
 });

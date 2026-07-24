@@ -8,4 +8,4 @@
  */
 
 export { loadStoryFromFile } from "./story-node.ts";
-export { readLineSync } from "./stdin-node.ts";
+export { readLineSync, readCharSync } from "./stdin-node.ts";

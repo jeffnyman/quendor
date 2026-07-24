@@ -1,14 +1,15 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
-import { loadStoryFromFile, readLineSync } from "./node.ts";
+import { loadStoryFromFile, readCharSync, readLineSync } from "./node.ts";
+import { type Cell, TextStyle } from "./screen.ts";
 
 const USAGE = `quendor — a terminal Z-Machine interpreter
 
 Usage:
   quendor <story-file>
 
-  <story-file>             a Z-code game (.z1-.z3)
+  <story-file>             a Z-code game (.z1-.z4)
   --seed N                 fix the RNG seed (reproducible playthroughs)
   --tandy                  set the v1-3 "Tandy" flag
   --interpreter N          set the interpreter number (default 6 = IBM PC)
@@ -80,37 +81,80 @@ export function promptForSaveFile(def: string): string {
   return name.length > 0 ? name : def;
 }
 
-export async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv.slice(2));
+// --- terminal status bar (v4+ upper window) --------------------------------
 
-  if (parsed.help) {
-    console.log(USAGE);
-    return;
+const ESC = "\x1b";
+
+/** Reserve the top `height` rows with a DECSTBM scroll region (0 resets to full screen). */
+function setScrollRegion(height: number): void {
+  const rows = process.stdout.rows;
+
+  if (height > 0 && rows) {
+    // Setting the region homes the cursor as a side effect, so wrap it in
+    // save (ESC 7) / restore (ESC 8) to leave the cursor where the transcript
+    // left it — right after the prompt — instead of moving it.
+    process.stdout.write(`${ESC}7${ESC}[${height + 1};${rows}r${ESC}8`);
+  } else {
+    process.stdout.write(`${ESC}[r`); // reset to the full screen
   }
+}
 
-  if (!parsed.path) {
-    console.error(USAGE);
-    process.exitCode = 1;
-    return;
-  }
+/**
+ * Redraw the upper window at the top of the screen, preserving the cursor.
+ * Each cell is drawn in reverse video only if the game set that style on it, so
+ * a full-width reverse row renders a status bar while a game that writes reverse
+ * cells over just part of a row (leaving the margins untouched) renders a
+ * centered quote box. Adjacent same-style cells are coalesced into one run to
+ * keep the escape output compact.
+ */
+function drawUpperWindow(grid: Cell[][]): void {
+  process.stdout.write(`${ESC}7`); // save cursor
+  grid.forEach((row, r) => {
+    let line = `${ESC}[${r + 1};1H${ESC}[0m`;
+    let reverse = false;
 
-  const story = await loadStoryFromFile(parsed.path);
-  const machine = new Machine(story, {
-    randomSeed: parsed.seed,
-    tandy: parsed.tandy,
-    interpreterNumber: parsed.interpreterNumber,
-    interpreterVersion: parsed.interpreterVersion,
+    for (const cell of row) {
+      const wantReverse = (cell.style & TextStyle.Reverse) !== 0;
+
+      if (wantReverse !== reverse) {
+        line += wantReverse ? `${ESC}[7m` : `${ESC}[0m`;
+        reverse = wantReverse;
+      }
+
+      line += cell.ch;
+    }
+
+    process.stdout.write(`${line}${ESC}[0m`);
   });
+  process.stdout.write(`${ESC}8`); // restore cursor
+}
 
+/**
+ * Wire the machine's host callbacks to the terminal: text output, screen
+ * clears, the sound bell, and the save/restore file prompts.
+ */
+function installHostCallbacks(machine: Machine, defaultSave: string): void {
   machine.onOutput = (text): void => {
     process.stdout.write(text);
+  };
+
+  // Fired by erase_window on the lower window. Clear from the first lower-window
+  // row to the end of screen, leaving any status bar above it intact. (For
+  // erase_window -1, Screen resets upperHeight to 0 first, so this clears all.)
+  machine.onClearScreen = (): void => {
+    if (!process.stdout.isTTY) return;
+    process.stdout.write(`${ESC}[${machine.screen.upperHeight + 1};1H${ESC}[J`);
+  };
+
+  // sound_effect: bleeps (1 = high, 2 = low) map to the terminal bell; sampled
+  // sounds (3+) need audio we don't have yet (Blorb pending), so ignore them.
+  machine.onSoundEffect = (number): void => {
+    if (number === 1 || number === 2) process.stdout.write("\x07");
   };
 
   // Frotz-style: prompt for a filename on each save/restore, defaulting to the
   // story's base name. The prompt is synchronous like the main input loop —
   // save/restore are synchronous opcodes, so blocking on input here is fine.
-  const defaultSave = defaultSaveName(parsed.path);
-
   machine.onSave = (data): boolean => {
     const file = promptForSaveFile(defaultSave);
 
@@ -131,16 +175,98 @@ export async function main(): Promise<void> {
       return null;
     }
   };
+}
+
+/**
+ * Deliver whatever input the machine is waiting for: a single keystroke (any
+ * key) for read_char, or a line for sread/aread. Returns false at end of input.
+ */
+function deliverInput(machine: Machine): boolean {
+  if (machine.awaitingCharInput) {
+    const ch = readCharSync();
+    if (ch === null) return false;
+    machine.provideChar(ch);
+  } else {
+    const line = readLineSync();
+    if (line === null) return false;
+    machine.provideInput(line);
+  }
+
+  return true;
+}
+
+/**
+ * Run the fetch/prompt loop until the machine halts or input ends. The v4+
+ * upper window (a status line, or a transient quote box) is repainted both at
+ * each prompt and mid-run via onScreenRefresh — a quote box is drawn and torn
+ * down between prompts, so the prompt-time paint alone would never catch it
+ * (repaints are idempotent). Leaves the terminal clean on exit.
+ */
+function runTerminalLoop(machine: Machine): void {
+  let statusHeight = 0;
+
+  const refreshUpperWindow = (): void => {
+    if (!process.stdout.isTTY) return;
+
+    if (machine.screen.upperHeight !== statusHeight) {
+      statusHeight = machine.screen.upperHeight;
+      setScrollRegion(statusHeight);
+    }
+
+    if (statusHeight > 0) drawUpperWindow(machine.screen.upper);
+  };
+  machine.onScreenRefresh = refreshUpperWindow;
 
   for (;;) {
     const state = machine.run();
 
     if (state !== RunState.WaitingForInput) break; // halted
 
-    const line = readLineSync();
+    refreshUpperWindow();
 
-    if (line === null) break; // end of input
-
-    machine.provideInput(line);
+    if (!deliverInput(machine)) break; // end of input
   }
+
+  // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /
+  // restore (ESC 8). ESC[r homes the cursor as a side effect, and we want the
+  // shell prompt to resume where the game left off — below the transcript, not
+  // jumped to the top.
+  if (process.stdout.isTTY && statusHeight > 0) {
+    process.stdout.write(`${ESC}7${ESC}[r${ESC}8`);
+  }
+}
+
+export async function main(): Promise<void> {
+  const parsed = parseArgs(process.argv.slice(2));
+
+  if (parsed.help) {
+    console.log(USAGE);
+    return;
+  }
+
+  if (!parsed.path) {
+    console.error(USAGE);
+    process.exitCode = 1;
+    return;
+  }
+
+  const story = await loadStoryFromFile(parsed.path);
+  const machine = new Machine(story, {
+    randomSeed: parsed.seed,
+    tandy: parsed.tandy,
+    interpreterNumber: parsed.interpreterNumber,
+    interpreterVersion: parsed.interpreterVersion,
+    screenWidth: process.stdout.columns, // undefined off a TTY -> engine default (80)
+    screenHeight: process.stdout.rows,
+  });
+
+  installHostCallbacks(machine, defaultSaveName(parsed.path));
+
+  // Start on a fresh screen (Std §8: clear on start) so the game isn't drawn
+  // over prior terminal output. TTY only, so piped output stays clean.
+  if (process.stdout.isTTY) {
+    process.stdout.write(`${ESC}[2J${ESC}[H`);
+  }
+
+  runTerminalLoop(machine);
 }

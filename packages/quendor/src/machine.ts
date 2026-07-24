@@ -5,6 +5,7 @@ import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
 import { ObjectTable } from "./objects.ts";
 import { decodeQuetzal, encodeQuetzal } from "./quetzal.ts";
+import { Screen, type OutputAttrs } from "./screen.ts";
 
 /** The execution status of the machine, as seen by a debugger driver. */
 export const RunState = {
@@ -49,6 +50,7 @@ export class Machine {
   readonly version: number;
   readonly text: ZText;
   readonly objects: ObjectTable;
+  readonly screen: Screen;
 
   /** Header interpreter number (0x1e) — defaults to 6 (IBM PC). */
   readonly interpreterNumber: number;
@@ -76,6 +78,11 @@ export class Machine {
 
   // output stream 3 (memory) redirection stack
   private memoryStreams: { address: number; count: number }[] = [];
+
+  // output stream 1 (the screen), selectable via output_stream ±1. Games disable
+  // it to print transcript-only text (e.g. the bracketed copy of a quote box) via
+  // stream 2 without it appearing on screen.
+  private screenStreamEnabled = true;
 
   private runState: RunState = RunState.Running;
 
@@ -106,6 +113,10 @@ export class Machine {
   /** Whether to set the v1-3 "Tandy" header bit (Flags 1, bit 3). */
   private readonly tandy: boolean;
 
+  /** Screen dimensions reported to v4+ games via the header (0x20/0x21). */
+  private readonly screenWidth: number;
+  private readonly screenHeight: number;
+
   constructor(
     story: Story,
     options: {
@@ -113,6 +124,8 @@ export class Machine {
       tandy?: boolean;
       interpreterNumber?: number;
       interpreterVersion?: number;
+      screenWidth?: number;
+      screenHeight?: number;
     } = {},
   ) {
     this.memory = story.memory;
@@ -140,8 +153,17 @@ export class Machine {
     this.rngState = this.randomSeed;
 
     this.tandy = options.tandy ?? false;
+    this.screenWidth = options.screenWidth ?? 80;
+    this.screenHeight = options.screenHeight ?? 24;
 
     this.setupHeaderCapabilities();
+
+    this.screen = new Screen(this.screenWidth);
+    this.screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void =>
+      this.onOutput(text, attrs);
+    this.screen.onClearLower = (): void => this.onClearScreen();
+    this.screen.onUpperUpdate = (): void => this.onScreenRefresh();
+
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
 
@@ -150,7 +172,22 @@ export class Machine {
     return this.current;
   }
 
-  onOutput: (text: string) => void = () => {};
+  /**
+   * Sink for lower-window (main transcript) output. `attrs` carries text
+   * style and colours; consumers that only want plain text can ignore it.
+   */
+  onOutput: (text: string, attrs?: OutputAttrs) => void = () => {};
+
+  /** Called when the lower window (transcript) should be cleared. */
+  onClearScreen: () => void = () => {};
+
+  /**
+   * Fired when the upper window changes structurally (split/set_window/erase), so
+   * the host can repaint it immediately. Necessary for transient content like a
+   * quote box, which a game draws and tears down within a single run() burst —
+   * long before the next input prompt, where the upper window is otherwise drawn.
+   */
+  onScreenRefresh: () => void = () => {};
 
   /** Called when a routine returns. */
   onExitFrame: (returnPC: number) => void = () => {};
@@ -170,6 +207,9 @@ export class Machine {
 
   /** Supply a Quetzal save blob to restore, or null if none/cancelled. */
   onRestore: () => Uint8Array | null = () => null;
+
+  onSoundEffect: (number: number, effect: number, volume: number, routine: number) => void =
+    () => {};
 
   /**
    * Run until the machine halts, blocks on input, or hits a breakpoint.
@@ -236,6 +276,25 @@ export class Machine {
       }
     } else {
       this.inputQueue.push(line);
+    }
+  }
+
+  /** True while blocked on read_char — a single keystroke, not a full line. */
+  get awaitingCharInput(): boolean {
+    return this.pendingRead?.kind === "read_char";
+  }
+
+  /** Satisfy a pending read_char with a single keystroke (no line semantics). */
+  provideChar(ch: string): void {
+    if (this.pendingRead?.kind !== "read_char") return;
+
+    const storeVariable = this.pendingRead.storeVariable;
+
+    this.pendingRead = null;
+    this.storeCharCode(ch, storeVariable);
+
+    if (this.runState === RunState.WaitingForInput) {
+      this.runState = RunState.Running;
     }
   }
 
@@ -330,6 +389,9 @@ export class Machine {
 
       // --- calls / returns ---
       case "call":
+      case "call_1s":
+      case "call_2s":
+      case "call_vs2":
         return this.call(o[0], o.slice(1), this.currentInstruction.storeVariable ?? -1);
       case "ret":
         return this.return_(o[0]);
@@ -400,6 +462,10 @@ export class Machine {
       case "put_prop":
         return this.putProp(o[0], o[1], o[2]);
 
+      // --- tables ---
+      case "scan_table":
+        return this.scanTable(o);
+
       // --- output ---
       case "print":
         return this.print(this.decodeInline());
@@ -420,10 +486,42 @@ export class Machine {
         return this.print(
           this.text.decodeAtAddress(unpackString(this.version, o[0], this.stringsOffset)),
         );
+      case "output_stream":
+        return this.outputStream(o);
+      case "sound_effect":
+        this.onSoundEffect(o[0], o[1], o.length > 2 ? o[2] : 0, o.length > 3 ? o[3] : 0);
+        return;
 
       // --- input ---
       case "sread":
         return this.sread(o);
+      case "read_char": {
+        // read_char always stores; a missing store variable is a decode bug.
+        const variable = this.currentInstruction.storeVariable;
+        if (variable === undefined) throw new Error("read_char without a store variable");
+        return this.readChar(variable);
+      }
+
+      // --- screen / windows ---
+      case "set_text_style":
+        this.screen.style = o[0];
+        return;
+      case "buffer_mode":
+        // NOTE: not sure what to do
+        return;
+      case "split_window":
+        this.screen.splitWindow(o[0], this.version <= 3);
+        return;
+      case "set_window":
+        this.screen.setWindow(o[0]);
+        return;
+      case "set_cursor":
+        if (toS16(o[0]) < 0) return;
+        this.screen.setCursor(o[0] - 1, o[1] - 1);
+        return;
+      case "erase_window":
+        this.screen.eraseWindow(toS16(o[0]));
+        return;
 
       // --- game state ---
       case "random":
@@ -468,6 +566,43 @@ export class Machine {
   private sread(o: number[]): void {
     if (this.version <= 3) this.showStatus(); // v1-3 refresh the status bar
     this.beginRead("sread", o[0], o[1], -1);
+  }
+
+  private readChar(storeVariable: number): void {
+    // Refill the character buffer from any queued line (with a trailing Enter).
+    if (this.charBuffer.length === 0 && this.inputQueue.length > 0) {
+      const line = this.inputQueue.shift() ?? "";
+      this.charBuffer = Array.from(line + "\r");
+    }
+
+    // shift() both takes the next char and reports whether the buffer was empty.
+    const ch = this.charBuffer.shift();
+
+    if (ch !== undefined) {
+      this.storeCharCode(ch, storeVariable);
+      return;
+    }
+
+    this.pendingRead = { kind: "read_char", textBuffer: 0, parseBuffer: 0, storeVariable };
+    this.runState = RunState.WaitingForInput;
+  }
+
+  private outputStream(o: number[]): void {
+    const which = toS16(o[0]);
+
+    if (which === 3) {
+      this.memoryStreams.push({ address: o[1], count: 0 });
+    } else if (which === -3) {
+      const stream = this.memoryStreams.pop();
+      if (stream) this.memory.writeWord(stream.address, stream.count);
+    } else if (which === 1) {
+      this.screenStreamEnabled = true;
+    } else if (which === -1) {
+      this.screenStreamEnabled = false;
+    }
+    // Stream ±2 (transcript/printer) is not yet implemented: text meant only for
+    // it (e.g. a quote box's bracketed copy, printed while the screen is off)
+    // simply goes nowhere, which keeps it off the screen as intended.
   }
 
   /** Draw the v1-3 status bar from globals 0 (location), 1 and 2 (score/time). */
@@ -521,7 +656,7 @@ export class Machine {
       return;
     }
 
-    this.onOutput(text);
+    if (this.screenStreamEnabled) this.screen.print(text);
   }
 
   private putProp(objNum: number, propNum: number, value: number): void {
@@ -879,6 +1014,13 @@ export class Machine {
 
       this.memory.writeByte(HeaderOffset.Flags1, this.tandy ? flags1 | 0x08 : flags1 & 0xf7);
     }
+
+    // v4+: report the screen size so games lay out correctly (Trinity refuses
+    // to start otherwise). Interpreter-owned, so it survives restart/restore.
+    if (this.version >= 4) {
+      this.memory.writeByte(HeaderOffset.ScreenHeight, Math.min(255, this.screenHeight));
+      this.memory.writeByte(HeaderOffset.ScreenWidth, Math.min(255, this.screenWidth));
+    }
   }
 
   private setupInitialFrame(initialPC: number): Frame {
@@ -970,6 +1112,7 @@ export class Machine {
     // keep restarts reproducible
     this.rngState = this.randomSeed;
     this.memoryStreams.length = 0;
+    this.screenStreamEnabled = true;
     this.charBuffer.length = 0;
     this.pendingRead = null;
     this.current = this.setupInitialFrame(this.initialProgramCounter);
@@ -1085,6 +1228,11 @@ export class Machine {
     // Interpreter-owned header fields must survive a restore.
     this.setupHeaderCapabilities();
 
+    // Output-stream state is interpreter-side, not part of the save: reset it so
+    // a save taken mid-redirect (e.g. inside a quote box) resumes with the screen on.
+    this.memoryStreams.length = 0;
+    this.screenStreamEnabled = true;
+
     // Rebuild the call stack.
     this.stack.length = 0;
     this.frames.length = 0;
@@ -1148,5 +1296,28 @@ export class Machine {
       else if (offset === 1) this.return_(1);
       else this.pc = next + offset - 2;
     }
+  }
+
+  private scanTable(o: number[]): void {
+    const x = o[0];
+    let address = o[1];
+    const len = o[2];
+    const form = o.length > 3 ? o[3] : 0x82;
+    const wordSized = (form & 0x80) !== 0;
+    const step = form & 0x7f;
+
+    for (let j = 0; j < len; j++) {
+      const value = wordSized ? this.memory.readWord(address) : this.memory.readByte(address);
+
+      if (value === x) {
+        this.store(address);
+        return this.branchOn(true);
+      }
+
+      address += step;
+    }
+
+    this.store(0);
+    this.branchOn(false);
   }
 }

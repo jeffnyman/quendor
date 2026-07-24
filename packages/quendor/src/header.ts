@@ -21,6 +21,8 @@ export const HeaderOffset = {
   Checksum: 0x1c,
   InterpreterNumber: 0x1e,
   InterpreterVersion: 0x1f,
+  ScreenHeight: 0x20, // v4+: screen height in lines (interpreter-written)
+  ScreenWidth: 0x21, // v4+: screen width in characters (interpreter-written)
   RoutinesOffset: 0x28, // v6/v7; divided by 8 to get the real offset
   StringsOffset: 0x2a, // v6/v7; divided by 8 to get the real offset
   AlphabetTableAddress: 0x34, // v5+; 0 means use the default alphabets
