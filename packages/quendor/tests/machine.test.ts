@@ -33,6 +33,20 @@ test("exposes the interpreter number and version it wrote", () => {
   expect(machine.interpreterVersion).toBe(0x41);
 });
 
+test("uses the interpreter number and version from options when provided", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+    { interpreterNumber: 2, interpreterVersion: 0x42 }, // Apple IIe, 'B'
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.InterpreterNumber)).toBe(2);
+  expect(machine.memory.readByte(HeaderOffset.InterpreterVersion)).toBe(0x42);
+  expect(machine.interpreterNumber).toBe(2);
+  expect(machine.interpreterVersion).toBe(0x42);
+});
+
 test("shares the story's memory rather than copying it", () => {
   const story = buildStory(64, (bytes) => {
     bytes[HeaderOffset.Version] = 3;
@@ -639,4 +653,42 @@ test("restore fails cleanly (result 0) when onRestore offers no save", () => {
   machine.run();
 
   expect(machine.memory.readWord(GLOBALS)).toBe(7); // no save -> restore fell through to ret 7
+});
+
+// --- header: Tandy flag ----------------------------------------------------
+//
+// The v1-3 Tandy bit (Flags 1, bit 3) is interpreter-owned: driven by the
+// `tandy` option and — the subtle part — re-asserted after a restart, since the
+// dynamic-memory restore (from a snapshot taken before the bit was set) clears it.
+
+test("sets the v1-3 Tandy bit (Flags 1, bit 3) when the tandy option is given", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+    { tandy: true },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08);
+});
+
+test("leaves the Tandy bit clear by default", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0);
+});
+
+test("re-asserts the Tandy bit after a restart", () => {
+  const machine = new Machine(buildRestartProgram(routine([], restartInsn())), { tandy: true });
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08); // set at load
+
+  machine.step(); // call the routine
+  machine.step(); // restart: restores original memory (bit clear), then re-asserts it
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08);
 });

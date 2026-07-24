@@ -3,35 +3,66 @@ import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readLineSync } from "./node.ts";
 
-const USAGE = `quendor — a terminal Z-Machine player
+const USAGE = `quendor — a terminal Z-Machine interpreter
 
 Usage:
   quendor <story-file>
 
-  <story-file>   a Z-code game (.z1-.z8)
-  --seed N       fix the RNG seed (reproducible playthroughs)
+  <story-file>             a Z-code game (.z1-.z3)
+  --seed N                 fix the RNG seed (reproducible playthroughs)
+  --tandy                  set the v1-3 "Tandy" flag
+  --interpreter N          set the interpreter number (default 6 = IBM PC)
+  --interpreter-version C  set the interpreter version letter (default A)
+
+  Save/restore prompt for a filename, defaulting to the story name + ".qzl".
 `;
 
-type ParsedArgs = { help: true } | { help: false; path?: string; seed?: number };
+interface ParsedArgs {
+  help: boolean;
+  path?: string;
+  seed?: number;
+  tandy?: boolean;
+  interpreterNumber?: number;
+  interpreterVersion?: number;
+}
+
+/** Parse an integer argument, yielding undefined for a non-numeric value. */
+function intArg(value: string): number | undefined {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
 
 export function parseArgs(args: string[]): ParsedArgs {
-  let path: string | undefined;
-  let seed: number | undefined;
+  const parsed: ParsedArgs = { help: false };
+
+  // Flags that consume the following argument, keyed by name. Adding an option
+  // is a new entry here, not another branch in the loop below.
+  const withValue: Record<string, (value: string) => void> = {
+    "--seed": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) parsed.seed = n;
+    },
+    "--interpreter": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) parsed.interpreterNumber = n;
+    },
+    "--interpreter-version": (v): void => {
+      const c = v.charCodeAt(0); // version is a byte, conventionally a letter
+      if (!Number.isNaN(c)) parsed.interpreterVersion = c;
+    },
+  };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
 
-    if (a === "--help" || a === "-h") {
-      return { help: true };
-    } else if (a === "--seed" && i + 1 < args.length) {
-      const n = parseInt(args[++i], 10);
-      if (!Number.isNaN(n)) seed = n;
-    } else if (!a.startsWith("-")) {
-      path ??= a;
-    }
+    if (a === "--help" || a === "-h")
+      return { help: true }; // short-circuits
+    else if (a === "--tandy") parsed.tandy = true;
+    else if (a in withValue && i + 1 < args.length) withValue[a](args[++i]);
+    else if (!a.startsWith("-")) parsed.path ??= a;
   }
 
-  return { help: false, path, seed };
+  return parsed;
 }
 
 /** Default save filename derived from the story: base name, no directory, no extension. */
@@ -64,7 +95,12 @@ export async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-  const machine = new Machine(story, { randomSeed: parsed.seed });
+  const machine = new Machine(story, {
+    randomSeed: parsed.seed,
+    tandy: parsed.tandy,
+    interpreterNumber: parsed.interpreterNumber,
+    interpreterVersion: parsed.interpreterVersion,
+  });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);

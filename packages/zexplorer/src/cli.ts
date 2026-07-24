@@ -14,6 +14,10 @@ import { appendFileSync, writeFileSync } from "node:fs";
 
 interface ZexpOptions {
   trace?: string;
+  seed?: number;
+  tandy?: boolean;
+  interpreterNumber?: number;
+  interpreterVersion?: number;
 }
 
 /**
@@ -86,7 +90,12 @@ async function cmdDisasm(path: string, addressArg: string | undefined): Promise<
 
 async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   const story = await loadStoryFromFile(path);
-  const machine = new Machine(story);
+  const machine = new Machine(story, {
+    randomSeed: opts.seed,
+    tandy: opts.tandy,
+    interpreterNumber: opts.interpreterNumber,
+    interpreterVersion: opts.interpreterVersion,
+  });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
@@ -149,16 +158,42 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   }
 }
 
-function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
+/** Parse an integer argument, yielding undefined for a non-numeric value. */
+function intArg(value: string): number | undefined {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+export function parseArgs(rest: string[]): { path: string | undefined; opts: ZexpOptions } {
   const opts: ZexpOptions = {};
   const positional: string[] = [];
 
+  // Flags that consume the following argument. Adding an option is a new entry
+  // here, not another branch in the loop below.
+  const withValue: Record<string, (value: string) => void> = {
+    "--trace": (v): void => {
+      opts.trace = v;
+    },
+    "--seed": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) opts.seed = n;
+    },
+    "--interpreter": (v): void => {
+      const n = intArg(v);
+      if (n !== undefined) opts.interpreterNumber = n;
+    },
+    "--interpreter-version": (v): void => {
+      const c = v.charCodeAt(0); // version is a byte, conventionally a letter
+      if (!Number.isNaN(c)) opts.interpreterVersion = c;
+    },
+  };
+
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === "--trace" && i + 1 < rest.length) {
-      opts.trace = rest[++i];
-    } else {
-      positional.push(rest[i]);
-    }
+    const a = rest[i];
+
+    if (a === "--tandy") opts.tandy = true;
+    else if (a in withValue && i + 1 < rest.length) withValue[a](rest[++i]);
+    else positional.push(a);
   }
 
   return { path: positional[0], opts };
@@ -228,7 +263,9 @@ export async function main(): Promise<void> {
       const { path, opts } = parseArgs(rest);
 
       if (!path) {
-        console.error("usage: zexp run <story-file> [--trace-file]");
+        console.error(
+          "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]",
+        );
         process.exitCode = 1;
         return;
       }
@@ -249,7 +286,7 @@ export async function main(): Promise<void> {
         "  disasm <story-file> [addr]         disassemble every reachable routine/jump/branch target",
       );
       console.error(
-        "  run <story-file> [--trace <file>]  execute the story (headless); --trace logs the opcode path",
+        "  run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]   execute the story (headless); --trace logs the opcode path",
       );
 
       process.exitCode = 1;

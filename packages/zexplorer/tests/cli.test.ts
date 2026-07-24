@@ -8,7 +8,7 @@ import {
   type Instruction,
 } from "quendor";
 import { writeFileSync } from "node:fs";
-import { cmdAbbrevs, cmdHeader, main } from "../src/cli.ts";
+import { cmdAbbrevs, cmdHeader, main, parseArgs } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
@@ -258,7 +258,37 @@ test("main prints usage and exits 1 when run is missing a path", async () => {
 
   await main();
 
-  expect(console.error).toHaveBeenCalledWith("usage: zexp run <story-file> [--trace-file]");
+  expect(console.error).toHaveBeenCalledWith(
+    "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]",
+  );
   expect(process.exitCode).toBe(1);
   expect(loadStoryFromFile).not.toHaveBeenCalled();
+});
+
+// --- run option parsing ----------------------------------------------------
+
+test("parseArgs collects the path plus the trace, seed, and tandy options", () => {
+  const { path, opts } = parseArgs(["game.z3", "--trace", "out.log", "--seed", "42", "--tandy"]);
+
+  expect(path).toBe("game.z3");
+  expect(opts).toEqual({ trace: "out.log", seed: 42, tandy: true });
+});
+
+test("parseArgs drops --seed with no value or a non-numeric value", () => {
+  expect(parseArgs(["game.z3", "--seed"]).opts.seed).toBeUndefined();
+  expect(parseArgs(["--seed", "abc", "game.z3"]).opts.seed).toBeUndefined();
+});
+
+test("parseArgs leaves options empty when only a path is given", () => {
+  const { path, opts } = parseArgs(["game.z3"]);
+
+  expect(path).toBe("game.z3");
+  expect(opts).toEqual({});
+});
+
+test("parseArgs reads --interpreter (number) and --interpreter-version (letter -> byte)", () => {
+  const { opts } = parseArgs(["game.z3", "--interpreter", "11", "--interpreter-version", "T"]);
+
+  expect(opts.interpreterNumber).toBe(11);
+  expect(opts.interpreterVersion).toBe(0x54); // 'T'
 });
