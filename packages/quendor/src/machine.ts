@@ -194,6 +194,9 @@ export class Machine {
   /** Supply a Quetzal save blob to restore, or null if none/cancelled. */
   onRestore: () => Uint8Array | null = () => null;
 
+  onSoundEffect: (number: number, effect: number, volume: number, routine: number) => void =
+    () => {};
+
   /**
    * Run until the machine halts, blocks on input, or hits a breakpoint.
    * Returns the resulting state. Safe to call again to resume from Paused.
@@ -452,6 +455,9 @@ export class Machine {
         );
       case "output_stream":
         return this.outputStream(o);
+      case "sound_effect":
+        this.onSoundEffect(o[0], o[1], o.length > 2 ? o[2] : 0, o.length > 3 ? o[3] : 0);
+        return;
 
       // --- input ---
       case "sread":

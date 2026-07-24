@@ -146,6 +146,12 @@ export async function main(): Promise<void> {
     process.stdout.write(`${ESC}[${machine.screen.upperHeight + 1};1H${ESC}[J`);
   };
 
+  // sound_effect: bleeps (1 = high, 2 = low) map to the terminal bell; sampled
+  // sounds (3+) need audio we don't have yet (Blorb pending), so ignore them.
+  machine.onSoundEffect = (number): void => {
+    if (number === 1 || number === 2) process.stdout.write("\x07");
+  };
+
   // Frotz-style: prompt for a filename on each save/restore, defaulting to the
   // story's base name. The prompt is synchronous like the main input loop —
   // save/restore are synchronous opcodes, so blocking on input here is fine.
