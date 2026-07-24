@@ -57,3 +57,55 @@ test("upperRows renders each row as a full-width string for the host", () => {
 
   expect(screen.upperRows()).toEqual(["Score: 10 "]); // padded to width 10
 });
+
+// erase_window routing: which windows fire onClearLower (the host's clear signal)
+// vs. only blank the upper grid. This is the exact behavior the CLI relies on.
+
+function statusScreen(rows: number): Screen {
+  const screen = new Screen(10);
+  screen.splitWindow(rows, true);
+  screen.setWindow(1);
+  screen.print("status");
+  return screen;
+}
+
+test("eraseWindow(0) clears the lower window via onClearLower, leaving the upper grid", () => {
+  const screen = statusScreen(1);
+  let cleared = 0;
+  screen.onClearLower = (): void => {
+    cleared++;
+  };
+
+  screen.eraseWindow(0);
+
+  expect(cleared).toBe(1); // lower window cleared
+  expect(screen.upperHeight).toBe(1); // upper window untouched
+  expect(screen.upperRows()[0].trimEnd()).toBe("status"); // its content preserved
+});
+
+test("eraseWindow(1) blanks the upper grid without touching the lower window", () => {
+  const screen = statusScreen(1);
+  let cleared = 0;
+  screen.onClearLower = (): void => {
+    cleared++;
+  };
+
+  screen.eraseWindow(1);
+
+  expect(cleared).toBe(0); // lower window NOT cleared
+  expect(screen.upperRows()[0].trimEnd()).toBe(""); // upper grid blanked
+});
+
+test("eraseWindow(-1) unsplits, empties the upper grid, and clears the lower window", () => {
+  const screen = statusScreen(2);
+  let cleared = 0;
+  screen.onClearLower = (): void => {
+    cleared++;
+  };
+
+  screen.eraseWindow(-1);
+
+  expect(cleared).toBe(1); // lower window cleared
+  expect(screen.upperHeight).toBe(0); // unsplit
+  expect(screen.upperRows()).toEqual([]); // grid emptied
+});
