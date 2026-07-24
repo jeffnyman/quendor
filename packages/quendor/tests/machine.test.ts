@@ -716,3 +716,29 @@ test("re-asserts the Tandy bit after a restart", () => {
 
   expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08);
 });
+
+// --- execution: read_char (single keystroke) -------------------------------
+
+test("read_char blocks awaiting a single keystroke, and provideChar delivers it", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 4; // read_char is a v4+ opcode
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+      // read_char 1 -> G_FIRST ; quit
+      // 0xf6 = VAR read_char; 0x7f = one small-constant operand then three omitted.
+      bytes.set([0xf6, 0x7f, 0x01, G_FIRST, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.run()).toBe(RunState.WaitingForInput);
+  expect(machine.awaitingCharInput).toBe(true);
+
+  machine.provideChar("x");
+
+  expect(machine.awaitingCharInput).toBe(false);
+  expect(machine.run()).toBe(RunState.Halted);
+  expect(machine.memory.readWord(GLOBALS)).toBe("x".charCodeAt(0)); // 'x' = 120
+});
