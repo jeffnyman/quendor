@@ -138,6 +138,14 @@ export async function main(): Promise<void> {
     process.stdout.write(text);
   };
 
+  // Fired by erase_window on the lower window. Clear from the first lower-window
+  // row to the end of screen, leaving any status bar above it intact. (For
+  // erase_window -1, Screen resets upperHeight to 0 first, so this clears all.)
+  machine.onClearScreen = (): void => {
+    if (!process.stdout.isTTY) return;
+    process.stdout.write(`${ESC}[${machine.screen.upperHeight + 1};1H${ESC}[J`);
+  };
+
   // Frotz-style: prompt for a filename on each save/restore, defaulting to the
   // story's base name. The prompt is synchronous like the main input loop —
   // save/restore are synchronous opcodes, so blocking on input here is fine.
@@ -163,6 +171,12 @@ export async function main(): Promise<void> {
       return null;
     }
   };
+
+  // Start on a fresh screen (Std §8: clear on start) so the game isn't drawn
+  // over prior terminal output. TTY only, so piped output stays clean.
+  if (process.stdout.isTTY) {
+    process.stdout.write(`${ESC}[2J${ESC}[H`);
+  }
 
   let statusHeight = 0;
 
