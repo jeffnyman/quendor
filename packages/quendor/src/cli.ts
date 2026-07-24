@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readLineSync } from "./node.ts";
 
@@ -33,6 +34,21 @@ export function parseArgs(args: string[]): ParsedArgs {
   return { help: false, path, seed };
 }
 
+/** Default save filename derived from the story: base name, no directory, no extension. */
+function defaultSaveName(storyPath: string): string {
+  return basename(storyPath, extname(storyPath)) + ".qzl";
+}
+
+/** Prompt (Frotz-style) for a save/restore filename; empty input takes the default. */
+function promptForSaveFile(def: string): string {
+  process.stdout.write(`Enter a file name.\nDefault is "${def}": `);
+
+  const line = readLineSync();
+  const name = (line ?? "").trim();
+
+  return name.length > 0 ? name : def;
+}
+
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
 
@@ -54,12 +70,16 @@ export async function main(): Promise<void> {
     process.stdout.write(text);
   };
 
-  // Persist saves next to the story (a single slot).
-  const savePath = parsed.path + ".sav";
+  // Frotz-style: prompt for a filename on each save/restore, defaulting to the
+  // story's base name. The prompt is synchronous like the main input loop —
+  // save/restore are synchronous opcodes, so blocking on input here is fine.
+  const defaultSave = defaultSaveName(parsed.path);
 
   machine.onSave = (data): boolean => {
+    const file = promptForSaveFile(defaultSave);
+
     try {
-      writeFileSync(savePath, data);
+      writeFileSync(file, data);
       return true;
     } catch {
       return false;
@@ -67,8 +87,10 @@ export async function main(): Promise<void> {
   };
 
   machine.onRestore = (): Uint8Array | null => {
+    const file = promptForSaveFile(defaultSave);
+
     try {
-      return existsSync(savePath) ? new Uint8Array(readFileSync(savePath)) : null;
+      return existsSync(file) ? new Uint8Array(readFileSync(file)) : null;
     } catch {
       return null;
     }
