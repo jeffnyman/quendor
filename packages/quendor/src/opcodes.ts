@@ -113,6 +113,8 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x01, "rfalse", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x02, "print", F.ZText, 1, 8],
   [OpcodeKind.ZeroOp, 0x03, "print_ret", F.Return | F.ZText, 1, 8],
+  [OpcodeKind.ZeroOp, 0x05, "save", F.Branch, 1, 3],
+  [OpcodeKind.ZeroOp, 0x06, "restore", F.Branch, 1, 3],
   [OpcodeKind.ZeroOp, 0x07, "restart", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x09, "pop", F.None, 1, 4],

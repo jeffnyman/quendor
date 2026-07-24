@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readLineSync } from "./node.ts";
 
@@ -51,6 +52,26 @@ export async function main(): Promise<void> {
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
+  };
+
+  // Persist saves next to the story (a single slot).
+  const savePath = parsed.path + ".sav";
+
+  machine.onSave = (data): boolean => {
+    try {
+      writeFileSync(savePath, data);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  machine.onRestore = (): Uint8Array | null => {
+    try {
+      return existsSync(savePath) ? new Uint8Array(readFileSync(savePath)) : null;
+    } catch {
+      return null;
+    }
   };
 
   for (;;) {

@@ -4,6 +4,7 @@ import { InstructionReader, OperandKind, type Instruction } from "./instruction.
 import type { Memory } from "./memory.ts";
 import type { Story } from "./story.ts";
 import { ObjectTable } from "./objects.ts";
+import { decodeQuetzal, encodeQuetzal } from "./quetzal.ts";
 
 /** The execution status of the machine, as seen by a debugger driver. */
 export const RunState = {
@@ -150,6 +151,12 @@ export class Machine {
 
   /** Called when a routine is entered (call). */
   onEnterFrame: (routineAddress: number, returnPC: number) => void = () => {};
+
+  /** Persist a Quetzal save blob; return true on success. */
+  onSave: (data: Uint8Array) => boolean = () => false;
+
+  /** Supply a Quetzal save blob to restore, or null if none/cancelled. */
+  onRestore: () => Uint8Array | null = () => null;
 
   /**
    * Run until the machine halts, blocks on input, or hits a breakpoint.
@@ -415,6 +422,10 @@ export class Machine {
         return;
       case "restart":
         return this.doRestart();
+      case "save":
+        return this.doSave();
+      case "restore":
+        return this.doRestore();
 
       default:
         throw new Error(
@@ -963,6 +974,155 @@ export class Machine {
       // configured seed instead.
       this.seed(this.randomSeed);
       this.store(0);
+    }
+  }
+
+  /** Address of the save/restore result operand (branch bytes v1-3,store byte v4+). */
+  private resultOperandAddr(): number {
+    const insn = this.currentInstruction;
+    return this.version <= 3 ? insn.address + 1 : insn.address + insn.length - 1;
+  }
+
+  private serialNumber(): string {
+    let s = "";
+
+    for (let i = 0; i < 6; i++) {
+      s += String.fromCharCode(this.memory.readByte(0x12 + i));
+    }
+
+    return s;
+  }
+
+  private doSave(): void {
+    const operandAddr = this.resultOperandAddr();
+    const frames = this.frames.map((f, i) => ({
+      returnPC: f.returnPC,
+      locals: f.locals.slice(),
+      storeVariable: f.storeVariable,
+      argumentCount: f.argumentCount,
+      evalStack: this.stack.slice(f.stackBase, this.frames[i + 1]?.stackBase ?? this.stack.length),
+    }));
+    let ok = false;
+
+    try {
+      const blob = encodeQuetzal(
+        {
+          release: this.memory.readWord(0x02),
+          serial: this.serialNumber(),
+          checksum: this.headerChecksum,
+          pc: operandAddr,
+          dynamicMemory: this.memory.bytes.slice(0, this.staticBase),
+          frames,
+        },
+        this.originalDynamic,
+      );
+      ok = this.onSave(blob);
+    } catch {
+      ok = false;
+    }
+
+    this.applyResult(operandAddr, ok ? 1 : 0);
+  }
+
+  private doRestore(): void {
+    const currentOperand = this.resultOperandAddr();
+    let blob: Uint8Array | null = null;
+
+    try {
+      blob = this.onRestore();
+    } catch {
+      blob = null;
+    }
+
+    if (!blob) {
+      return this.applyResult(currentOperand, 0);
+    }
+
+    let parsed;
+
+    try {
+      parsed = decodeQuetzal(blob, this.originalDynamic, this.staticBase);
+    } catch {
+      return this.applyResult(currentOperand, 0);
+    }
+
+    // Reject a save that doesn't belong to this story.
+    if (
+      parsed.release !== this.memory.readWord(0x02) ||
+      parsed.serial !== this.serialNumber() ||
+      parsed.checksum !== this.headerChecksum
+    ) {
+      return this.applyResult(currentOperand, 0);
+    }
+
+    // Restore dynamic memory (bytes.set bypasses watchpoints, as intended).
+    this.memory.bytes.set(parsed.dynamicMemory.subarray(0, this.staticBase), 0);
+
+    // Interpreter-owned header fields must survive a restore.
+    this.setupHeaderCapabilities();
+
+    // Rebuild the call stack.
+    this.stack.length = 0;
+    this.frames.length = 0;
+
+    for (const qf of parsed.frames) {
+      const frame: Frame = {
+        routineAddress: 0, // not stored by Quetzal; only affects debugger display
+        locals: qf.locals.slice(),
+        argumentCount: qf.argumentCount,
+        returnPC: qf.returnPC,
+        storeVariable: qf.storeVariable,
+        stackBase: this.stack.length,
+      };
+
+      this.frames.push(frame);
+      for (const word of qf.evalStack) this.stack.push(word);
+    }
+
+    this.current = this.frames[this.frames.length - 1];
+
+    // Resume from the saved point, delivering "2" to the original save's operand.
+    this.applyResult(parsed.pc, 2);
+  }
+
+  private applyResult(operandAddr: number, value: number): void {
+    if (this.version <= 3) {
+      this.applyBranchAt(operandAddr, value !== 0);
+    } else {
+      const varNum = this.memory.readByte(operandAddr);
+
+      this.pc = operandAddr + 1;
+      this.writeVariable(varNum, value);
+    }
+  }
+
+  private applyBranchAt(addr: number, condition: boolean): void {
+    const b1 = this.memory.readByte(addr);
+    const whenTrue = (b1 & 0x80) !== 0;
+
+    let next = addr + 1;
+    let offset: number;
+
+    if ((b1 & 0x40) !== 0) {
+      offset = b1 & 0x3f;
+    } else {
+      const b2 = this.memory.readByte(next);
+
+      next++;
+
+      let v = ((b1 & 0x3f) << 8) | b2;
+
+      if (v & 0x2000) v -= 0x4000;
+
+      offset = v;
+    }
+
+    this.pc = next;
+
+    if (condition === whenTrue) {
+      if (offset === 0) this.return_(0);
+      else if (offset === 1) this.return_(1);
+      else this.pc = next + offset - 2;
     }
   }
 }
