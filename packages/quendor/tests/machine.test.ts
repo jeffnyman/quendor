@@ -640,3 +640,41 @@ test("restore fails cleanly (result 0) when onRestore offers no save", () => {
 
   expect(machine.memory.readWord(GLOBALS)).toBe(7); // no save -> restore fell through to ret 7
 });
+
+// --- header: Tandy flag ----------------------------------------------------
+//
+// The v1-3 Tandy bit (Flags 1, bit 3) is interpreter-owned: driven by the
+// `tandy` option and — the subtle part — re-asserted after a restart, since the
+// dynamic-memory restore (from a snapshot taken before the bit was set) clears it.
+
+test("sets the v1-3 Tandy bit (Flags 1, bit 3) when the tandy option is given", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+    { tandy: true },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08);
+});
+
+test("leaves the Tandy bit clear by default", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0);
+});
+
+test("re-asserts the Tandy bit after a restart", () => {
+  const machine = new Machine(buildRestartProgram(routine([], restartInsn())), { tandy: true });
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08); // set at load
+
+  machine.step(); // call the routine
+  machine.step(); // restart: restores original memory (bit clear), then re-asserts it
+
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x08).toBe(0x08);
+});

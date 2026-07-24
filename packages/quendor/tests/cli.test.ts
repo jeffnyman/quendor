@@ -56,6 +56,15 @@ test("takes the first positional as the path and ignores unknown flags", () => {
   });
 });
 
+test("--tandy is an accumulating flag (unlike --help), coexisting with the path", () => {
+  expect(parseArgs(["--tandy", "game.z3"])).toEqual({
+    help: false,
+    path: "game.z3",
+    seed: undefined,
+    tandy: true,
+  });
+});
+
 // --- main early exits ------------------------------------------------------
 
 const originalArgv = process.argv;
