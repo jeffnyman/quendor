@@ -106,14 +106,22 @@ export class Machine {
   /** Whether to set the v1-3 "Tandy" header bit (Flags 1, bit 3). */
   private readonly tandy: boolean;
 
-  constructor(story: Story, options: { randomSeed?: number; tandy?: boolean } = {}) {
+  constructor(
+    story: Story,
+    options: {
+      randomSeed?: number;
+      tandy?: boolean;
+      interpreterNumber?: number;
+      interpreterVersion?: number;
+    } = {},
+  ) {
     this.memory = story.memory;
     this.version = story.header.version;
     this.text = story.text;
     this.initialProgramCounter = story.header.initialProgramCounter;
 
-    this.interpreterNumber = 6; // IBM PC
-    this.interpreterVersion = 0x41; // 'A'
+    this.interpreterNumber = options.interpreterNumber ?? 6; // default: IBM PC
+    this.interpreterVersion = options.interpreterVersion ?? 0x41; // default: 'A'
     this.routinesOffset = story.header.routinesOffset;
     this.stringsOffset = story.header.stringsOffset;
     this.globalsAddress = story.header.globalVariablesTableAddress;

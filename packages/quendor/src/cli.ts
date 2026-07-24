@@ -8,9 +8,11 @@ const USAGE = `quendor — a terminal Z-Machine interpreter
 Usage:
   quendor <story-file>
 
-  <story-file>   a Z-code game (.z1-.z3)
-  --seed N       fix the RNG seed (reproducible playthroughs)
-  --tandy        set the v1-3 "Tandy" flag
+  <story-file>             a Z-code game (.z1-.z3)
+  --seed N                 fix the RNG seed (reproducible playthroughs)
+  --tandy                  set the v1-3 "Tandy" flag
+  --interpreter N          set the interpreter number (default 6 = IBM PC)
+  --interpreter-version C  set the interpreter version letter (default A)
 
   Save/restore prompt for a filename, defaulting to the story name + ".qzl".
 `;
@@ -20,12 +22,16 @@ interface ParsedArgs {
   path?: string;
   seed?: number;
   tandy?: boolean;
+  interpreterNumber?: number;
+  interpreterVersion?: number;
 }
 
 export function parseArgs(args: string[]): ParsedArgs {
   let path: string | undefined;
   let seed: number | undefined;
   let tandy: boolean | undefined;
+  let interpreterNumber: number | undefined;
+  let interpreterVersion: number | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -37,12 +43,18 @@ export function parseArgs(args: string[]): ParsedArgs {
       if (!Number.isNaN(n)) seed = n;
     } else if (a === "--tandy") {
       tandy = true;
+    } else if (a === "--interpreter" && i + 1 < args.length) {
+      const n = parseInt(args[++i], 10);
+      if (!Number.isNaN(n)) interpreterNumber = n;
+    } else if (a === "--interpreter-version" && i + 1 < args.length) {
+      const code = args[++i].charCodeAt(0); // version is a byte, conventionally a letter
+      if (!Number.isNaN(code)) interpreterVersion = code;
     } else if (!a.startsWith("-")) {
       path ??= a;
     }
   }
 
-  return { help: false, path, seed, tandy };
+  return { help: false, path, seed, tandy, interpreterNumber, interpreterVersion };
 }
 
 /** Default save filename derived from the story: base name, no directory, no extension. */
@@ -75,7 +87,12 @@ export async function main(): Promise<void> {
   }
 
   const story = await loadStoryFromFile(parsed.path);
-  const machine = new Machine(story, { randomSeed: parsed.seed, tandy: parsed.tandy });
+  const machine = new Machine(story, {
+    randomSeed: parsed.seed,
+    tandy: parsed.tandy,
+    interpreterNumber: parsed.interpreterNumber,
+    interpreterVersion: parsed.interpreterVersion,
+  });
 
   machine.onOutput = (text): void => {
     process.stdout.write(text);
