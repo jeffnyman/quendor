@@ -259,7 +259,7 @@ test("main prints usage and exits 1 when run is missing a path", async () => {
   await main();
 
   expect(console.error).toHaveBeenCalledWith(
-    "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy]",
+    "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]",
   );
   expect(process.exitCode).toBe(1);
   expect(loadStoryFromFile).not.toHaveBeenCalled();
@@ -284,4 +284,11 @@ test("parseArgs leaves options empty when only a path is given", () => {
 
   expect(path).toBe("game.z3");
   expect(opts).toEqual({});
+});
+
+test("parseArgs reads --interpreter (number) and --interpreter-version (letter -> byte)", () => {
+  const { opts } = parseArgs(["game.z3", "--interpreter", "11", "--interpreter-version", "T"]);
+
+  expect(opts.interpreterNumber).toBe(11);
+  expect(opts.interpreterVersion).toBe(0x54); // 'T'
 });
