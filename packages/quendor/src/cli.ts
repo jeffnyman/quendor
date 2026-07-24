@@ -209,8 +209,11 @@ export async function main(): Promise<void> {
     machine.provideInput(line);
   }
 
-  // Leave the terminal clean: drop any scroll region we set.
+  // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /
+  // restore (ESC 8). ESC[r homes the cursor as a side effect, and we want the
+  // shell prompt to resume where the game left off — below the transcript, not
+  // jumped to the top.
   if (process.stdout.isTTY && statusHeight > 0) {
-    process.stdout.write(`${ESC}[r`);
+    process.stdout.write(`${ESC}7${ESC}[r${ESC}8`);
   }
 }
