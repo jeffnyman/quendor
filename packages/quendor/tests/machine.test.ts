@@ -47,6 +47,30 @@ test("uses the interpreter number and version from options when provided", () =>
   expect(machine.interpreterVersion).toBe(0x42);
 });
 
+test("v4+ writes the screen dimensions into the header (0x20/0x21)", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+    }),
+    { screenWidth: 100, screenHeight: 30 },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.ScreenWidth)).toBe(100);
+  expect(machine.memory.readByte(HeaderOffset.ScreenHeight)).toBe(30);
+});
+
+test("v1-3 leaves the screen-dimension bytes alone (they're a v4+ header field)", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+    { screenWidth: 100, screenHeight: 30 },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.ScreenWidth)).toBe(0);
+  expect(machine.memory.readByte(HeaderOffset.ScreenHeight)).toBe(0);
+});
+
 test("shares the story's memory rather than copying it", () => {
   const story = buildStory(64, (bytes) => {
     bytes[HeaderOffset.Version] = 3;
