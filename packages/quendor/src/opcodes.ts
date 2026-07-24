@@ -135,7 +135,16 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x07, "random", F.Store, 1, 8],
   [OpcodeKind.VarOp, 0x08, "push", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x09, "pull", F.FirstOpByRef, 1, 5],
+  [OpcodeKind.VarOp, 0x0a, "split_window", F.None, 3, 8],
+  [OpcodeKind.VarOp, 0x0b, "set_window", F.None, 3, 8],
   [OpcodeKind.VarOp, 0x0c, "call_vs2", F.Call | F.Store | F.DoubleVar, 4, 8],
+  [OpcodeKind.VarOp, 0x0d, "erase_window", F.None, 4, 8],
+  [OpcodeKind.VarOp, 0x0f, "set_cursor", F.None, 4, 8],
+  [OpcodeKind.VarOp, 0x11, "set_text_style", F.None, 4, 8],
+  [OpcodeKind.VarOp, 0x12, "buffer_mode", F.None, 4, 8],
+  [OpcodeKind.VarOp, 0x13, "output_stream", F.None, 3, 8],
+  [OpcodeKind.VarOp, 0x16, "read_char", F.Store, 4, 8],
+  [OpcodeKind.VarOp, 0x17, "scan_table", F.Store | F.Branch, 4, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;
