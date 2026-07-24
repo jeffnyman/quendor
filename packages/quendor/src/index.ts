@@ -62,3 +62,7 @@ export { ObjectTable } from "./objects.js";
 
 // --- toolkit: dumps ---------------------------------------------------------
 export { dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary } from "./dump.js";
+
+// --- toolkit: quetzal -------------------------------------------------------
+export { encodeQuetzal, decodeQuetzal } from "./quetzal.ts";
+export type { DecodedQuetzal, QuetzalState, QuetzalFrame } from "./quetzal.js";
