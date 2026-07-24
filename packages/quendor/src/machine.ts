@@ -330,6 +330,9 @@ export class Machine {
 
       // --- calls / returns ---
       case "call":
+      case "call_1s":
+      case "call_2s":
+      case "call_vs2":
         return this.call(o[0], o.slice(1), this.currentInstruction.storeVariable ?? -1);
       case "ret":
         return this.return_(o[0]);

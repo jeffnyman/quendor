@@ -90,6 +90,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x16, "mul", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x17, "div", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x18, "mod", F.Store, 1, 8],
+  [OpcodeKind.TwoOp, 0x19, "call_2s", F.Call | F.Store, 4, 8],
 
   // one-operand opcodes
   [OpcodeKind.OneOp, 0x00, "jz", F.Branch, 1, 8],
@@ -100,6 +101,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.OneOp, 0x05, "inc", F.FirstOpByRef, 1, 8],
   [OpcodeKind.OneOp, 0x06, "dec", F.FirstOpByRef, 1, 8],
   [OpcodeKind.OneOp, 0x07, "print_addr", F.None, 1, 8],
+  [OpcodeKind.OneOp, 0x08, "call_1s", F.Call | F.Store, 4, 8],
   [OpcodeKind.OneOp, 0x09, "remove_obj", F.None, 1, 8],
   [OpcodeKind.OneOp, 0x0a, "print_obj", F.None, 1, 8],
   [OpcodeKind.OneOp, 0x0b, "ret", F.Return, 1, 8],
@@ -133,6 +135,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x07, "random", F.Store, 1, 8],
   [OpcodeKind.VarOp, 0x08, "push", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x09, "pull", F.FirstOpByRef, 1, 5],
+  [OpcodeKind.VarOp, 0x0c, "call_vs2", F.Call | F.Store | F.DoubleVar, 4, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;
