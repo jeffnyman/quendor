@@ -12,7 +12,7 @@ import {
   Machine,
   RunState,
 } from "quendor";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const USAGE = `zexp — a headless Z-Machine explorer and debugger
 
@@ -25,9 +25,10 @@ Commands:
   dump     <story-file> [out-file]        Dump the header + objects/properties.
   disasm   <story-file> [hex-addr]        Disassemble every reachable routine/target.
   run      <story-file> [run-options]     Execute the story (headless).
+  debug    <story-file> [options]         Step through a story in the debugger.
   blorb    <blorb-file> [--extract <dir>] Inspect a Blorb's resources.
 
-Run options (for \`zexp run\`):
+Run options (for \`run\` and \`debug\`):
   --trace <file>            Log the executed opcode path to <file>.
   --seed N                  Fix the RNG seed for reproducible runs.
   --tandy                   Set the v1-3 "Tandy" flag.
@@ -209,6 +210,209 @@ async function cmdBlorb(path: string, extractDir: string | undefined): Promise<v
   }
 }
 
+async function cmdDebug(path: string, opts: ZexpOptions): Promise<void> {
+  const story = await loadStoryFromFile(path);
+  const machine = new Machine(story, opts);
+
+  machine.onOutput = (text): void => {
+    process.stdout.write(text);
+  };
+
+  wireSaveRestore(machine, path);
+
+  let shownHit = machine.lastWatchHit;
+
+  const showState = (): void => {
+    if (machine.state === "halted") {
+      console.log("[halted]");
+    } else if (machine.state === "waiting-input") {
+      console.log("[waiting for input — use: i <your command>]");
+    } else if (machine.state === "paused") {
+      if (machine.lastWatchHit && machine.lastWatchHit !== shownHit) {
+        shownHit = machine.lastWatchHit;
+
+        const h = machine.lastWatchHit;
+
+        console.log(
+          `[watchpoint ${hex(h.address)}: ${hex(h.oldValue, 2)} -> ${hex(h.newValue, 2)}]`,
+        );
+      } else {
+        console.log(`[paused at ${hex(machine.programCounter)}]`);
+      }
+    }
+  };
+
+  const showNext = (): void => {
+    if (machine.state === "halted") return;
+    const insn = machine.decodeAt();
+    console.log(`  ${hex(insn.address)}:  ${formatInstruction(insn, story.text)}`);
+  };
+
+  const showBreakpoints = (): void => {
+    console.log(
+      `breakpoints: ${[...machine.breakpoints].map((a) => hex(a)).join(", ") || "(none)"}`,
+    );
+  };
+
+  const showWatchpoints = (): void => {
+    console.log(
+      `watchpoints: ${[...machine.watchpoints].map((a) => hex(a)).join(", ") || "(none)"}`,
+    );
+  };
+
+  console.log(
+    "zexp debugger. commands: s[n] c b <a> db <a> w <a> dw <a> bt regs globals x <a> [n] i <text> q",
+  );
+
+  showNext();
+
+  for (;;) {
+    process.stdout.write("(zexp) ");
+
+    const line = readLineSync();
+
+    if (line === null || line.trim() === "q") break;
+
+    const [cmd, ...args] = line.trim().split(/\s+/);
+
+    // A bad command (an out-of-range `x`, a malformed argument) prints an error
+    // and keeps the session alive rather than tearing down the whole debugger.
+    try {
+      switch (cmd) {
+        case "":
+        case "s": {
+          // Step exactly N instructions (default 1). Breakpoints/watchpoints are
+          // honored by `c` (continue), not by single-stepping.
+          const n = args[0] ? parseInt(args[0], 10) : 1;
+
+          for (let i = 0; i < n && machine.state !== "halted"; i++) {
+            if (machine.state === "waiting-input") break;
+            const { executed } = machine.step();
+            console.log(`  ${hex(executed.address)}:  ${formatInstruction(executed, story.text)}`);
+          }
+
+          showState();
+          break;
+        }
+        case "c": {
+          machine.run();
+          showState();
+          showNext();
+          break;
+        }
+        case "b": {
+          const a = parseHex(args[0]);
+          if (a !== undefined) machine.breakpoints.add(a);
+          showBreakpoints();
+          break;
+        }
+        case "db": {
+          const a = parseHex(args[0]);
+          if (a !== undefined) machine.breakpoints.delete(a);
+          showBreakpoints();
+          break;
+        }
+        case "w": {
+          // Watch the word (both bytes) at the address; the usual target is a
+          // global or property, which are 16-bit.
+          const a = parseHex(args[0]);
+          if (a !== undefined) machine.watchWord(a);
+          showWatchpoints();
+          break;
+        }
+        case "dw": {
+          const a = parseHex(args[0]);
+          if (a !== undefined) {
+            machine.removeWatchpoint(a);
+            machine.removeWatchpoint(a + 1);
+          }
+          showWatchpoints();
+          break;
+        }
+        case "bt": {
+          machine.getCallStack().forEach((f, i) => {
+            console.log(
+              `  #${i} routine ${hex(f.routineAddress)}  locals=[${f.locals.map((v) => hex(v)).join(",")}]  ret=${hex(f.returnPC)}`,
+            );
+          });
+          break;
+        }
+        case "regs":
+          console.log(
+            `  pc=${hex(machine.programCounter)}  state=${machine.state}  #insn=${machine.instructionCount}`,
+          );
+          console.log(
+            `  locals=[${machine
+              .getLocals()
+              .map((v) => hex(v))
+              .join(", ")}]`,
+          );
+          console.log(
+            `  stack=[${machine
+              .getEvalStack()
+              .map((v) => hex(v))
+              .join(", ")}]`,
+          );
+          break;
+        case "globals": {
+          const nonZero = machine
+            .getGlobals()
+            .map((v, i) => [i, v] as const)
+            .filter(([, v]) => v !== 0)
+            .map(([i, v]) => `g${hex(i, 2)}=${hex(v)}`);
+          console.log("  " + (nonZero.join("  ") || "(all zero)"));
+          break;
+        }
+        case "x": {
+          const addr = parseHex(args[0]) ?? machine.programCounter;
+          const n = args[1] ? parseInt(args[1], 10) : 16;
+          const count = Number.isNaN(n) ? 16 : n;
+          const bytes = Array.from({ length: count }, (_, i) =>
+            hex(machine.readMemoryByte(addr + i), 2),
+          );
+          console.log(`  ${hex(addr)}:  ${bytes.join(" ")}`);
+          break;
+        }
+        case "i":
+          if (machine.state === "waiting-input") {
+            machine.provideInput(args.join(" "));
+            machine.run();
+            showState();
+            showNext();
+          } else {
+            console.log("(not waiting for input)");
+          }
+          break;
+        default:
+          console.log(`unknown command: ${cmd}`);
+      }
+    } catch (err) {
+      console.log(`error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+}
+
+/** Wire save/restore to a single `.qzl` slot beside the story file. */
+function wireSaveRestore(machine: Machine, storyPath: string): void {
+  const savePath = storyPath + ".qzl";
+
+  machine.onSave = (data): boolean => {
+    try {
+      writeFileSync(savePath, data);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  machine.onRestore = (): Uint8Array | null => {
+    try {
+      return existsSync(savePath) ? new Uint8Array(readFileSync(savePath)) : null;
+    } catch {
+      return null;
+    }
+  };
+}
+
 /** Parse an integer argument, yielding undefined for a non-numeric value. */
 function intArg(value: string): number | undefined {
   const n = parseInt(value, 10);
@@ -252,6 +456,13 @@ export function parseArgs(rest: string[]): { path: string | undefined; opts: Zex
 
 function hex(n: number, width = 4): string {
   return "0x" + n.toString(16).padStart(width, "0");
+}
+
+/** Parse a hex address argument; undefined if missing or not a number. */
+function parseHex(s: string | undefined): number | undefined {
+  if (s === undefined) return undefined;
+  const n = parseInt(s, 16);
+  return Number.isNaN(n) ? undefined : n;
 }
 
 /** Run `fn` with the required story-file path, or print `usage` and exit 1. */
@@ -310,6 +521,13 @@ export async function main(): Promise<void> {
       return withPath(rest[0], "usage: zexp blorb <blorb-file> [--extract <dir>]", (p) =>
         cmdBlorb(p, extractDir(rest)),
       );
+    case "debug": {
+      const { path, opts } = parseArgs(rest);
+
+      return withPath(path, "usage: zexp debug <story-file> [--seed N] [--tandy]", (p) =>
+        cmdDebug(p, opts),
+      );
+    }
     default:
       // Unknown command names get a pointed error line; a bare invocation (no
       // command — undefined at runtime, though typed string) falls through to
