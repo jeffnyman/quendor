@@ -12,7 +12,7 @@
 
 // --- engine — everything needed to load and run a story --------------------
 export { Machine, RunState } from "./machine.js";
-export type { Frame } from "./machine.js";
+export type { Frame, FrameInfo } from "./machine.js";
 export { Story } from "./story.js";
 export { Memory } from "./memory.js";
 
