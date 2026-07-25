@@ -167,6 +167,29 @@ test("parseBlorb reads a PNG picture resource with its dimensions", () => {
   expect(pic?.height).toBe(200);
 });
 
+// Minimal JPEG: SOI, an APP0 segment to skip, then an SOF0 carrying dimensions.
+function jpegData(width: number, height: number): Uint8Array {
+  const d = new Uint8Array(20);
+  const v = new DataView(d.buffer);
+
+  d.set([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x02, 0xff, 0xc0, 0x00, 0x11, 0x08], 0);
+  v.setUint16(11, height); // SOF0: precision(1), then height, then width
+  v.setUint16(13, width);
+
+  return d;
+}
+
+test("parseBlorb reads a JPEG picture resource with its dimensions", () => {
+  const blorb = buildIndexedBlorb([
+    { usage: "Pict", number: 3, type: "JPEG", data: jpegData(400, 300) },
+  ]);
+  const pic = parseBlorb(blorb)?.pictures.get(3);
+
+  expect(pic?.format).toBe("jpeg");
+  expect(pic?.width).toBe(400);
+  expect(pic?.height).toBe(300);
+});
+
 test("parseBlorb reads a Rect placeholder picture (dimensions only, no data)", () => {
   const blorb = buildIndexedBlorb([
     { usage: "Pict", number: 2, type: "Rect", data: u32Pair(640, 400) },

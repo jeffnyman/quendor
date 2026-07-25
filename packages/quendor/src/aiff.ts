@@ -34,22 +34,26 @@ function extended80(view: DataView, p: number): number {
   return sign * mantissa * 2 ** (exp - 16383 - 63);
 }
 
-export function decodeAiff(bytes: Uint8Array): DecodedAudio | null {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+interface AiffFormat {
+  channels: number;
+  frames: number;
+  bits: number;
+  sampleRate: number;
+  /** Byte offset of the first sample frame, or -1 if there was no SSND chunk. */
+  ssndData: number;
+  compressed: boolean;
+}
 
-  if (fourCC(bytes, 0) !== "FORM") return null;
-
-  const formType = fourCC(bytes, 8);
-
-  if (formType !== "AIFF" && formType !== "AIFC") return null;
-
-  let channels = 1,
-    frames = 0,
-    bits = 8,
-    sampleRate = 8000;
-  let ssndData = -1,
-    ssndBytes = 0,
-    compressed = false;
+/** Read the COMM (format) and SSND (samples) chunks from an AIFF FORM body. */
+function readAiffChunks(bytes: Uint8Array, view: DataView): AiffFormat {
+  const fmt: AiffFormat = {
+    channels: 1,
+    frames: 0,
+    bits: 8,
+    sampleRate: 8000,
+    ssndData: -1,
+    compressed: false,
+  };
 
   const end = Math.min(bytes.length, 8 + view.getUint32(4));
   let p = 12;
@@ -59,24 +63,30 @@ export function decodeAiff(bytes: Uint8Array): DecodedAudio | null {
     const len = view.getUint32(p + 4);
 
     if (id === "COMM") {
-      channels = view.getUint16(p + 8);
-      frames = view.getUint32(p + 10);
-      bits = view.getUint16(p + 14);
-      sampleRate = extended80(view, p + 16);
-      if (len > 18 && fourCC(bytes, p + 26) !== "NONE") compressed = true;
+      fmt.channels = view.getUint16(p + 8);
+      fmt.frames = view.getUint32(p + 10);
+      fmt.bits = view.getUint16(p + 14);
+      fmt.sampleRate = extended80(view, p + 16);
+      if (len > 18 && fourCC(bytes, p + 26) !== "NONE") fmt.compressed = true;
     } else if (id === "SSND") {
       // SSND: offset(4) + blockSize(4), then the frames.
-      const offset = view.getUint32(p + 8);
-      ssndData = p + 8 + 8 + offset;
-      ssndBytes = len - 8 - offset;
+      fmt.ssndData = p + 8 + 8 + view.getUint32(p + 8);
     }
 
     p += 8 + len + (len % 2); // chunks are word-aligned
   }
 
-  if (compressed || ssndData < 0 || sampleRate <= 0) return null;
+  return fmt;
+}
 
-  const total = channels * frames;
+/** Decode `total` interleaved PCM samples to floats in [-1, 1); null if unusual bit depth. */
+function decodeSamples(
+  bytes: Uint8Array,
+  view: DataView,
+  ssndData: number,
+  total: number,
+  bits: number,
+): Float32Array | null {
   const out = new Float32Array(total);
 
   if (bits === 8) {
@@ -91,7 +101,25 @@ export function decodeAiff(bytes: Uint8Array): DecodedAudio | null {
     return null; // unusual bit depth
   }
 
-  void ssndBytes;
+  return out;
+}
 
-  return { sampleRate, channels, samples: out, frames };
+export function decodeAiff(bytes: Uint8Array): DecodedAudio | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  if (fourCC(bytes, 0) !== "FORM") return null;
+
+  const formType = fourCC(bytes, 8);
+
+  if (formType !== "AIFF" && formType !== "AIFC") return null;
+
+  const { channels, frames, bits, sampleRate, ssndData, compressed } = readAiffChunks(bytes, view);
+
+  if (compressed || ssndData < 0 || sampleRate <= 0) return null;
+
+  const samples = decodeSamples(bytes, view, ssndData, channels * frames, bits);
+
+  if (!samples) return null;
+
+  return { sampleRate, channels, samples, frames };
 }

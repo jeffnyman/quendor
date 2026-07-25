@@ -63,6 +63,9 @@ interface Chunk {
   length: number;
 }
 
+/** File extension for a sound resource's format tag. */
+const SOUND_EXTENSIONS: Record<string, string> = { aiff: "aiff", ogg: "ogg", mod: "mod" };
+
 // One-line descriptions for the chunk types a Z-Machine Blorb can carry.
 const CHUNK_DESCRIPTIONS: Record<string, string> = {
   RIdx: "resource index",
@@ -182,11 +185,110 @@ function jpegDimensions(
   return [0, 0];
 }
 
+/** Coarse sound-format tag keyed by a resource chunk's type. */
+const SOUND_FORMATS: Record<string, BlorbSound["format"]> = {
+  FORM: "aiff", // AIFF / AIFF-C
+  OGGV: "ogg",
+  "MOD ": "mod",
+  SONG: "song",
+};
+
+/** Build a picture resource from its chunk, or undefined for an unknown type. */
+function parsePicture(
+  bytes: Uint8Array,
+  view: DataView,
+  number: number,
+  type: string,
+  data: number,
+  len: number,
+): BlorbPicture | undefined {
+  if (type === "PNG ") {
+    const [width, height] = pngDimensions(bytes, view, data);
+    return { number, format: "png", data: bytes.slice(data, data + len), width, height };
+  }
+
+  if (type === "JPEG") {
+    const [width, height] = jpegDimensions(bytes, view, data, len);
+    return { number, format: "jpeg", data: bytes.slice(data, data + len), width, height };
+  }
+
+  if (type === "Rect") {
+    // A placeholder rectangle: dimensions only, no image data.
+    return {
+      number,
+      format: "rect",
+      data: new Uint8Array(0),
+      width: view.getUint32(data),
+      height: view.getUint32(data + 4),
+    };
+  }
+
+  return undefined;
+}
+
+/** Walk the RIdx resource map, collecting pictures and sounds keyed by number. */
+function parseResourceIndex(
+  bytes: Uint8Array,
+  view: DataView,
+  ridx: Chunk | undefined,
+): { pictures: Map<number, BlorbPicture>; sounds: Map<number, BlorbSound> } {
+  const pictures = new Map<number, BlorbPicture>();
+  const sounds = new Map<number, BlorbSound>();
+
+  if (!ridx) return { pictures, sounds };
+
+  const count = view.getUint32(ridx.data);
+
+  for (let i = 0; i < count; i++) {
+    const entry = ridx.data + 4 + i * 12;
+    const usage = fourCC(bytes, entry);
+    const number = view.getUint32(entry + 4);
+    const start = view.getUint32(entry + 8); // offset of the resource chunk
+    const type = fourCC(bytes, start);
+    const len = view.getUint32(start + 4);
+
+    if (usage === "Snd ") {
+      // Keep the whole chunk (usually FORM/AIFF) intact for standalone decoding.
+      const raw = bytes.slice(start, start + 8 + len + (len % 2));
+      sounds.set(number, { number, format: SOUND_FORMATS[type] ?? "other", data: raw });
+    } else if (usage === "Pict") {
+      const pic = parsePicture(bytes, view, number, type, start + 8, len);
+      if (pic) pictures.set(number, pic);
+    }
+  }
+
+  return { pictures, sounds };
+}
+
+/** Legacy `Loop` chunk: 8-byte (sound number, repeat count) entries; 0 = forever. */
+function parseLoops(view: DataView, loop: Chunk | undefined): Map<number, number> {
+  const soundLoops = new Map<number, number>();
+
+  if (loop) {
+    for (let p = loop.data; p + 8 <= loop.data + loop.length; p += 8) {
+      soundLoops.set(view.getUint32(p), view.getUint32(p + 4));
+    }
+  }
+
+  return soundLoops;
+}
+
+/** IFhd game identifier: release number (2 bytes) then the 6-byte serial. */
+function parseIdent(
+  bytes: Uint8Array,
+  view: DataView,
+  ifhd: Chunk | undefined,
+): { release: number; serial: string } | undefined {
+  if (ifhd && ifhd.length >= 8) {
+    return { release: view.getUint16(ifhd.data), serial: readText(bytes, ifhd.data + 2, 6) };
+  }
+
+  return undefined;
+}
+
 /**
  * Parse a Blorb container into its resources. Returns `null` if
  * `bytes` is not a Blorb (e.g. a bare story file).
- *
- * @param bytes
  */
 export function parseBlorb(bytes: Uint8Array): BlorbResources | null {
   if (!isBlorb(bytes)) {
@@ -197,120 +299,20 @@ export function parseBlorb(bytes: Uint8Array): BlorbResources | null {
   const chunks = walkChunks(bytes, view);
   const byType = (t: string): Chunk | undefined => chunks.find((c) => c.type === t);
 
-  const story = ((): Uint8Array | undefined => {
-    const zcod = byType("ZCOD");
-    return zcod ? bytes.slice(zcod.data, zcod.data + zcod.length) : undefined;
-  })();
-
+  const zcod = byType("ZCOD");
   const reln = byType("RelN");
-  const pictureRelease = reln ? view.getUint16(reln.data) : 0;
-
   const reso = byType("Reso");
-  const stdWidth = reso ? view.getUint32(reso.data) : 0;
-  const stdHeight = reso ? view.getUint32(reso.data + 4) : 0;
-
-  const pictures = new Map<number, BlorbPicture>();
-  const sounds = new Map<number, BlorbSound>();
-  const ridx = byType("RIdx");
-
-  if (ridx) {
-    const count = view.getUint32(ridx.data);
-
-    for (let i = 0; i < count; i++) {
-      const entry = ridx.data + 4 + i * 12;
-      const usage = fourCC(bytes, entry);
-      const number = view.getUint32(entry + 4);
-      const start = view.getUint32(entry + 8); // offset of the resource chunk
-      const type = fourCC(bytes, start);
-      const len = view.getUint32(start + 4);
-      const data = start + 8;
-
-      if (usage === "Snd ") {
-        // The resource is a whole chunk (usually FORM/AIFF); keep it intact so a
-        // consumer can decode it standalone. AIFF (incl. AIFF-C) is `FORM`.
-        const raw = bytes.slice(start, start + 8 + len + (len % 2));
-        const format =
-          type === "FORM"
-            ? "aiff"
-            : type === "OGGV"
-              ? "ogg"
-              : type === "MOD "
-                ? "mod"
-                : type === "SONG"
-                  ? "song"
-                  : "other";
-
-        sounds.set(number, { number, format, data: raw });
-        continue;
-      }
-
-      if (usage !== "Pict") continue;
-
-      if (type === "PNG ") {
-        const [width, height] = pngDimensions(bytes, view, data);
-
-        pictures.set(number, {
-          number,
-          format: "png",
-          data: bytes.slice(data, data + len),
-          width,
-          height,
-        });
-      } else if (type === "JPEG") {
-        const [width, height] = jpegDimensions(bytes, view, data, len);
-
-        pictures.set(number, {
-          number,
-          format: "jpeg",
-          data: bytes.slice(data, data + len),
-          width,
-          height,
-        });
-      } else if (type === "Rect") {
-        // A placeholder rectangle: dimensions only, no image data.
-        pictures.set(number, {
-          number,
-          format: "rect",
-          data: new Uint8Array(0),
-          width: view.getUint32(data),
-          height: view.getUint32(data + 4),
-        });
-      }
-    }
-  }
-
-  // Legacy `Loop` chunk: 8-byte entries of (sound number, repeat count). A count
-  // of 0 means loop forever. Modern games instead encode repeats in sound_effect's
-  // volume word, but these old Infocom Blorbs carry a Loop chunk.
-  const soundLoops = new Map<number, number>();
-  const loop = byType("Loop");
-
-  if (loop) {
-    for (let p = loop.data; p + 8 <= loop.data + loop.length; p += 8) {
-      soundLoops.set(view.getUint32(p), view.getUint32(p + 4));
-    }
-  }
-
-  // IFhd (game identifier): release number (2 bytes) then the 6-byte serial.
-  let ident: { release: number; serial: string } | undefined;
-  const ifhd = byType("IFhd");
-
-  if (ifhd && ifhd.length >= 8) {
-    ident = {
-      release: view.getUint16(ifhd.data),
-      serial: readText(bytes, ifhd.data + 2, 6),
-    };
-  }
+  const { pictures, sounds } = parseResourceIndex(bytes, view, byType("RIdx"));
 
   return {
-    story,
+    story: zcod ? bytes.slice(zcod.data, zcod.data + zcod.length) : undefined,
     pictures,
     sounds,
-    soundLoops,
-    pictureRelease,
-    stdWidth,
-    stdHeight,
-    ident,
+    soundLoops: parseLoops(view, byType("Loop")),
+    pictureRelease: reln ? view.getUint16(reln.data) : 0,
+    stdWidth: reso ? view.getUint32(reso.data) : 0,
+    stdHeight: reso ? view.getUint32(reso.data + 4) : 0,
+    ident: parseIdent(bytes, view, byType("IFhd")),
   };
 }
 
@@ -352,20 +354,148 @@ export function extractBlorb(bytes: Uint8Array): { name: string; data: Uint8Arra
   }
 
   for (const [n, s] of res.sounds) {
-    const ext =
-      s.format === "aiff"
-        ? "aiff"
-        : s.format === "ogg"
-          ? "ogg"
-          : s.format === "mod"
-            ? "mod"
-            : "snd";
-    files.push({ name: `snd-${pad(n)}.${ext}`, data: s.data });
+    files.push({ name: `snd-${pad(n)}.${SOUND_EXTENSIONS[s.format] ?? "snd"}`, data: s.data });
   }
 
   if (res.story) files.push({ name: `story.${storyExtension(res.story)}`, data: res.story });
 
   return files;
+}
+
+function chunkMapLines(chunks: Chunk[]): string[] {
+  const lines = [`Chunks (${chunks.length}):`];
+
+  for (const c of chunks) {
+    const desc = CHUNK_DESCRIPTIONS[c.type] ?? "";
+
+    lines.push(
+      `  ${JSON.stringify(c.type).padEnd(8)} ${String(c.length).padStart(8)} bytes` +
+        `  @0x${c.offset.toString(16)}${desc ? `  — ${desc}` : ""}`,
+    );
+  }
+
+  return lines;
+}
+
+function storyLine(res: BlorbResources): string {
+  return res.story
+    ? `  ZCOD present — ${res.story.length} bytes (Z-code v${res.story[0]})`
+    : "  none (resource-only Blorb — pair it with a matching story file)";
+}
+
+/** Decode an SNam chunk (big-endian UTF-16 code units) to the story name. */
+function storyName(view: DataView, snam: Chunk): string {
+  let name = "";
+
+  for (let p = snam.data; p + 2 <= snam.data + snam.length; p += 2) {
+    const u = view.getUint16(p);
+    if (u) name += String.fromCharCode(u);
+  }
+
+  return name.trim();
+}
+
+function metadataLines(
+  bytes: Uint8Array,
+  view: DataView,
+  res: BlorbResources,
+  byType: (t: string) => Chunk | undefined,
+): string[] {
+  const meta: string[] = [];
+
+  if (res.pictureRelease) meta.push(`  Release (RelN): ${res.pictureRelease}`);
+
+  if (res.stdWidth || res.stdHeight) {
+    meta.push(`  Resolution (Reso): standard ${res.stdWidth} x ${res.stdHeight} px`);
+  }
+
+  const fspc = byType("Fspc");
+  if (fspc) meta.push(`  Frontispiece (Fspc): picture #${view.getUint32(fspc.data)}`);
+
+  for (const [type, label] of [
+    ["AUTH", "Author"],
+    ["(c) ", "Copyright"],
+    ["ANNO", "Annotation"],
+  ] as const) {
+    const ch = byType(type);
+    if (ch) {
+      meta.push(
+        `  ${label} (${type.trim()}): ${JSON.stringify(readText(bytes, ch.data, ch.length))}`,
+      );
+    }
+  }
+
+  const snam = byType("SNam");
+  if (snam) meta.push(`  Story name (SNam): ${JSON.stringify(storyName(view, snam))}`);
+
+  const ifmd = byType("IFmd");
+  if (ifmd) meta.push(`  iFiction metadata (IFmd): ${ifmd.length} bytes of XML`);
+
+  return meta;
+}
+
+/** A sound resource's decoded audio details, or its raw type if not decodable. */
+function soundInfo(bytes: Uint8Array, start: number, type: string, len: number): string {
+  const dec = type === "FORM" ? decodeAiff(bytes.slice(start, start + 8 + len)) : null;
+
+  if (!dec) return type;
+
+  return `${dec.channels === 1 ? "mono" : "stereo"} ${Math.round(dec.sampleRate)}Hz ${(dec.frames / dec.sampleRate).toFixed(2)}s`;
+}
+
+/** A `[loops …]` annotation for a sound number, or "" when it doesn't loop. */
+function loopNote(res: BlorbResources, number: number): string {
+  if (!res.soundLoops.has(number)) return "";
+
+  const count = res.soundLoops.get(number);
+  return count === 0 ? "  [loops forever]" : `  [loops x${count}]`;
+}
+
+function resourceIndexLines(
+  bytes: Uint8Array,
+  view: DataView,
+  res: BlorbResources,
+  ridx: Chunk,
+): string[] {
+  const count = view.getUint32(ridx.data);
+  const pics: string[] = [];
+  const snds: string[] = [];
+  const execs: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const e = ridx.data + 4 + i * 12;
+    const usage = fourCC(bytes, e);
+    const number = view.getUint32(e + 4);
+    const start = view.getUint32(e + 8);
+    const type = fourCC(bytes, start);
+    const len = view.getUint32(start + 4);
+    const at = `@0x${start.toString(16)}`;
+    const head = `  #${String(number).padStart(3)}  ${type.trim().padEnd(4)}`;
+
+    if (usage === "Pict") {
+      const p = res.pictures.get(number);
+      const dims = p ? `${p.width}x${p.height}` : "?";
+      pics.push(`${head} ${dims.padEnd(9)} ${String(len).padStart(7)} bytes  ${at}`);
+    } else if (usage === "Snd ") {
+      const info = soundInfo(bytes, start, type, len);
+      snds.push(
+        `${head} ${info.padEnd(22)} ${String(len).padStart(7)} bytes  ${at}${loopNote(res, number)}`,
+      );
+    } else if (usage === "Exec") {
+      execs.push(
+        `  #${String(number).padStart(3)}  ${type.trim()}  ${String(len).padStart(7)} bytes  ${at}`,
+      );
+    }
+  }
+
+  const lines = ["", `Resources (${count} indexed):`];
+
+  if (pics.length) lines.push(`  Pictures (${pics.length}):`, ...pics.map((s) => "  " + s));
+  if (snds.length) lines.push(`  Sounds (${snds.length}):`, ...snds.map((s) => "  " + s));
+  if (execs.length) lines.push(`  Executable:`, ...execs.map((s) => "  " + s));
+  if (!pics.length && !snds.length && !execs.length) lines.push("  (none)");
+
+  return lines;
 }
 
 /**
@@ -386,148 +516,21 @@ export function describeBlorb(bytes: Uint8Array): string {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const chunks = walkChunks(bytes, view);
   const byType = (t: string): Chunk | undefined => chunks.find((c) => c.type === t);
-  const out: string[] = [];
 
-  out.push(`Container: FORM/${fourCC(bytes, 8)}, ${bytes.length} bytes`);
+  const out: string[] = [
+    `Container: FORM/${fourCC(bytes, 8)}, ${bytes.length} bytes`,
+    "",
+    ...chunkMapLines(chunks),
+    "",
+    "Story:",
+    storyLine(res),
+  ];
 
-  // Chunk map.
-  out.push("", `Chunks (${chunks.length}):`);
+  const meta = metadataLines(bytes, view, res, byType);
+  if (meta.length) out.push("", "Metadata:", ...meta);
 
-  for (const c of chunks) {
-    const desc = CHUNK_DESCRIPTIONS[c.type] ?? "";
-
-    out.push(
-      `  ${JSON.stringify(c.type).padEnd(8)} ${String(c.length).padStart(8)} bytes` +
-        `  @0x${c.offset.toString(16)}${desc ? `  — ${desc}` : ""}`,
-    );
-  }
-
-  // Embedded story.
-  out.push("", "Story:");
-
-  out.push(
-    res.story
-      ? `  ZCOD present — ${res.story.length} bytes (Z-code v${res.story[0]})`
-      : "  none (resource-only Blorb — pair it with a matching story file)",
-  );
-
-  // Metadata.
-  const meta: string[] = [];
-
-  if (res.pictureRelease) {
-    meta.push(`  Release (RelN): ${res.pictureRelease}`);
-  }
-
-  if (res.stdWidth || res.stdHeight) {
-    meta.push(`  Resolution (Reso): standard ${res.stdWidth} x ${res.stdHeight} px`);
-  }
-
-  const fspc = byType("Fspc");
-
-  if (fspc) {
-    meta.push(`  Frontispiece (Fspc): picture #${view.getUint32(fspc.data)}`);
-  }
-
-  for (const [type, label] of [
-    ["AUTH", "Author"],
-    ["(c) ", "Copyright"],
-    ["ANNO", "Annotation"],
-  ] as const) {
-    const ch = byType(type);
-    if (ch)
-      meta.push(
-        `  ${label} (${type.trim()}): ${JSON.stringify(readText(bytes, ch.data, ch.length))}`,
-      );
-  }
-
-  // the story name as big-endian UTF-16 code units
-  const snam = byType("SNam");
-
-  if (snam) {
-    let name = "";
-
-    for (let p = snam.data; p + 2 <= snam.data + snam.length; p += 2) {
-      const u = view.getUint16(p);
-      if (u) name += String.fromCharCode(u);
-    }
-
-    meta.push(`  Story name (SNam): ${JSON.stringify(name.trim())}`);
-  }
-
-  const ifmd = byType("IFmd");
-
-  if (ifmd) {
-    meta.push(`  iFiction metadata (IFmd): ${ifmd.length} bytes of XML`);
-  }
-
-  if (meta.length) {
-    out.push("", "Metadata:", ...meta);
-  }
-
-  // Resource index.
   const ridx = byType("RIdx");
-
-  if (ridx) {
-    const count = view.getUint32(ridx.data);
-    const pics: string[] = [],
-      snds: string[] = [],
-      execs: string[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const e = ridx.data + 4 + i * 12;
-      const usage = fourCC(bytes, e);
-      const number = view.getUint32(e + 4);
-      const start = view.getUint32(e + 8);
-      const type = fourCC(bytes, start);
-      const len = view.getUint32(start + 4);
-      const at = `@0x${start.toString(16)}`;
-
-      if (usage === "Pict") {
-        const p = res.pictures.get(number);
-        const dims = p ? `${p.width}x${p.height}` : "?";
-
-        pics.push(
-          `  #${String(number).padStart(3)}  ${type.trim().padEnd(4)} ${dims.padEnd(9)} ${String(len).padStart(7)} bytes  ${at}`,
-        );
-      } else if (usage === "Snd ") {
-        const dec = type === "FORM" ? decodeAiff(bytes.slice(start, start + 8 + len)) : null;
-        const info = dec
-          ? `${dec.channels === 1 ? "mono" : "stereo"} ${Math.round(dec.sampleRate)}Hz ${(dec.frames / dec.sampleRate).toFixed(2)}s`
-          : type;
-        const loop = res.soundLoops.has(number)
-          ? res.soundLoops.get(number) === 0
-            ? "  [loops forever]"
-            : `  [loops x${res.soundLoops.get(number)}]`
-          : "";
-
-        snds.push(
-          `  #${String(number).padStart(3)}  ${type.trim().padEnd(4)} ${info.padEnd(22)} ${String(len).padStart(7)} bytes  ${at}${loop}`,
-        );
-      } else if (usage === "Exec") {
-        execs.push(
-          `  #${String(number).padStart(3)}  ${type.trim()}  ${String(len).padStart(7)} bytes  ${at}`,
-        );
-      }
-    }
-
-    out.push("", `Resources (${count} indexed):`);
-
-    if (pics.length) {
-      out.push(`  Pictures (${pics.length}):`, ...pics.map((s) => "  " + s));
-    }
-
-    if (snds.length) {
-      out.push(`  Sounds (${snds.length}):`, ...snds.map((s) => "  " + s));
-    }
-
-    if (execs.length) {
-      out.push(`  Executable:`, ...execs.map((s) => "  " + s));
-    }
-
-    if (!pics.length && !snds.length && !execs.length) {
-      out.push("  (none)");
-    }
-  }
+  if (ridx) out.push(...resourceIndexLines(bytes, view, res, ridx));
 
   return out.join("\n");
 }
