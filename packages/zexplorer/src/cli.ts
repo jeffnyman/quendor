@@ -125,6 +125,8 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
     process.stdout.write(text);
   };
 
+  wireSaveRestore(machine, path);
+
   // --trace: stream every executed instruction to a file, indented by call
   // depth so the routine call chain reads at a glance. Batched per run() to
   // avoid a filesystem write per instruction.
@@ -425,7 +427,7 @@ async function cmdDebug(path: string, opts: ZexpOptions): Promise<void> {
 }
 
 /** Wire save/restore to a single `.qzl` slot beside the story file. */
-function wireSaveRestore(machine: Machine, storyPath: string): void {
+export function wireSaveRestore(machine: Machine, storyPath: string): void {
   const savePath = storyPath + ".qzl";
 
   machine.onSave = (data): boolean => {
