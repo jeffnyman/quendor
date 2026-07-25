@@ -336,7 +336,7 @@ export function unwrapStory(bytes: Uint8Array): Uint8Array {
 /**
  * Extract a Blorb's resources as named byte blobs (pictures, sounds, and the
  * embedded story if any), ready to write to disk. `Rect` placeholders have no
- * data and are skipped. For `zdbg blorb <file> --extract <dir>`.
+ * data and are skipped. For `zexp blorb <file> --extract <dir>`.
  */
 export function extractBlorb(bytes: Uint8Array): { name: string; data: Uint8Array }[] {
   const res = parseBlorb(bytes);
