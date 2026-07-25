@@ -10,8 +10,8 @@ import {
   type DisassembledRun,
   type Instruction,
 } from "quendor";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { cmdAbbrevs, cmdHeader, main, parseArgs } from "../src/cli.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cmdAbbrevs, cmdHeader, main, parseArgs, wireSaveRestore } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
@@ -38,6 +38,7 @@ vi.mock("quendor", async () => {
 
 vi.mock("node:fs", () => ({
   appendFileSync: vi.fn(),
+  existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
@@ -675,4 +676,29 @@ test("debug: a watchpoint hit is announced after `c`", async () => {
   await runDebug(m, ["c"]);
 
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining("watchpoint 0x1234"));
+});
+
+// --- wireSaveRestore (shared by run and debug) -----------------------------
+
+test("wireSaveRestore: onSave writes the blob to <story>.qzl", () => {
+  const machine = {} as unknown as Machine;
+  wireSaveRestore(machine, "game.z3");
+
+  const data = new Uint8Array([1, 2, 3]);
+
+  expect(machine.onSave(data)).toBe(true);
+  expect(writeFileSync).toHaveBeenCalledWith("game.z3.qzl", data);
+});
+
+test("wireSaveRestore: onRestore reads the blob back, or returns null when absent", () => {
+  const machine = {} as unknown as Machine;
+  wireSaveRestore(machine, "game.z3");
+
+  vi.mocked(existsSync).mockReturnValue(false);
+  expect(machine.onRestore()).toBeNull();
+
+  vi.mocked(existsSync).mockReturnValue(true);
+  mockReadFile(new Uint8Array([4, 5, 6]));
+  expect(machine.onRestore()).toEqual(new Uint8Array([4, 5, 6]));
+  expect(existsSync).toHaveBeenCalledWith("game.z3.qzl");
 });
