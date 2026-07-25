@@ -571,6 +571,23 @@ test("sread blocks for input, then fills the text and parse buffers", () => {
   expect(machine.memory.readByte(PARSEBUF + 9)).toBe(6);
 });
 
+test("run() is a no-op while WaitingForInput, so a debugger 'continue' can't skip the read", () => {
+  const machine = new Machine(buildReadProgram());
+
+  expect(machine.run()).toBe(RunState.WaitingForInput); // blocked on sread
+
+  const before = machine.instructionCount;
+
+  // A bare run() (e.g. `c` typed at the prompt) must not step past the unfinished
+  // read: it returns WaitingForInput without executing an instruction.
+  expect(machine.run()).toBe(RunState.WaitingForInput);
+  expect(machine.instructionCount).toBe(before);
+
+  // The read still completes normally once input is provided.
+  machine.provideInput("open door");
+  expect(readAsciiz(machine, TEXTBUF + 1)).toBe("open door");
+});
+
 // --- execution: quit / restart ---------------------------------------------
 
 /** 0OP `quit` (0xba). */

@@ -10,8 +10,8 @@ import {
   type DisassembledRun,
   type Instruction,
 } from "quendor";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { cmdAbbrevs, cmdHeader, main, parseArgs } from "../src/cli.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cmdAbbrevs, cmdHeader, main, parseArgs, wireSaveRestore } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
@@ -38,6 +38,7 @@ vi.mock("quendor", async () => {
 
 vi.mock("node:fs", () => ({
   appendFileSync: vi.fn(),
+  existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
@@ -100,12 +101,10 @@ function fakeMachine(states: RunState[], emitTrace = false): FakeMachine {
   return m;
 }
 
-// Route `new Machine(...)` in cmdRun to a fake. vitest types a mocked class's
-// impl as a constructor (void return), so the factory arrow is cast to a
-// value-returning signature to keep the strict-void-return lint rule happy.
-function installMachine(machine: FakeMachine): void {
-  // vitest requires a class for a mock invoked with `new`; a constructor may
-  // return an object, so we hand back the captured fake for cmdRun to drive.
+// Route `new Machine(...)` to a fake (for cmdRun and cmdDebug). vitest requires
+// a class for a mock invoked with `new`; a constructor may return an object, so
+// we hand back the captured fake for the command to drive.
+function installMachine(machine: object): void {
   vi.mocked(Machine).mockImplementation(
     class {
       constructor() {
@@ -459,4 +458,247 @@ test("parseArgs reads --interpreter (number) and --interpreter-version (letter -
 
   expect(opts.interpreterNumber).toBe(11);
   expect(opts.interpreterVersion).toBe(0x54); // 'T'
+});
+
+// --- debug command ---------------------------------------------------------
+//
+// cmdDebug is a REPL over the Machine debugger API. These tests drive it with a
+// fake Machine (the real engine is covered in quendor's own suite) so they pin
+// how each command routes to the API and what it prints — the surface a
+// dispatch refactor would put at risk.
+
+type DebugMachine = {
+  onOutput?: (text: string) => void;
+  onSave?: (data: Uint8Array) => boolean;
+  onRestore?: () => Uint8Array | null;
+  state: string;
+  programCounter: number;
+  instructionCount: number;
+  lastWatchHit: { address: number; oldValue: number; newValue: number } | null;
+  breakpoints: Set<number>;
+  watchpoints: Set<number>;
+  step: ReturnType<typeof vi.fn>;
+  run: ReturnType<typeof vi.fn>;
+  decodeAt: ReturnType<typeof vi.fn>;
+  watchWord: ReturnType<typeof vi.fn>;
+  removeWatchpoint: ReturnType<typeof vi.fn>;
+  getCallStack: ReturnType<typeof vi.fn>;
+  getLocals: ReturnType<typeof vi.fn>;
+  getEvalStack: ReturnType<typeof vi.fn>;
+  getGlobals: ReturnType<typeof vi.fn>;
+  readMemoryByte: ReturnType<typeof vi.fn>;
+  provideInput: ReturnType<typeof vi.fn>;
+};
+
+function fakeDebugMachine(overrides: Partial<DebugMachine> = {}): DebugMachine {
+  const m: DebugMachine = {
+    state: "paused",
+    programCounter: 0x1000,
+    instructionCount: 0,
+    lastWatchHit: null,
+    breakpoints: new Set<number>(),
+    watchpoints: new Set<number>(),
+    step: vi.fn(() => ({ executed: fakeInsn(0x1000), state: "paused" })),
+    run: vi.fn(),
+    decodeAt: vi.fn(() => fakeInsn(0x1000)),
+    watchWord: vi.fn((a: number) => {
+      m.watchpoints.add(a);
+      m.watchpoints.add(a + 1);
+    }),
+    removeWatchpoint: vi.fn((a: number) => m.watchpoints.delete(a)),
+    getCallStack: vi.fn(() => []),
+    getLocals: vi.fn(() => []),
+    getEvalStack: vi.fn(() => []),
+    getGlobals: vi.fn(() => []),
+    readMemoryByte: vi.fn(() => 0),
+    provideInput: vi.fn(),
+    ...overrides,
+  };
+  return m;
+}
+
+// Run a debug session: feed `commands` (a trailing `q` is appended to quit).
+async function runDebug(machine: DebugMachine, commands: string[]): Promise<void> {
+  installMachine(machine);
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+
+  const seq = [...commands, "q"];
+  let i = 0;
+  vi.mocked(readLineSync).mockImplementation(() => (i < seq.length ? seq[i++] : null));
+
+  process.argv = ["node", "zexp", "debug", "game.z3"];
+  await main();
+}
+
+test("debug: `s` single-steps and shows the executed instruction", async () => {
+  vi.mocked(formatInstruction).mockReturnValue("add #1 #2 -> g0");
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["s"]);
+
+  expect(m.step).toHaveBeenCalledTimes(1);
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("add #1 #2 -> g0"));
+});
+
+test("debug: `s N` steps N times", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["s 3"]);
+
+  expect(m.step).toHaveBeenCalledTimes(3);
+});
+
+test("debug: `c` continues execution", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["c"]);
+
+  expect(m.run).toHaveBeenCalledTimes(1);
+});
+
+test("debug: `b` adds a breakpoint and a bad address is ignored (no NaN)", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["b 4f05", "b zzz"]);
+
+  expect([...m.breakpoints]).toEqual([0x4f05]);
+});
+
+test("debug: `db` removes a breakpoint", async () => {
+  const m = fakeDebugMachine({ breakpoints: new Set([0x4f05]) });
+
+  await runDebug(m, ["db 4f05"]);
+
+  expect(m.breakpoints.size).toBe(0);
+});
+
+test("debug: `w` watches a word and `dw` removes both bytes", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["w 1234", "dw 1234"]);
+
+  expect(m.watchWord).toHaveBeenCalledWith(0x1234);
+  expect(m.removeWatchpoint).toHaveBeenCalledWith(0x1234);
+  expect(m.removeWatchpoint).toHaveBeenCalledWith(0x1235);
+});
+
+test("debug: `regs` prints the pc, state, and instruction count", async () => {
+  const m = fakeDebugMachine({ programCounter: 0x1234, instructionCount: 7 });
+
+  await runDebug(m, ["regs"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("pc=0x1234"));
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("#insn=7"));
+});
+
+test("debug: `x` dumps memory bytes at an address", async () => {
+  const m = fakeDebugMachine({ readMemoryByte: vi.fn(() => 0xab) });
+
+  await runDebug(m, ["x 100 2"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("0x0100:  0xab 0xab"));
+});
+
+test("debug: an unknown command is reported", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["bogus"]);
+
+  expect(console.log).toHaveBeenCalledWith("unknown command: bogus");
+});
+
+test("debug: a throwing command prints an error and keeps the session alive", async () => {
+  const m = fakeDebugMachine({
+    readMemoryByte: vi.fn(() => {
+      throw new Error("readByte out of range");
+    }),
+  });
+
+  await runDebug(m, ["x 0 1", "regs"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("error: readByte out of range"));
+  // The session survived the error: the following `regs` still ran.
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("pc="));
+});
+
+test("debug: `i` supplies input when the machine is waiting", async () => {
+  const m = fakeDebugMachine({ state: "waiting-input" });
+
+  await runDebug(m, ["i take lamp"]);
+
+  expect(m.provideInput).toHaveBeenCalledWith("take lamp");
+  expect(m.run).toHaveBeenCalled();
+});
+
+test("debug: `i` reports when the machine is not waiting for input", async () => {
+  const m = fakeDebugMachine({ state: "paused" });
+
+  await runDebug(m, ["i foo"]);
+
+  expect(console.log).toHaveBeenCalledWith("(not waiting for input)");
+});
+
+test("debug: `bt` prints the call stack", async () => {
+  const m = fakeDebugMachine({
+    getCallStack: vi.fn(() => [
+      {
+        routineAddress: 0x4f05,
+        locals: [0x1, 0x2],
+        argumentCount: 2,
+        returnPC: 0x1234,
+        storeVariable: 0,
+        evalStack: [],
+      },
+    ]),
+  });
+
+  await runDebug(m, ["bt"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("routine 0x4f05"));
+});
+
+test("debug: `globals` prints only the non-zero globals", async () => {
+  const globals = Array.from({ length: 240 }, () => 0);
+  globals[1] = 0x2a;
+  const m = fakeDebugMachine({ getGlobals: vi.fn(() => globals) });
+
+  await runDebug(m, ["globals"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("g0x01=0x002a"));
+});
+
+test("debug: a watchpoint hit is announced after `c`", async () => {
+  const m = fakeDebugMachine();
+  m.run = vi.fn(() => {
+    m.lastWatchHit = { address: 0x1234, oldValue: 1, newValue: 2 };
+  });
+
+  await runDebug(m, ["c"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("watchpoint 0x1234"));
+});
+
+// --- wireSaveRestore (shared by run and debug) -----------------------------
+
+test("wireSaveRestore: onSave writes the blob to <story>.qzl", () => {
+  const machine = {} as unknown as Machine;
+  wireSaveRestore(machine, "game.z3");
+
+  const data = new Uint8Array([1, 2, 3]);
+
+  expect(machine.onSave(data)).toBe(true);
+  expect(writeFileSync).toHaveBeenCalledWith("game.z3.qzl", data);
+});
+
+test("wireSaveRestore: onRestore reads the blob back, or returns null when absent", () => {
+  const machine = {} as unknown as Machine;
+  wireSaveRestore(machine, "game.z3");
+
+  vi.mocked(existsSync).mockReturnValue(false);
+  expect(machine.onRestore()).toBeNull();
+
+  vi.mocked(existsSync).mockReturnValue(true);
+  mockReadFile(new Uint8Array([4, 5, 6]));
+  expect(machine.onRestore()).toEqual(new Uint8Array([4, 5, 6]));
+  expect(existsSync).toHaveBeenCalledWith("game.z3.qzl");
 });

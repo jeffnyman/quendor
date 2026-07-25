@@ -40,6 +40,18 @@ export interface Frame {
   stackBase: number;
 }
 
+/** A read-only snapshot of one call frame, for inspection. */
+export interface FrameInfo {
+  routineAddress: number;
+  locals: number[];
+  argumentCount: number;
+  returnPC: number;
+  /** Store variable number, or -1 if the call discards its result. */
+  storeVariable: number;
+  /** This frame's slice of the evaluation stack (bottom to top). */
+  evalStack: number[];
+}
+
 const toS16 = (x: number): number => {
   x &= 0xffff;
   return x >= 0x8000 ? x - 0x10000 : x;
@@ -69,9 +81,10 @@ export class Machine {
   private readonly stack: number[] = [];
   private readonly frames: Frame[] = [];
   private current: Frame;
-  private instructionCount = 0;
   private currentInstruction!: Instruction;
   private ops: number[] = [];
+
+  instructionCount = 0;
 
   private readonly staticBase: number;
   private readonly originalDynamic: Uint8Array;
@@ -104,7 +117,12 @@ export class Machine {
   readonly breakpoints = new Set<number>();
 
   // Data watchpoints: break when a watched byte's value changes.
+  private readonly watchAddrs = new Set<number>();
+  private readonly watchCache = new Map<number, number>();
   private watchTriggered = false;
+
+  /** The most recent watchpoint hit (for display); null until one fires. */
+  lastWatchHit: { address: number; oldValue: number; newValue: number } | null = null;
 
   private rngState = 1;
   /** The seed governing all randomness (for reproducible playthroughs). */
@@ -167,9 +185,116 @@ export class Machine {
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
 
+  /** Current execution state. */
+  get state(): RunState {
+    return this.runState;
+  }
+
   /** The call frame currently executing. */
   get currentFrame(): Frame {
     return this.current;
+  }
+
+  /** The program counter (address of the next instruction to execute). */
+  get programCounter(): number {
+    return this.pc;
+  }
+
+  /** Decode the instruction at `address` (default: the PC) without executing. */
+  decodeAt(address: number = this.pc): Instruction {
+    return new InstructionReader(this.memory, this.version, address).next();
+  }
+
+  /** Byte addresses currently watched (read-only view). */
+  get watchpoints(): ReadonlySet<number> {
+    return this.watchAddrs;
+  }
+
+  /** Break the next time byte `address` changes value. */
+  addWatchpoint(address: number): void {
+    this.watchAddrs.add(address);
+    this.watchCache.set(address, this.memory.readByte(address));
+    this.syncObserver();
+  }
+
+  /** Watch both bytes of the word at `address` (e.g. a global variable). */
+  watchWord(address: number): void {
+    this.addWatchpoint(address);
+    this.addWatchpoint(address + 1);
+  }
+
+  removeWatchpoint(address: number): void {
+    this.watchAddrs.delete(address);
+    this.watchCache.delete(address);
+    this.syncObserver();
+  }
+
+  /** The current routine's locals. */
+  getLocals(): number[] {
+    return this.current.locals.slice();
+  }
+
+  /** The current frame's evaluation stack (bottom to top). */
+  getEvalStack(): number[] {
+    return this.stack.slice(this.current.stackBase);
+  }
+
+  /** All global variables (indices 0x10..0xff → 240 values). */
+  getGlobals(): number[] {
+    const globals: number[] = [];
+
+    for (let i = 0; i < 240; i++) {
+      globals.push(this.memory.readWord(this.globalsAddress + i * 2));
+    }
+
+    return globals;
+  }
+
+  /** Snapshot the call stack, innermost (current) frame first. */
+  getCallStack(): FrameInfo[] {
+    const result: FrameInfo[] = [];
+
+    for (let i = this.frames.length - 1; i >= 0; i--) {
+      const frame = this.frames[i];
+      const top = this.frames[i + 1]?.stackBase ?? this.stack.length;
+
+      result.push({
+        routineAddress: frame.routineAddress,
+        locals: frame.locals.slice(),
+        argumentCount: frame.argumentCount,
+        returnPC: frame.returnPC,
+        storeVariable: frame.storeVariable,
+        evalStack: this.stack.slice(frame.stackBase, top),
+      });
+    }
+
+    return result;
+  }
+
+  private syncObserver(): void {
+    this.memory.onWrite =
+      this.watchAddrs.size > 0
+        ? (address, size): void => this.onMemoryWrite(address, size)
+        : undefined;
+  }
+
+  readMemoryByte(address: number): number {
+    return this.memory.readByte(address);
+  }
+
+  private onMemoryWrite(address: number, size: number): void {
+    for (let b = address; b < address + size; b++) {
+      if (!this.watchAddrs.has(b)) continue;
+
+      const newValue = this.memory.readByte(b);
+      const oldValue = this.watchCache.get(b);
+
+      if (newValue !== oldValue) {
+        this.watchCache.set(b, newValue);
+        this.lastWatchHit = { address: b, oldValue: oldValue ?? newValue, newValue };
+        this.watchTriggered = true;
+      }
+    }
   }
 
   /**
@@ -217,6 +342,14 @@ export class Machine {
    */
   run(maxInstructions = 100_000_000): RunState {
     if (this.runState === RunState.Halted) {
+      return this.runState;
+    }
+
+    // Blocked on a read: resuming requires input (provideInput), not a bare
+    // run(). Without this guard, run() would force Running and step past the
+    // unfinished read — so a debugger's "continue" at an input prompt would
+    // silently skip it. A no-op return keeps every driver honest.
+    if (this.runState === RunState.WaitingForInput) {
       return this.runState;
     }
 
