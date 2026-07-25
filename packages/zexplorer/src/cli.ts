@@ -254,6 +254,27 @@ function hex(n: number, width = 4): string {
   return "0x" + n.toString(16).padStart(width, "0");
 }
 
+/** Run `fn` with the required story-file path, or print `usage` and exit 1. */
+async function withPath(
+  path: string | undefined,
+  usage: string,
+  fn: (path: string) => Promise<void>,
+): Promise<void> {
+  if (!path) {
+    console.error(usage);
+    process.exitCode = 1;
+    return;
+  }
+
+  await fn(path);
+}
+
+/** The `--extract <dir>` target (defaulting to "blorb-out"), or undefined if absent. */
+function extractDir(rest: string[]): string | undefined {
+  const ex = rest.indexOf("--extract");
+  return ex >= 0 ? (rest[ex + 1] ?? "blorb-out") : undefined;
+}
+
 export async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
@@ -265,86 +286,30 @@ export async function main(): Promise<void> {
   }
 
   switch (command) {
-    case "header": {
-      const path = rest[0];
-
-      if (!path) {
-        console.error("usage: zexp header <story-file>");
-        process.exitCode = 1;
-        return;
-      }
-
-      await cmdHeader(path);
-
-      return;
-    }
-    case "abbrevs": {
-      const path = rest[0];
-
-      if (!path) {
-        console.error("usage: zexp abbrevs <story-file>");
-        process.exitCode = 1;
-        return;
-      }
-
-      await cmdAbbrevs(path);
-
-      return;
-    }
-    case "dump": {
-      const path = rest[0];
-
-      if (!path) {
-        console.error("usage: zexp dump <story-file> [output-file]");
-        process.exitCode = 1;
-        return;
-      }
-
-      await cmdDump(path, rest[1]);
-
-      return;
-    }
-    case "disasm": {
-      const path = rest[0];
-
-      if (!path) {
-        console.error("usage: zexp disasm <story-file> [hex-address]");
-        process.exitCode = 1;
-        return;
-      }
-
-      await cmdDisasm(path, rest[1]);
-
-      return;
-    }
+    case "header":
+      return withPath(rest[0], "usage: zexp header <story-file>", (p) => cmdHeader(p));
+    case "abbrevs":
+      return withPath(rest[0], "usage: zexp abbrevs <story-file>", (p) => cmdAbbrevs(p));
+    case "dump":
+      return withPath(rest[0], "usage: zexp dump <story-file> [output-file]", (p) =>
+        cmdDump(p, rest[1]),
+      );
+    case "disasm":
+      return withPath(rest[0], "usage: zexp disasm <story-file> [hex-address]", (p) =>
+        cmdDisasm(p, rest[1]),
+      );
     case "run": {
       const { path, opts } = parseArgs(rest);
-
-      if (!path) {
-        console.error("usage: zexp run <story-file> [run-options]   (see 'zexp --help')");
-        process.exitCode = 1;
-        return;
-      }
-
-      await cmdRun(path, opts);
-
-      return;
+      return withPath(
+        path,
+        "usage: zexp run <story-file> [run-options]   (see 'zexp --help')",
+        (p) => cmdRun(p, opts),
+      );
     }
-    case "blorb": {
-      const path = rest[0];
-
-      if (!path) {
-        console.error("usage: zexp blorb <blorb-file> [--extract <dir>]");
-        process.exitCode = 1;
-        return;
-      }
-
-      const ex = rest.indexOf("--extract");
-
-      await cmdBlorb(path, ex >= 0 ? (rest[ex + 1] ?? "blorb-out") : undefined);
-
-      return;
-    }
+    case "blorb":
+      return withPath(rest[0], "usage: zexp blorb <blorb-file> [--extract <dir>]", (p) =>
+        cmdBlorb(p, extractDir(rest)),
+      );
     default:
       // Unknown command names get a pointed error line; a bare invocation (no
       // command — undefined at runtime, though typed string) falls through to
