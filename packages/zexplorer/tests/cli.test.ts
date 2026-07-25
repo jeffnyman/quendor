@@ -657,7 +657,7 @@ test("debug: `bt` prints the call stack", async () => {
 });
 
 test("debug: `globals` prints only the non-zero globals", async () => {
-  const globals = new Array<number>(240).fill(0);
+  const globals = Array.from({ length: 240 }, () => 0);
   globals[1] = 0x2a;
   const m = fakeDebugMachine({ getGlobals: vi.fn(() => globals) });
 
