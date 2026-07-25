@@ -2,6 +2,8 @@
 
 import { loadStoryFromFile, readLineSync } from "quendor/node";
 import {
+  describeBlorb,
+  extractBlorb,
   disassembleReachable,
   dumpAll,
   dumpHeader,
@@ -10,7 +12,7 @@ import {
   Machine,
   RunState,
 } from "quendor";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const USAGE = `zexp — a headless Z-Machine explorer and debugger
 
@@ -179,6 +181,34 @@ async function cmdRun(path: string, opts: ZexpOptions): Promise<void> {
   }
 }
 
+/**
+ * Show a Blorb's structure (chunks, story, metadata, picture/sound resources).
+ * With `--extract <dir>`, also write each resource out as a file.
+ */
+async function cmdBlorb(path: string, extractDir: string | undefined): Promise<void> {
+  const bytes = new Uint8Array(readFileSync(path));
+
+  console.log(`File  ${path}`);
+  console.log(describeBlorb(bytes));
+
+  if (extractDir !== undefined) {
+    const files = extractBlorb(bytes);
+
+    if (files.length === 0) {
+      console.log("\nNothing to extract (not a Blorb, or no resources).");
+      return;
+    }
+
+    mkdirSync(extractDir, { recursive: true });
+
+    for (const f of files) {
+      writeFileSync(`${extractDir}/${f.name}`, f.data);
+    }
+
+    console.log(`\nExtracted ${files.length} file(s) to ${extractDir}/`);
+  }
+}
+
 /** Parse an integer argument, yielding undefined for a non-numeric value. */
 function intArg(value: string): number | undefined {
   const n = parseInt(value, 10);
@@ -309,9 +339,9 @@ export async function main(): Promise<void> {
         return;
       }
 
-      // TODO: parse `--extract <dir>` and dump/extract the Blorb's resources.
-      console.error("zexp blorb: not implemented yet");
-      process.exitCode = 1;
+      const ex = rest.indexOf("--extract");
+
+      await cmdBlorb(path, ex >= 0 ? (rest[ex + 1] ?? "blorb-out") : undefined);
 
       return;
     }
