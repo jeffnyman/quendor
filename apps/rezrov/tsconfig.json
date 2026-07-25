@@ -1,8 +1,12 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "allowArbitraryExtensions": true,
+    "lib": ["ES2023", "DOM"],
+    "types": ["vite/client"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "skipLibCheck": true,
+    "allowArbitraryExtensions": true,
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -16,5 +20,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
-  }
+  },
+  "include": ["web"]
 }

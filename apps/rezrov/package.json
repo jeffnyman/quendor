@@ -1,0 +1,25 @@
+{
+  "name": "rezrov",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A web player and debugger front-end for the Quendor Z-Machine",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --host --open",
+    "build": "tsc -p tsconfig.json && vp build",
+    "preview": "vp preview --host --open",
+    "lint:css": "stylelint 'web/**/*.css'"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "stylelint": "catalog:",
+    "stylelint-config-standard": "catalog:",
+    "stylelint-use-nesting": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
