@@ -10,7 +10,7 @@ import {
   type DisassembledRun,
   type Instruction,
 } from "quendor";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { cmdAbbrevs, cmdHeader, main, parseArgs } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
@@ -38,6 +38,8 @@ vi.mock("quendor", async () => {
 
 vi.mock("node:fs", () => ({
   appendFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
 }));
 
@@ -369,6 +371,66 @@ test("main run --trace: truncates the file, appends the traced line, and notes t
   expect(writeFileSync).toHaveBeenCalledWith("trace.log", ""); // truncated first
   expect(appendFileSync).toHaveBeenCalledWith("trace.log", "0x0100: call 0x1234  ; G16=0x1234\n");
   expect(stderrWrite).toHaveBeenCalledWith("\n[trace written to trace.log]\n");
+});
+
+// --- blorb command ---------------------------------------------------------
+
+// A minimal real Blorb (FORM/IFRS with a single ZCOD chunk), so cmdBlorb's real
+// describeBlorb/extractBlorb run against actual bytes rather than a mock.
+function blorbWithZcod(story: Uint8Array): Uint8Array {
+  const pad = story.length % 2;
+  const chunkLen = 8 + story.length + pad;
+  const bytes = new Uint8Array(12 + chunkLen);
+  const view = new DataView(bytes.buffer);
+  const put4 = (o: number, s: string): void => {
+    for (let i = 0; i < 4; i++) bytes[o + i] = s.charCodeAt(i);
+  };
+
+  put4(0, "FORM");
+  view.setUint32(4, 4 + chunkLen);
+  put4(8, "IFRS");
+  put4(12, "ZCOD");
+  view.setUint32(16, story.length);
+  bytes.set(story, 20);
+
+  return bytes;
+}
+
+// readFileSync is overloaded (string | Buffer), which the mock's return type
+// won't narrow cleanly; funnel the bytes through one cast here.
+function mockReadFile(bytes: Uint8Array): void {
+  vi.mocked(readFileSync).mockReturnValue(Buffer.from(bytes));
+}
+
+test("main blorb: reads the file and prints the Blorb description", async () => {
+  mockReadFile(blorbWithZcod(new Uint8Array([5, 0, 0])));
+  process.argv = ["node", "zexp", "blorb", "game.zblorb"];
+
+  await main();
+
+  expect(readFileSync).toHaveBeenCalledWith("game.zblorb");
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("ZCOD present"));
+});
+
+test("main blorb --extract: writes each resource and reports the count", async () => {
+  mockReadFile(blorbWithZcod(new Uint8Array([5, 0, 0])));
+  process.argv = ["node", "zexp", "blorb", "game.zblorb", "--extract", "out"];
+
+  await main();
+
+  expect(mkdirSync).toHaveBeenCalledWith("out", { recursive: true });
+  expect(writeFileSync).toHaveBeenCalledWith("out/story.z5", expect.any(Uint8Array));
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Extracted 1 file"));
+});
+
+test("main blorb --extract on a non-Blorb reports nothing to extract", async () => {
+  mockReadFile(new Uint8Array(20).fill(0x42));
+  process.argv = ["node", "zexp", "blorb", "bare.z5", "--extract", "out"];
+
+  await main();
+
+  expect(mkdirSync).not.toHaveBeenCalled();
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Nothing to extract"));
 });
 
 // --- run option parsing ----------------------------------------------------
