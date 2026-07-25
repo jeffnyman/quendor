@@ -1,6 +1,6 @@
 {
   "name": "zexplorer",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A headless Z-Machine explorer and debugger",
   "keywords": [
     "debugger",
@@ -44,13 +44,15 @@
     "preview": "vp preview --host --open",
     "test": "vp test",
     "lint:css": "stylelint 'src/**/*.css'",
-    "prepublishOnly": "vp pack"
+    "prepublishOnly": "vp pack",
+    "release": "bumpp --no-tag --no-push"
   },
   "dependencies": {
     "quendor": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "bumpp": "^11.1.0",
     "stylelint": "catalog:",
     "stylelint-config-standard": "catalog:",
     "stylelint-use-nesting": "catalog:",
