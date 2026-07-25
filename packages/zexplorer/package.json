@@ -39,11 +39,8 @@
   },
   "scripts": {
     "zexp": "node src/cli.ts",
-    "dev": "vp dev --host --open",
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.cli.json && vp pack && vp build",
-    "preview": "vp preview --host --open",
+    "build": "tsc -p tsconfig.json && vp pack",
     "test": "vp test",
-    "lint:css": "stylelint 'src/**/*.css'",
     "prepublishOnly": "vp pack",
     "release": "bumpp --no-tag --no-push"
   },
@@ -53,9 +50,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "bumpp": "^11.1.0",
-    "stylelint": "catalog:",
-    "stylelint-config-standard": "catalog:",
-    "stylelint-use-nesting": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

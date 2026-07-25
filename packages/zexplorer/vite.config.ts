@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   pack: {
     entry: ["src/cli.ts"],
-    tsconfig: "tsconfig.cli.json",
+    tsconfig: "tsconfig.json",
     outDir: "dist-cli",
   },
   test: {
