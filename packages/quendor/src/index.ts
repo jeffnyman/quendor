@@ -66,3 +66,7 @@ export { dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary } f
 // --- toolkit: quetzal -------------------------------------------------------
 export { encodeQuetzal, decodeQuetzal } from "./quetzal.ts";
 export type { DecodedQuetzal, QuetzalState, QuetzalFrame } from "./quetzal.js";
+
+// --- resources (Blorb pictures/sounds) -------------------------------------
+export { describeBlorb, extractBlorb, parseBlorb, unwrapStory } from "./blorb.ts";
+export { decodeAiff, type DecodedAudio } from "./aiff.js";
