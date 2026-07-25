@@ -12,6 +12,27 @@ import {
 } from "quendor";
 import { appendFileSync, writeFileSync } from "node:fs";
 
+const USAGE = `zexp — a headless Z-Machine explorer and debugger
+
+Usage:
+  zexp <command> [args]
+
+Commands:
+  header   <story-file>                   Parse and print the story header.
+  abbrevs  <story-file>                   Decode the abbreviation table.
+  dump     <story-file> [out-file]        Dump the header + objects/properties.
+  disasm   <story-file> [hex-addr]        Disassemble every reachable routine/target.
+  run      <story-file> [run-options]     Execute the story (headless).
+  blorb    <blorb-file> [--extract <dir>] Inspect a Blorb's resources.
+
+Run options (for \`zexp run\`):
+  --trace <file>            Log the executed opcode path to <file>.
+  --seed N                  Fix the RNG seed for reproducible runs.
+  --tandy                   Set the v1-3 "Tandy" flag.
+  --interpreter N           Interpreter number reported to the game (default 6, IBM PC).
+  --interpreter-version C   Interpreter version letter (default A).
+`;
+
 interface ZexpOptions {
   trace?: string;
   seed?: number;
@@ -206,6 +227,13 @@ function hex(n: number, width = 4): string {
 export async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
+  // Explicit help succeeds and goes to stdout so it can be piped; usage errors
+  // (below) go to stderr with a non-zero exit.
+  if (command === "-h" || command === "--help") {
+    console.log(USAGE);
+    return;
+  }
+
   switch (command) {
     case "header": {
       const path = rest[0];
@@ -263,9 +291,7 @@ export async function main(): Promise<void> {
       const { path, opts } = parseArgs(rest);
 
       if (!path) {
-        console.error(
-          "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]",
-        );
+        console.error("usage: zexp run <story-file> [run-options]   (see 'zexp --help')");
         process.exitCode = 1;
         return;
       }
@@ -274,21 +300,27 @@ export async function main(): Promise<void> {
 
       return;
     }
-    default:
-      console.error("usage: zexp <command> [args]");
-      console.error("commands:");
-      console.error("  header <story-file>                parse and print the story header");
-      console.error("  abbrevs <story-file>               decode the abbreviation table");
-      console.error(
-        "  dump <story-file> [output-file]    dump header + objects/properties (to a file or stdout)",
-      );
-      console.error(
-        "  disasm <story-file> [addr]         disassemble every reachable routine/jump/branch target",
-      );
-      console.error(
-        "  run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]   execute the story (headless); --trace logs the opcode path",
-      );
+    case "blorb": {
+      const path = rest[0];
 
+      if (!path) {
+        console.error("usage: zexp blorb <blorb-file> [--extract <dir>]");
+        process.exitCode = 1;
+        return;
+      }
+
+      // TODO: parse `--extract <dir>` and dump/extract the Blorb's resources.
+      console.error("zexp blorb: not implemented yet");
+      process.exitCode = 1;
+
+      return;
+    }
+    default:
+      // Unknown command names get a pointed error line; a bare invocation (no
+      // command — undefined at runtime, though typed string) falls through to
+      // just the usage text.
+      if (command) console.error(`zexp: unknown command '${command}'\n`);
+      console.error(USAGE);
       process.exitCode = 1;
   }
 }

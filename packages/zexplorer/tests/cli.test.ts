@@ -241,7 +241,8 @@ test("main prints usage and exits 1 for an unknown command", async () => {
 
   await main();
 
-  expect(console.error).toHaveBeenCalledWith("usage: zexp <command> [args]");
+  expect(console.error).toHaveBeenCalledWith("zexp: unknown command 'bogus'\n");
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
   expect(process.exitCode).toBe(1);
 });
 
@@ -253,13 +254,22 @@ test("main prints usage and exits 1 when no command is given", async () => {
   expect(process.exitCode).toBe(1);
 });
 
+test("main prints help to stdout and exits 0 for --help", async () => {
+  process.argv = ["node", "zexp", "--help"];
+
+  await main();
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
+  expect(process.exitCode).toBeUndefined();
+});
+
 test("main prints usage and exits 1 when run is missing a path", async () => {
   process.argv = ["node", "zexp", "run"];
 
   await main();
 
   expect(console.error).toHaveBeenCalledWith(
-    "usage: zexp run <story-file> [--trace <file>] [--seed N] [--tandy] [--interpreter N] [--interpreter-version C]",
+    "usage: zexp run <story-file> [run-options]   (see 'zexp --help')",
   );
   expect(process.exitCode).toBe(1);
   expect(loadStoryFromFile).not.toHaveBeenCalled();
