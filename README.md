@@ -22,7 +22,10 @@
   <a href="https://viteplus.dev"><img src="https://img.shields.io/badge/vite+-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white" alt="Vite+"></a>
   <a href="https://oxc.rs"><img src="https://img.shields.io/badge/oxc-%233451b2.svg?style=for-the-badge&logo=oxc&logoColor=white&logoSize=auto" alt="OXC"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjeffnyman%2Fquendor%2Fmain%2Fpackage.json&query=%24.engines.node&label=node&style=for-the-badge&logo=node.js&logoColor=white&color=339933" alt="Node.js"></a>
-  <a href="https://www.npmjs.com/package/quendor"><img src="https://img.shields.io/npm/v/quendor?style=for-the-badge&logo=npm&logoColor=white&label=npm&color=CB3837" alt="npm version"></a>
+</p>
+<p align="center">
+  <a href="https://www.npmjs.com/package/quendor"><img src="https://img.shields.io/npm/v/quendor?style=for-the-badge&logo=npm&logoColor=white&label=quendor&color=CB3837" alt="quendor npm version"></a>
+  <a href="https://www.npmjs.com/package/zexplorer"><img src="https://img.shields.io/npm/v/zexplorer?style=for-the-badge&logo=npm&logoColor=white&label=zexplorer&color=CB3837" alt="zexplorer npm version"></a>
 </p>
 
 <p align="center">
@@ -32,6 +35,26 @@
 <div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/></div>
 
 ---
+
+## Using
+
+This repo publishes two packages to npm:
+
+- **[quendor](packages/quendor)** — the Z-Machine engine. Install it to play Z-code stories from the terminal, or import it as a library to embed the interpreter in your own app.
+
+  ```bash
+  npm install -g quendor
+  quendor path/to/story.z5
+  ```
+
+- **[zexplorer](packages/zexplorer)** — `zexp`, the developer's companion: parse the header/objects, disassemble routines, run a story headless, inspect Blorb resources, and step through a story in an interactive debugger.
+
+  ```bash
+  npm install -g zexplorer
+  zexp debug path/to/story.z5
+  ```
+
+Full command and API references live in each package's README.
 
 ## Development
 
