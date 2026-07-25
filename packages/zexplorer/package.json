@@ -1,21 +1,50 @@
 {
   "name": "zexplorer",
   "version": "0.0.0",
-  "private": true,
-  "description": "A Z-Machine explorer",
-  "homepage": "https://jeffnyman.github.io/quendor/",
+  "description": "A headless Z-Machine explorer and debugger",
+  "keywords": [
+    "debugger",
+    "disassembler",
+    "infocom",
+    "interactive-fiction",
+    "z-machine",
+    "zmachine",
+    "zork"
+  ],
+  "homepage": "https://github.com/jeffnyman/quendor/tree/main/packages/zexplorer#readme",
+  "bugs": {
+    "url": "https://github.com/jeffnyman/quendor/issues",
+    "email": "jeffnyman@gmail.com"
+  },
   "license": "MIT",
+  "author": {
+    "name": "Jeff Nyman",
+    "email": "jeffnyman@gmail.com",
+    "url": "https://github.com/jeffnyman"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeffnyman/quendor.git",
+    "directory": "packages/zexplorer"
+  },
   "bin": {
     "zexp": "./dist-cli/cli.mjs"
   },
+  "files": [
+    "dist-cli"
+  ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "zexp": "node src/cli.ts",
     "dev": "vp dev --host --open",
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.cli.json && vp pack && vp build",
     "preview": "vp preview --host --open",
     "test": "vp test",
-    "lint:css": "stylelint 'src/**/*.css'"
+    "lint:css": "stylelint 'src/**/*.css'",
+    "prepublishOnly": "vp pack"
   },
   "dependencies": {
     "quendor": "workspace:*"
@@ -28,5 +57,8 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }
