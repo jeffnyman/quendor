@@ -1,24 +1,28 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
-import { loadStoryFromFile } from "quendor/node";
+import { loadStoryFromFile, readLineSync } from "quendor/node";
 import {
   disassembleReachable,
   dumpAll,
   formatInstruction,
+  formatResolvedOperands,
+  Machine,
+  RunState,
   type DisassembledRun,
   type Instruction,
 } from "quendor";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { cmdAbbrevs, cmdHeader, main, parseArgs } from "../src/cli.ts";
 
 vi.mock("quendor/node", () => ({
   loadStoryFromFile: vi.fn(),
+  readLineSync: vi.fn(),
 }));
 
-// dumpAll/InstructionReader/formatInstruction/isReturnLike are mocked
-// (dumpHeader stays real) so these tests exercise the CLI's own plumbing --
-// argument handling, stdout vs. file output, the disasm loop -- without also
-// having to fake a full, valid story for quendor's internals, which already
-// have their own thorough test coverage.
+// dumpAll/formatInstruction/formatResolvedOperands/disassembleReachable/Machine
+// are mocked (dumpHeader stays real) so these tests exercise the CLI's own
+// plumbing -- argument handling, stdout vs. file output, the disasm loop, and
+// the run/trace loop -- without having to fake a full, valid story for quendor's
+// internals, which already have their own thorough test coverage.
 vi.mock("quendor", async () => {
   const actual = await vi.importActual("quendor");
 
@@ -26,11 +30,14 @@ vi.mock("quendor", async () => {
     ...actual,
     dumpAll: vi.fn(),
     formatInstruction: vi.fn(),
+    formatResolvedOperands: vi.fn(),
     disassembleReachable: vi.fn(),
+    Machine: vi.fn(),
   };
 });
 
 vi.mock("node:fs", () => ({
+  appendFileSync: vi.fn(),
   writeFileSync: vi.fn(),
 }));
 
@@ -65,6 +72,45 @@ function fakeStory(
 
 function fakeInsn(address: number): Instruction {
   return { address } as unknown as Instruction;
+}
+
+type FakeMachine = {
+  onOutput?: (text: string) => void;
+  onTrace?: (insn: Instruction, depth: number, ops: number[]) => void;
+  run: ReturnType<typeof vi.fn>;
+  provideInput: ReturnType<typeof vi.fn>;
+};
+
+// A stand-in for Machine that returns a scripted sequence of run() states. With
+// emitTrace, the first run() fires onTrace once (as a real run would) so the
+// --trace file path can be exercised.
+function fakeMachine(states: RunState[], emitTrace = false): FakeMachine {
+  let call = 0;
+  const m: FakeMachine = {
+    run: vi.fn(() => {
+      if (call === 0 && emitTrace) m.onTrace?.(fakeInsn(0x100), 1, []);
+      const state = call < states.length ? states[call] : RunState.Halted;
+      call += 1;
+      return state;
+    }),
+    provideInput: vi.fn(),
+  };
+  return m;
+}
+
+// Route `new Machine(...)` in cmdRun to a fake. vitest types a mocked class's
+// impl as a constructor (void return), so the factory arrow is cast to a
+// value-returning signature to keep the strict-void-return lint rule happy.
+function installMachine(machine: FakeMachine): void {
+  // vitest requires a class for a mock invoked with `new`; a constructor may
+  // return an object, so we hand back the captured fake for cmdRun to drive.
+  vi.mocked(Machine).mockImplementation(
+    class {
+      constructor() {
+        return machine;
+      }
+    } as unknown as typeof Machine,
+  );
 }
 
 function hex(n: number, width = 4): string {
@@ -273,6 +319,56 @@ test("main prints usage and exits 1 when run is missing a path", async () => {
   );
   expect(process.exitCode).toBe(1);
   expect(loadStoryFromFile).not.toHaveBeenCalled();
+});
+
+test("main run: constructs the machine with parsed options and runs to a halt", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  const machine = fakeMachine([RunState.Halted]);
+  installMachine(machine);
+  process.argv = ["node", "zexp", "run", "game.z5", "--seed", "42"];
+
+  await main();
+
+  expect(loadStoryFromFile).toHaveBeenCalledWith("game.z5");
+  expect(Machine).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ randomSeed: 42 }),
+  );
+  expect(machine.run).toHaveBeenCalledTimes(1);
+  expect(writeFileSync).not.toHaveBeenCalled(); // no --trace, so no file touched
+
+  // onOutput is wired straight through to stdout.
+  machine.onOutput?.("banner");
+  expect(stdoutWrite).toHaveBeenCalledWith("banner");
+});
+
+test("main run: feeds a read line to the machine, then stops at end of input", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  const machine = fakeMachine([RunState.WaitingForInput, RunState.WaitingForInput]);
+  installMachine(machine);
+  vi.mocked(readLineSync).mockReturnValueOnce("north").mockReturnValueOnce(null);
+  process.argv = ["node", "zexp", "run", "game.z5"];
+
+  await main();
+
+  expect(machine.provideInput).toHaveBeenCalledWith("north");
+  expect(machine.provideInput).toHaveBeenCalledTimes(1); // null on the 2nd read breaks the loop
+});
+
+test("main run --trace: truncates the file, appends the traced line, and notes the path", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  vi.mocked(formatInstruction).mockReturnValue("call 0x1234");
+  vi.mocked(formatResolvedOperands).mockReturnValue("G16=0x1234");
+  const machine = fakeMachine([RunState.Halted], true);
+  installMachine(machine);
+  const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  process.argv = ["node", "zexp", "run", "game.z5", "--trace", "trace.log"];
+
+  await main();
+
+  expect(writeFileSync).toHaveBeenCalledWith("trace.log", ""); // truncated first
+  expect(appendFileSync).toHaveBeenCalledWith("trace.log", "0x0100: call 0x1234  ; G16=0x1234\n");
+  expect(stderrWrite).toHaveBeenCalledWith("\n[trace written to trace.log]\n");
 });
 
 // --- run option parsing ----------------------------------------------------
