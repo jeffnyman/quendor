@@ -135,6 +135,13 @@ function readText(bytes: Uint8Array, start: number, len: number): string {
   return s.trim();
 }
 
+/** File extension for the Z-code version byte (`.z3`, `.z5`, …). */
+function storyExtension(story: Uint8Array): string {
+  const v = story.length ? story[0] : 0;
+
+  return v >= 1 && v <= 8 ? `z${v}` : "dat";
+}
+
 /**
  * Read a PNG's IHDR width/height; returns [0,0] if it doesn't look like a PNG.
  */
@@ -324,6 +331,41 @@ export function unwrapStory(bytes: Uint8Array): Uint8Array {
   }
 
   return blorb.story;
+}
+
+/**
+ * Extract a Blorb's resources as named byte blobs (pictures, sounds, and the
+ * embedded story if any), ready to write to disk. `Rect` placeholders have no
+ * data and are skipped. For `zdbg blorb <file> --extract <dir>`.
+ */
+export function extractBlorb(bytes: Uint8Array): { name: string; data: Uint8Array }[] {
+  const res = parseBlorb(bytes);
+
+  if (!res) return [];
+
+  const files: { name: string; data: Uint8Array }[] = [];
+  const pad = (n: number): string => String(n).padStart(3, "0");
+
+  for (const [n, p] of res.pictures) {
+    if (p.format === "rect") continue;
+    files.push({ name: `pic-${pad(n)}.${p.format === "jpeg" ? "jpg" : "png"}`, data: p.data });
+  }
+
+  for (const [n, s] of res.sounds) {
+    const ext =
+      s.format === "aiff"
+        ? "aiff"
+        : s.format === "ogg"
+          ? "ogg"
+          : s.format === "mod"
+            ? "mod"
+            : "snd";
+    files.push({ name: `snd-${pad(n)}.${ext}`, data: s.data });
+  }
+
+  if (res.story) files.push({ name: `story.${storyExtension(res.story)}`, data: res.story });
+
+  return files;
 }
 
 /**
