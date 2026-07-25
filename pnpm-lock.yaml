@@ -295,6 +295,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.1
+      bumpp:
+        specifier: ^11.1.0
+        version: 11.1.0
       stylelint:
         specifier: 'catalog:'
         version: 17.14.0(typescript@7.0.2)
