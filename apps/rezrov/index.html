@@ -14,6 +14,77 @@
     <script type="module" src="/web/main.ts"></script>
   </head>
   <body>
-    <h1>Quendor Z-Machine Interpreter and Debugger</h1>
+    <header>
+      <span class="title">Rezrov</span>
+      <label class="filebtn">
+        Load story file
+        <input id="file" type="file" accept=".z1,.z2,.z3,.z4,.zblorb,.blorb" hidden />
+      </label>
+      <button id="btn-dump" title="download a header + object/property dump" disabled>Dump</button>
+      <span id="modetoggle">
+        <button id="mode-play">▶ Play</button>
+        <button id="mode-debug" class="active">🐞 Debug</button>
+      </span>
+      <button id="btn-reset" disabled>Reset</button>
+      <button id="btn-step" class="dbgonly" disabled>Step (F10)</button>
+      <button id="btn-continue" class="dbgonly" disabled>Continue (F5)</button>
+      <span id="icount" class="dbgonly"></span>
+      <span id="state" class="halted">no story</span>
+    </header>
+
+    <main>
+      <div class="col" id="col-disasm">
+        <div class="panel grow" id="disasm">
+          <h2>Disassembly</h2>
+          <div class="dtoolbar">
+            <button id="d-followpc" title="track the program counter">▸ Follow PC</button>
+            <button id="d-back" title="navigate back" disabled>← Back</button>
+            <input id="d-goto" placeholder="goto addr (hex)" />
+            <span id="d-loc" class="dim"></span>
+          </div>
+          <div class="body"></div>
+        </div>
+      </div>
+
+      <div class="col" id="col-game">
+        <div class="panel grow">
+          <h2 class="dbgonly">Output</h2>
+          <div id="screentop"></div>
+          <div class="body grow" id="terminal"></div>
+          <div id="inputrow">
+            <input
+              id="input"
+              type="text"
+              placeholder="type a command and press Enter..."
+              disabled
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="col" id="col-state">
+        <div class="panel" id="callstack">
+          <h2>Call stack</h2>
+          <div class="body"></div>
+        </div>
+        <div class="panel" id="locals">
+          <h2>Locals &amp; stack</h2>
+          <div class="body"></div>
+        </div>
+        <div class="panel grow" id="globals">
+          <h2>Globals</h2>
+          <div class="body"></div>
+        </div>
+        <div class="panel grow">
+          <div class="tabs">
+            <button class="active" data-tab="objects">Objects</button>
+            <button data-tab="memory">Memory</button>
+          </div>
+
+          <div class="body grow" id="objects"></div>
+          <div class="body grow" id="memory" style="display: none"></div>
+        </div>
+      </div>
+    </main>
   </body>
 </html>

@@ -127,3 +127,21 @@ test("onUpperUpdate fires on the structural upper-window ops", () => {
 
   expect(updates).toBe(3);
 });
+
+test("setStatusLine composes a width-wide v3 bar: location left, status right", () => {
+  const screen = new Screen(40);
+  screen.setStatusLine("West of House", "Score: 0  Moves: 0");
+
+  expect(screen.statusLine).toHaveLength(40);
+  expect(screen.statusLine?.startsWith(" West of House")).toBe(true);
+  // the status is right-aligned (a trailing pad space follows it)
+  expect(screen.statusLine?.trimEnd().endsWith("Score: 0  Moves: 0")).toBe(true);
+});
+
+test("setStatusLine truncates to the screen width when both sides can't fit", () => {
+  const screen = new Screen(20);
+  screen.setStatusLine("A Long Location Name", "Score: 999  Moves: 999");
+
+  expect(screen.statusLine).toHaveLength(20);
+  expect(screen.statusLine?.startsWith(" A Long")).toBe(true);
+});

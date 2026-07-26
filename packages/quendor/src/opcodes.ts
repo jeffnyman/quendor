@@ -122,6 +122,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x09, "pop", F.None, 1, 4],
   [OpcodeKind.ZeroOp, 0x0a, "quit", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
+  [OpcodeKind.ZeroOp, 0x0c, "show_status", F.None, 3, 3],
   [OpcodeKind.ZeroOp, 0x0d, "verify", F.Branch, 3, 8],
 
   // variable-operand opcodes

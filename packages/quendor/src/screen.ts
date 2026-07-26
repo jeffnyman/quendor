@@ -31,6 +31,8 @@ export class Screen {
   cursorRow = 0;
   cursorCol = 0;
   currentWindow = 0;
+  /** The v3 status bar text, or null when not applicable / not yet drawn. */
+  statusLine: string | null = null;
 
   /** Sink for lower-window (main transcript) text. */
   onLowerOutput: (text: string, attrs: OutputAttrs) => void = () => {};
@@ -47,6 +49,20 @@ export class Screen {
 
   constructor(width: number) {
     this.width = Math.max(1, width);
+  }
+
+  /** Compose the v3 status bar: location on the left, score/time on the right. */
+  setStatusLine(left: string, right: string): void {
+    const w = this.width;
+    let line = " " + left;
+
+    if (line.length + right.length + 1 <= w) {
+      line = line.padEnd(w - right.length - 1) + right + " ";
+    } else {
+      line = (line + " " + right).slice(0, w);
+    }
+
+    this.statusLine = line.slice(0, w);
   }
 
   /** Split off `lines` rows for the upper window. v3 clears the upper window. */

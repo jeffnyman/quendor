@@ -77,6 +77,8 @@ export class Machine {
   private readonly headerChecksum: number;
   private readonly computedChecksum: number;
 
+  private dictionaryIndex: Map<number, string> | null = null;
+
   private pc = 0;
   private readonly stack: number[] = [];
   private readonly frames: Frame[] = [];
@@ -100,6 +102,9 @@ export class Machine {
   private runState: RunState = RunState.Running;
 
   private readonly inputQueue: string[] = [];
+
+  /** True while paused at a [More] prompt (waiting for a keypress). */
+  private morePause = false;
 
   // For read_char: a typed line is fed one character at a time
   // (with a trailing Enter) so keystroke-driven UIs (menus,
@@ -200,9 +205,25 @@ export class Machine {
     return this.pc;
   }
 
+  /**
+   * When WaitingForInput, whether the game wants a whole line (`sread`/`aread`)
+   * or a single keystroke (`read_char`) — lets a UI pick line vs. key input.
+   */
+  get pendingInputKind(): "line" | "char" | "more" | null {
+    if (this.runState !== RunState.WaitingForInput) return null;
+    if (this.morePause) return "more";
+    if (!this.pendingRead) return null;
+    return this.pendingRead.kind === "read_char" ? "char" : "line";
+  }
+
   /** Decode the instruction at `address` (default: the PC) without executing. */
   decodeAt(address: number = this.pc): Instruction {
     return new InstructionReader(this.memory, this.version, address).next();
+  }
+
+  /** Convert a packed routine address to its byte address (for navigation). */
+  unpackRoutineAddress(packed: number): number {
+    return unpackRoutineAddress(this.version, packed, this.routinesOffset);
   }
 
   /** Byte addresses currently watched (read-only view). */
@@ -227,6 +248,11 @@ export class Machine {
     this.watchAddrs.delete(address);
     this.watchCache.delete(address);
     this.syncObserver();
+  }
+
+  /** The byte address of global variable `index` (0-based). */
+  globalAddress(index: number): number {
+    return this.globalsAddress + index * 2;
   }
 
   /** The current routine's locals. */
@@ -280,6 +306,21 @@ export class Machine {
 
   readMemoryByte(address: number): number {
     return this.memory.readByte(address);
+  }
+
+  readMemoryWord(address: number): number {
+    return this.memory.readWord(address);
+  }
+
+  /**
+   * If `address` is the address of a dictionary entry, return its (decoded)
+   * word — otherwise null. Used to interpret property/table values that hold
+   * dictionary references (e.g. an object's vocabulary "name" property). The
+   * dictionary is static, so the index is built once and cached.
+   */
+  getDictionaryWord(address: number): string | null {
+    if (!this.dictionaryIndex) this.dictionaryIndex = this.buildDictionaryIndex();
+    return this.dictionaryIndex.get(address) ?? null;
   }
 
   private onMemoryWrite(address: number, size: number): void {
@@ -450,6 +491,32 @@ export class Machine {
     const executed = this.stepInternal();
 
     return { executed, state: this.runState };
+  }
+
+  private buildDictionaryIndex(): Map<number, string> {
+    const map = new Map<number, string>();
+    let addr = this.dictionaryAddress;
+    const sepCount = this.memory.readByte(addr++);
+
+    addr += sepCount;
+
+    const entryLength = this.memory.readByte(addr++);
+    let entryCount = this.memory.readWord(addr);
+
+    addr += 2;
+
+    if (entryCount >= 0x8000) entryCount = 0x10000 - entryCount; // unsorted
+
+    for (let i = 0; i < entryCount; i++) {
+      const entryAddress = addr + i * entryLength;
+      try {
+        map.set(entryAddress, this.text.decodeAtAddress(entryAddress).trim());
+      } catch {
+        /* skip malformed entry */
+      }
+    }
+
+    return map;
   }
 
   private execute(name: string): void {
@@ -642,6 +709,9 @@ export class Machine {
       case "buffer_mode":
         // NOTE: not sure what to do
         return;
+      case "show_status":
+        this.showStatus();
+        return;
       case "split_window":
         this.screen.splitWindow(o[0], this.version <= 3);
         return;
@@ -738,11 +808,30 @@ export class Machine {
     // simply goes nowhere, which keeps it off the screen as intended.
   }
 
+  private objectShortName(objNum: number): string {
+    try {
+      const addr = this.objects.getShortNameAddress(objNum);
+      const len = this.memory.readByte(addr);
+      return len > 0 ? this.text.decodeAtAddress(addr + 1) : "";
+    } catch {
+      return "";
+    }
+  }
+
   /** Draw the v1-3 status bar from globals 0 (location), 1 and 2 (score/time). */
   private showStatus(): void {
     if (this.version > 3) return;
 
-    // NOTE: NEED TO IMPLEMENT SCREEN TO MAKE THIS WORK
+    const location = this.memory.readWord(this.globalsAddress);
+    const left = location ? this.objectShortName(location) : "";
+    const g1 = this.memory.readWord(this.globalsAddress + 2);
+    const g2 = this.memory.readWord(this.globalsAddress + 4);
+    const timeGame = (this.memory.readByte(0x01) & 0x02) !== 0;
+    const right = timeGame
+      ? `Time: ${g1 % 24}:${String(g2 % 60).padStart(2, "0")}`
+      : `Score: ${toS16(g1)}  Moves: ${g2}`;
+
+    this.screen.setStatusLine(left, right);
   }
 
   private call(packedAddress: number, args: number[], storeVariable: number): void {

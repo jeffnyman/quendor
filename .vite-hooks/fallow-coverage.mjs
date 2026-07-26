@@ -17,6 +17,7 @@ import { join } from "node:path";
 const COVERAGE_FILES = [
   "packages/quendor/test-quendor/coverage/coverage-final.json",
   "packages/zexplorer/test-zexplorer/coverage/coverage-final.json",
+  "apps/rezrov/test-rezrov/coverage/coverage-final.json",
 ];
 
 execSync("vp run -r test --coverage", { stdio: "inherit" });

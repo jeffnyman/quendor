@@ -813,3 +813,67 @@ test("read_char blocks awaiting a single keystroke, and provideChar delivers it"
   expect(machine.run()).toBe(RunState.Halted);
   expect(machine.memory.readWord(GLOBALS)).toBe("x".charCodeAt(0)); // 'x' = 120
 });
+
+test("globalAddress returns the byte address of a global variable", () => {
+  const base = 0x0400;
+  const machine = new Machine(
+    buildStory(0x600, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      // global variables table pointer (0x0c, word)
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (base >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = base & 0xff;
+    }),
+  );
+
+  expect(machine.globalAddress(0)).toBe(base);
+  expect(machine.globalAddress(1)).toBe(base + 2);
+  expect(machine.globalAddress(5)).toBe(base + 10);
+});
+
+// show_status (0OP 0x0c) => 0xb0 | 0x0c. In v3 it draws the status bar from
+// globals 0 (location object), 1 and 2 (score/moves, or hours/mins).
+const SHOW_STATUS = 0xbc;
+
+test("show_status draws a v3 score bar from the score and moves globals", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+
+      // global 0 = location 0 (none); global 1 = score 42; global 2 = moves 7
+      bytes[GLOBALS + 3] = 42;
+      bytes[GLOBALS + 5] = 7;
+
+      bytes.set([SHOW_STATUS, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.run()).toBe(RunState.Halted);
+  expect(machine.screen.statusLine).toContain("Score: 42");
+  expect(machine.screen.statusLine).toContain("Moves: 7");
+});
+
+test("show_status draws a time bar when Flags 1 marks a time game", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[0x01] = 0x02; // Flags 1, bit 1: status line shows hours:minutes
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+
+      // global 1 = hours 13; global 2 = minutes 5
+      bytes[GLOBALS + 3] = 13;
+      bytes[GLOBALS + 5] = 5;
+
+      bytes.set([SHOW_STATUS, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.run()).toBe(RunState.Halted);
+  expect(machine.screen.statusLine).toContain("Time: 13:05");
+});

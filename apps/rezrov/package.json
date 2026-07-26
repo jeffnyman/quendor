@@ -8,7 +8,11 @@
     "dev": "vp dev --host --open",
     "build": "tsc -p tsconfig.json && vp build",
     "preview": "vp preview --host --open",
-    "lint:css": "stylelint 'web/**/*.css'"
+    "lint:css": "stylelint 'web/**/*.css'",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "quendor": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
