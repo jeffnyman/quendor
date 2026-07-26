@@ -2,7 +2,7 @@ import "./style.css";
 
 // The engine, imported through Quendor's public API (src/index.ts) rather than
 // reaching into individual modules.
-import { Story, Machine, unwrapStory } from "quendor";
+import { Story, Machine, RunState, unwrapStory } from "quendor";
 import type { OutputAttrs } from "quendor";
 import {
   escapeHtml,
@@ -70,11 +70,13 @@ let termBg = 1;
 
 // UI mode: "debug" shows all panels; "play" shows just the game, but it's the
 // SAME Machine — a breakpoint set in debug still fires while playing.
-const mode: "debug" | "play" = "debug";
+let mode: "debug" | "play" = "debug";
 
 // Disassembly navigation: the routine currently shown. null = follow the PC.
-const viewRoutine: number | null = null;
+let viewRoutine: number | null = null;
 const navHistory: (number | null)[] = [];
+
+let shownWatchHit: object | null = null;
 
 function setTerminalColors(fg: number, bg: number): void {
   if (fg === termFg && bg === termBg) return;
@@ -267,15 +269,89 @@ function renderMemory(machine: Machine): void {
   });
 }
 
+function setMode(next: "debug" | "play"): void {
+  mode = next;
+  document.body.classList.toggle("mode-play", next === "play");
+  document.body.classList.toggle("mode-debug", next === "debug");
+  els.modePlay.classList.toggle("active", next === "play");
+  els.modeDebug.classList.toggle("active", next === "debug");
+
+  // Entering Play: run to the next prompt so the game is immediately playable.
+  if (
+    next === "play" &&
+    machine &&
+    (machine.state === RunState.Running || machine.state === RunState.Paused)
+  ) {
+    cont();
+  }
+
+  if (next === "play") {
+    els.input.focus();
+  }
+
+  refresh();
+}
+
+function cont(): void {
+  if (!machine || machine.state === RunState.Halted) return;
+
+  try {
+    machine.run(20_000_000);
+  } catch (err) {
+    appendOutput(`\n[error: ${(err as Error).message}]\n`);
+  }
+
+  // Announce a watchpoint hit (a new one, distinct from a code-breakpoint pause).
+  if (
+    machine.state === RunState.Paused &&
+    machine.lastWatchHit &&
+    machine.lastWatchHit !== shownWatchHit
+  ) {
+    shownWatchHit = machine.lastWatchHit;
+
+    const h = machine.lastWatchHit;
+    const msg = document.createElement("span");
+
+    msg.className = "watchmsg";
+    msg.textContent = `\n[watchpoint ${hex(h.address)}: ${hex(h.oldValue, 2)} → ${hex(h.newValue, 2)}]\n`;
+
+    els.terminal.append(msg);
+    els.terminal.scrollTop = els.terminal.scrollHeight;
+  }
+
+  // If a breakpoint/watchpoint stopped us mid-play, drop into the debugger.
+  if (machine.state === RunState.Paused && mode === "play") {
+    appendOutput("\n[stopped at a breakpoint — switched to Debug view]\n");
+    setMode("debug");
+
+    return;
+  }
+
+  refresh();
+}
+
 function reset(): void {
   if (!storyBytes) return;
   const story = new Story(storyBytes);
+  const savedWatches = machine ? [...machine.watchpoints] : [];
+
+  els.terminal.style.display = "";
+  els.screentop.style.display = "";
+
+  shownWatchHit = null;
+  viewRoutine = null;
+  navHistory.length = 0;
+  expandedObjects.clear();
 
   machine = new Machine(story);
   machine.onOutput = (text, attrs): void => appendOutput(text, attrs);
   machine.onClearScreen = (): void => {
     els.terminal.textContent = "";
   };
+
+  // reapply persisted breakpoints and carry over the previous machine's watchpoints
+  for (const a of breakpoints) machine.breakpoints.add(a);
+  for (const a of savedWatches) machine.addWatchpoint(a);
 
   memoryBase = story.header.dictionaryAddress & ~0xf;
 
@@ -291,6 +367,37 @@ function reset(): void {
   setTerminalColors(1, 1);
 
   refresh();
+
+  if (mode === "play") {
+    cont();
+  }
+}
+
+function navTo(routineAddr: number, pushHistory = true): void {
+  if (!machine) return;
+
+  if (pushHistory) {
+    navHistory.push(viewRoutine);
+  }
+
+  viewRoutine = routineAddr;
+
+  renderDisasm(machine);
+}
+
+function navBack(): void {
+  if (!machine || navHistory.length === 0) return;
+  viewRoutine = navHistory.pop() ?? null;
+
+  renderDisasm(machine);
+}
+
+function navFollowPC(): void {
+  if (!machine || viewRoutine === null) return;
+  navHistory.push(viewRoutine);
+  viewRoutine = null;
+
+  renderDisasm(machine);
 }
 
 async function loadStory(bytes: Uint8Array): Promise<void> {
@@ -307,3 +414,92 @@ async function onFileChange(): Promise<void> {
 }
 
 els.file.addEventListener("change", () => void onFileChange());
+
+els.dFollowPC.addEventListener("click", navFollowPC);
+els.dBack.addEventListener("click", navBack);
+
+els.dGoto.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+
+  const v = parseInt(els.dGoto.value.replace(/^0x/, ""), 16);
+
+  if (!Number.isNaN(v)) {
+    navTo(v);
+    els.dGoto.value = "";
+  }
+});
+
+// Click a call-stack frame to view its routine.
+els.callstack.addEventListener("click", (e) => {
+  const frame = (e.target as HTMLElement).closest<HTMLElement>(".frame[data-ra]");
+
+  if (frame) {
+    navTo(Number(frame.dataset.ra));
+  }
+});
+
+// Click an object row to expand/collapse its attributes and properties.
+els.objects.addEventListener("click", (e) => {
+  const row = (e.target as HTMLElement).closest<HTMLElement>(".objrow[data-obj]");
+
+  if (!row || !machine) return;
+
+  const n = Number(row.dataset.obj);
+
+  if (expandedObjects.has(n)) {
+    expandedObjects.delete(n);
+  } else {
+    expandedObjects.add(n);
+  }
+
+  renderObjects(machine);
+});
+
+// Click a memory byte to toggle a byte watchpoint.
+els.memory.addEventListener("click", (e) => {
+  const cell = (e.target as HTMLElement).closest<HTMLElement>(".b[data-a]");
+
+  if (!cell || !machine) return;
+
+  const a = Number(cell.dataset.a);
+
+  if (machine.watchpoints.has(a)) {
+    machine.removeWatchpoint(a);
+  } else {
+    machine.addWatchpoint(a);
+  }
+
+  renderMemory(machine);
+});
+
+// Click a global row to toggle a word watchpoint on that variable.
+els.globals.addEventListener("click", (e) => {
+  const row = (e.target as HTMLElement).closest<HTMLElement>("tr[data-gi]");
+
+  if (!row || !machine) return;
+
+  const addr = machine.globalAddress(Number(row.dataset.gi));
+
+  if (machine.watchpoints.has(addr)) {
+    machine.removeWatchpoint(addr);
+    machine.removeWatchpoint(addr + 1);
+  } else {
+    machine.watchWord(addr);
+  }
+
+  renderGlobals(machine);
+});
+
+// Objects / Memory tab switching
+document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tab = btn.dataset.tab ?? "";
+
+    document.querySelectorAll(".tabs button").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+    });
+
+    els.objects.style.display = tab === "objects" ? "" : "none";
+    els.memory.style.display = tab === "memory" ? "" : "none";
+  });
+});
