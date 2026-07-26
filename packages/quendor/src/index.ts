@@ -11,10 +11,10 @@
  */
 
 // --- engine — everything needed to load and run a story --------------------
-export { Machine, RunState } from "./machine.js";
-export type { Frame, FrameInfo } from "./machine.js";
-export { Story } from "./story.js";
-export { Memory } from "./memory.js";
+export { Machine, RunState } from "./machine.ts";
+export type { Frame, FrameInfo } from "./machine.ts";
+export { Story } from "./story.ts";
+export { Memory } from "./memory.ts";
 
 // Everything below is the inspection toolkit — decode, disassemble, and dump a
 // story's internals. Its audience is tools built on the engine (the zexplorer
@@ -23,8 +23,8 @@ export { Memory } from "./memory.js";
 // 0.x surface to settle, since removals are a pre-1.0 concern.
 
 // --- toolkit: header --------------------------------------------------------
-export { HeaderOffset, readHeader, computeChecksum, unpackRoutineAddress } from "./header.js";
-export type { Header } from "./header.js";
+export { HeaderOffset, readHeader, computeChecksum, unpackRoutineAddress } from "./header.ts";
+export type { Header } from "./header.ts";
 
 // --- toolkit: decode / disassemble -----------------------------------------
 export {
@@ -33,8 +33,8 @@ export {
   InstructionReader,
   isReturnLike,
   classifyVariable,
-} from "./instruction.js";
-export type { Operand, Branch, Instruction } from "./instruction.js";
+} from "./instruction.ts";
+export type { Operand, Branch, Instruction } from "./instruction.ts";
 
 export {
   OpcodeKind,
@@ -47,30 +47,30 @@ export {
   hasStore,
   hasBranch,
   opcodeTableForVersion,
-} from "./opcodes.js";
-export type { Opcode } from "./opcodes.js";
+} from "./opcodes.ts";
+export type { Opcode } from "./opcodes.ts";
 
-export { readRoutineHeader, type RoutineHeader } from "./routine.js";
-export { formatInstruction, formatVariable, formatResolvedOperands } from "./disasm.js";
-export { disassembleReachable } from "./disassembler.js";
-export type { DisassembledRun } from "./disassembler.js";
+export { readRoutineHeader, type RoutineHeader } from "./routine.ts";
+export { formatInstruction, formatVariable, formatResolvedOperands } from "./disasm.ts";
+export { disassembleReachable } from "./disassembler.ts";
+export type { DisassembledRun } from "./disassembler.ts";
 
 // --- toolkit: text / objects ------------------------------------------------
-export { DEFAULT_FLAGS, ZText } from "./text.js";
-export type { DecodeFlags } from "./text.js";
-export { AlphabetTable } from "./alphabet.js";
-export { ObjectTable } from "./objects.js";
+export { DEFAULT_FLAGS, ZText } from "./text.ts";
+export type { DecodeFlags } from "./text.ts";
+export { AlphabetTable } from "./alphabet.ts";
+export { ObjectTable } from "./objects.ts";
 
 // --- toolkit: dumps ---------------------------------------------------------
-export { dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary } from "./dump.js";
+export { dumpAll, dumpHeader, dumpObjects, dumpAbbreviations, dumpDictionary } from "./dump.ts";
 
 // --- toolkit: quetzal -------------------------------------------------------
 export { encodeQuetzal, decodeQuetzal } from "./quetzal.ts";
-export type { DecodedQuetzal, QuetzalState, QuetzalFrame } from "./quetzal.js";
+export type { DecodedQuetzal, QuetzalState, QuetzalFrame } from "./quetzal.ts";
 
 // --- resources (Blorb pictures/sounds) -------------------------------------
 export { describeBlorb, extractBlorb, parseBlorb, unwrapStory } from "./blorb.ts";
-export { decodeAiff, type DecodedAudio } from "./aiff.js";
+export { decodeAiff, type DecodedAudio } from "./aiff.ts";
 
 // --- screen models ---------------------------------------------------------
-export type { OutputAttrs, Cell } from "./screen.js";
+export type { OutputAttrs, Cell } from "./screen.ts";

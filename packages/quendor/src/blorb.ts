@@ -11,7 +11,7 @@
  * See https://www.eblong.com/zarf/blorb/Blorb-Spec.html
  */
 
-import { decodeAiff } from "./aiff.js";
+import { decodeAiff } from "./aiff.ts";
 
 /**
  * A picture resource: raw image bytes plus its intrinsic pixel dimensions.

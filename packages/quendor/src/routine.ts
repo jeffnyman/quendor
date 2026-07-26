@@ -1,4 +1,4 @@
-import type { Memory } from "./memory.js";
+import type { Memory } from "./memory.ts";
 
 export interface RoutineHeader {
   readonly address: number;
