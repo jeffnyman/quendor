@@ -157,6 +157,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x18, "not", F.Store, 5, 8],
   [OpcodeKind.VarOp, 0x19, "call_vn", F.Call, 5, 8],
   [OpcodeKind.VarOp, 0x1a, "call_vn2", F.Call | F.DoubleVar, 5, 8],
+  [OpcodeKind.VarOp, 0x1b, "tokenize", F.None, 5, 8],
   [OpcodeKind.VarOp, 0x1f, "check_arg_count", F.Branch, 5, 8],
 
   // extended opcodes
@@ -164,6 +165,8 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.Ext, 0x01, "restore", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x02, "log_shift", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x03, "art_shift", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x09, "save_undo", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x0a, "restore_undo", F.Store, 5, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;

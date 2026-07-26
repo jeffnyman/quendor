@@ -140,6 +140,19 @@ export class Machine {
   private readonly screenWidth: number;
   private readonly screenHeight: number;
 
+  // In-memory undo history for save_undo / restore_undo (bounded).
+  private readonly undoStack: {
+    dynamicMemory: Uint8Array;
+    stack: number[];
+    frames: Frame[];
+    pc: number;
+    currentFont: number;
+  }[] = [];
+
+  private static readonly MAX_UNDO = 25;
+
+  private currentFont = 1;
+
   constructor(
     story: Story,
     options: {
@@ -741,6 +754,8 @@ export class Machine {
         if (variable === undefined) throw new Error("read_char without a store variable");
         return this.readChar(variable);
       }
+      case "tokenize":
+        return this.opTokenize(o);
 
       // --- screen / windows ---
       case "set_text_style":
@@ -782,6 +797,10 @@ export class Machine {
         return this.doSave();
       case "restore":
         return this.doRestore();
+      case "save_undo":
+        return this.doSaveUndo();
+      case "restore_undo":
+        return this.doRestoreUndo();
 
       default:
         throw new Error(
@@ -806,6 +825,73 @@ export class Machine {
       this.pendingRead = request;
       this.runState = RunState.WaitingForInput;
     }
+  }
+
+  /** save_undo: snapshot the full machine state to the in-memory undo history. */
+  private doSaveUndo(): void {
+    const operandAddr = this.resultOperandAddr();
+
+    this.undoStack.push({
+      dynamicMemory: this.memory.bytes.slice(0, this.staticBase),
+      stack: [...this.stack],
+      frames: this.frames.map((f) => ({ ...f, locals: [...f.locals] })),
+      pc: operandAddr,
+      currentFont: this.currentFont,
+    });
+
+    if (this.undoStack.length > Machine.MAX_UNDO) {
+      this.undoStack.shift();
+    }
+
+    this.applyResult(operandAddr, 1); // saved successfully
+  }
+
+  /** restore_undo: pop and restore the most recent save_undo snapshot. */
+  private doRestoreUndo(): void {
+    const snap = this.undoStack.pop();
+
+    if (!snap) return this.applyResult(this.resultOperandAddr(), 0); // nothing to undo
+
+    this.memory.bytes.set(snap.dynamicMemory, 0);
+    this.stack.length = 0;
+
+    for (const v of snap.stack) this.stack.push(v);
+
+    this.frames.length = 0;
+
+    for (const f of snap.frames) this.frames.push({ ...f, locals: [...f.locals] });
+
+    this.current = this.frames[this.frames.length - 1];
+    this.currentFont = snap.currentFont;
+    this.applyResult(snap.pc, 2); // resume at the save_undo point with result 2
+  }
+
+  /** tokenize: lexically analyse a text buffer into a parse buffer. */
+  private opTokenize(o: number[]): void {
+    const textBuffer = o[0];
+    const parseBuffer = o[1];
+    const dict = o.length > 2 ? o[2] : 0;
+    const skipUnknown = o.length > 3 && o[3] !== 0; // flag: keep unmatched slots
+    let text = "";
+
+    if (this.version >= 5) {
+      const len = this.memory.readByte(textBuffer + 1);
+
+      for (let i = 0; i < len; i++) {
+        text += String.fromCharCode(this.memory.readByte(textBuffer + 2 + i));
+      }
+    } else {
+      for (let i = 0; ; i++) {
+        const c = this.memory.readByte(textBuffer + 1 + i);
+
+        if (c === 0) break;
+        text += String.fromCharCode(c);
+      }
+    }
+
+    const offset = this.version >= 5 ? 2 : 1;
+
+    this.tokenizeInto(text.toLowerCase(), parseBuffer, offset, dict, skipUnknown);
   }
 
   private sread(o: number[]): void {
@@ -1380,14 +1466,19 @@ export class Machine {
     this.memory.bytes.set(this.originalDynamic, 0);
     // Rst: re-establish interpreter header fields
     this.setupHeaderCapabilities();
+
     this.stack.length = 0;
     this.frames.length = 0;
+
     // keep restarts reproducible
     this.rngState = this.randomSeed;
+
+    this.currentFont = 1;
     this.memoryStreams.length = 0;
     this.screenStreamEnabled = true;
     this.charBuffer.length = 0;
     this.pendingRead = null;
+
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
 
