@@ -6,14 +6,18 @@ import {
   installHostCallbacks,
   main,
   parseArgs,
+  parseSolution,
   promptForSaveFile,
+  runAcceptance,
+  runAcceptanceMode,
   runTerminalLoop,
   setScrollRegion,
+  solutionKey,
 } from "../src/cli.ts";
 import { loadStoryFromFile, readCharSync, readLineSync } from "../src/node.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { TextStyle, type Cell } from "../src/screen.ts";
-import { RunState, type Machine } from "../src/machine.ts";
+import { Machine, RunState } from "../src/machine.ts";
 import { Story } from "../src/story.ts";
 import { HeaderOffset } from "../src/header.ts";
 
@@ -507,4 +511,269 @@ test("runTerminalLoop resets the scroll region on exit even without a status bar
       isTTYDesc ?? { value: undefined, configurable: true },
     );
   }
+});
+
+// --- acceptance mode (--accept) --------------------------------------------
+
+test("--accept and --oracle consume their file arguments", () => {
+  expect(parseArgs(["--accept", "sol.txt", "--oracle", "gold.txt", "game.z3"])).toEqual({
+    help: false,
+    path: "game.z3",
+    accept: "sol.txt",
+    oracle: "gold.txt",
+  });
+});
+
+test("parseSolution keeps commands and drops blank lines and # comments", () => {
+  const text = "# walkthrough\nopen mailbox\n\n  read leaflet  \n# done\nn";
+
+  expect(parseSolution(text)).toEqual(["open mailbox", "read leaflet", "n"]);
+});
+
+test("parseSolution handles CRLF line endings", () => {
+  expect(parseSolution("look\r\nnorth\r\n")).toEqual(["look", "north"]);
+});
+
+test("solutionKey maps named keys (case-insensitively) and falls back to the first character", () => {
+  expect(solutionKey("SPACE")).toBe(32);
+  expect(solutionKey("return")).toBe(13);
+  expect(solutionKey("UP")).toBe(129);
+  expect(solutionKey("y")).toBe("y".charCodeAt(0));
+});
+
+// A fake game whose run() emits the next scripted output chunk (through the
+// onOutput the harness installs), then blocks for input until the chunks run out.
+function scriptedMachine(
+  chunks: string[],
+  opts: { char?: boolean } = {},
+): {
+  machine: Machine;
+  inputs: string[];
+  keys: number[];
+} {
+  const inputs: string[] = [];
+  const keys: number[] = [];
+  let turn = 0;
+
+  const machine = {
+    onOutput: (_t: string): void => {},
+    awaitingCharInput: opts.char ?? false,
+    run(): RunState {
+      machine.onOutput(chunks.at(turn) ?? "");
+      turn++;
+      return turn < chunks.length ? RunState.WaitingForInput : RunState.Halted;
+    },
+    provideInput: (line: string): void => {
+      inputs.push(line);
+    },
+    provideKey: (code: number): void => {
+      keys.push(code);
+    },
+  } as unknown as Machine;
+
+  return { machine, inputs, keys };
+}
+
+test("runAcceptance interleaves game output with the commands it feeds, and reports the halt", () => {
+  const { machine, inputs } = scriptedMachine(["Room\n>", "You look.\n>", "Bye\n"]);
+
+  const result = runAcceptance(machine, ["look", "north"]);
+
+  expect(inputs).toEqual(["look", "north"]);
+  expect(result.outcome).toBe("halted");
+  expect(result.commandsUsed).toBe(2);
+  expect(result.transcript).toBe("Room\n>look\nYou look.\n>north\nBye\n");
+});
+
+test("runAcceptance delivers a read_char prompt as a keystroke via provideKey", () => {
+  const { machine, inputs, keys } = scriptedMachine(["Press a key.\n", "Done\n"], { char: true });
+
+  runAcceptance(machine, ["SPACE"]);
+
+  expect(keys).toEqual([32]); // SPACE -> ZSCII 32, not a line
+  expect(inputs).toEqual([]);
+});
+
+test("runAcceptance reports 'exhausted' when the solution runs out before the game ends", () => {
+  const machine = {
+    onOutput: (): void => {},
+    awaitingCharInput: false,
+    run: (): RunState => RunState.WaitingForInput, // always wants more input
+    provideInput: vi.fn(),
+    provideKey: vi.fn(),
+  } as unknown as Machine;
+
+  const result = runAcceptance(machine, ["look"]);
+
+  expect(result.outcome).toBe("exhausted");
+  expect(result.commandsUsed).toBe(1);
+});
+
+test("runAcceptance captures a runtime error thrown mid-playthrough", () => {
+  const machine = {
+    onOutput: (): void => {},
+    awaitingCharInput: false,
+    run: (): RunState => {
+      throw new Error("Unknown opcode");
+    },
+    provideInput: vi.fn(),
+    provideKey: vi.fn(),
+  } as unknown as Machine;
+
+  const result = runAcceptance(machine, ["look"]);
+
+  expect(result.outcome).toBe("error");
+  expect(result.error).toContain("Unknown opcode");
+});
+
+/** A v3 story that reads one line and quits — enough to exercise the real read/echo/halt path. */
+function readingStory(): Story {
+  const bytes = new Uint8Array(0x100);
+  const MAIN = 0x40;
+  const DICT = 0xc0;
+  const TEXTBUF = 0x80;
+  const PARSEBUF = 0xa0;
+
+  bytes[HeaderOffset.Version] = 3;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.DictionaryAddress] = (DICT >> 8) & 0xff;
+  bytes[HeaderOffset.DictionaryAddress + 1] = DICT & 0xff;
+  bytes.set([0xe4, 0x5f, TEXTBUF, PARSEBUF, 0xba], MAIN); // sread TEXTBUF PARSEBUF ; quit
+  bytes[TEXTBUF] = 20; // max input length
+  bytes[PARSEBUF] = 5; // max parsed words
+  bytes[DICT + 1] = 4; // entry length (0 separators, 0 entries)
+
+  return new Story(bytes);
+}
+
+test("runAcceptance plays a real reading story, echoing the command and halting", () => {
+  const result = runAcceptance(new Machine(readingStory()), ["go"]);
+
+  expect(result.outcome).toBe("halted");
+  expect(result.commandsUsed).toBe(1);
+  expect(result.transcript).toBe("go\n"); // the game reads, prints nothing, then quits
+});
+
+test("runAcceptanceMode prints the transcript when no oracle is given", () => {
+  const out = captureStdout();
+  vi.mocked(readFileSync).mockReturnValue("go");
+
+  runAcceptanceMode(readingStory(), "solution.txt", undefined, undefined);
+
+  expect(out.text()).toBe("go\n");
+});
+
+test("runAcceptanceMode reports a match when the transcript equals the oracle", () => {
+  process.exitCode = undefined;
+  const out = captureStdout();
+  vi.mocked(readFileSync)
+    .mockReturnValueOnce("go") // solution
+    .mockReturnValueOnce("go\n"); // oracle
+
+  runAcceptanceMode(readingStory(), "solution.txt", "oracle.txt", undefined);
+
+  expect(out.text()).toContain("matches the oracle");
+  expect(process.exitCode).toBeUndefined();
+});
+
+test("runAcceptanceMode reports a divergence and fails when the transcript differs from the oracle", () => {
+  process.exitCode = undefined;
+  const out = captureStdout();
+  vi.mocked(readFileSync)
+    .mockReturnValueOnce("go") // solution
+    .mockReturnValueOnce("different\n"); // oracle
+
+  runAcceptanceMode(readingStory(), "solution.txt", "oracle.txt", undefined);
+
+  expect(out.text()).toContain("diverges from the oracle");
+  expect(process.exitCode).toBe(1);
+
+  process.exitCode = undefined; // don't leak the failure code into later tests
+});
+
+test("runAcceptanceMode warns and fails when the solution runs out before the game ends", () => {
+  process.exitCode = undefined;
+  captureStdout();
+  const errWrite = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  vi.mocked(readFileSync).mockReturnValue("# no commands");
+
+  runAcceptanceMode(readingStory(), "solution.txt", undefined, undefined);
+
+  const errText = errWrite.mock.calls.map((c) => String(c[0])).join("");
+  expect(errText).toContain("ran out");
+  expect(process.exitCode).toBe(1);
+
+  process.exitCode = undefined;
+});
+
+/** A story whose initial PC lands on a 0x00 byte, which decodes to an unregistered 2OP:0x00. */
+function erroringStory(): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 3;
+  bytes[HeaderOffset.InitialProgramCounter] = 0x00;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = 0x40; // PC = 0x40, which holds 0x00
+
+  return new Story(bytes);
+}
+
+test("runAcceptanceMode reports a runtime error and fails when an opcode throws", () => {
+  process.exitCode = undefined;
+  captureStdout();
+  const errWrite = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  vi.mocked(readFileSync).mockReturnValue("go");
+
+  runAcceptanceMode(erroringStory(), "solution.txt", undefined, undefined);
+
+  const errText = errWrite.mock.calls.map((c) => String(c[0])).join("");
+  expect(errText).toContain("runtime error");
+  expect(process.exitCode).toBe(1);
+
+  process.exitCode = undefined;
+});
+
+test("main dispatches to acceptance mode when --accept is given", async () => {
+  process.argv = ["node", "quendor", "--accept", "sol.txt", "game.z3"];
+  const out = captureStdout();
+  vi.mocked(loadStoryFromFile).mockResolvedValue(readingStory());
+  vi.mocked(readFileSync).mockReturnValue("go");
+
+  await main();
+
+  expect(out.text()).toBe("go\n");
+});
+
+test("the oracle diff reports the transcript ending early when expected output is missing", () => {
+  process.exitCode = undefined;
+  const out = captureStdout();
+  vi.mocked(readFileSync)
+    .mockReturnValueOnce("go") // solution -> transcript "go\n" (lines: "go", "")
+    .mockReturnValueOnce("go\n\n"); // oracle has an extra blank line
+
+  runAcceptanceMode(readingStory(), "solution.txt", "oracle.txt", undefined);
+
+  const text = out.text();
+  expect(text).toContain("at line 3"); // first two lines matched
+  expect(text).toContain("<end of transcript>"); // the transcript ran out first
+  expect(process.exitCode).toBe(1);
+
+  process.exitCode = undefined;
+});
+
+test("the oracle diff reports the oracle ending early when there is extra output", () => {
+  process.exitCode = undefined;
+  const out = captureStdout();
+  vi.mocked(readFileSync)
+    .mockReturnValueOnce("go") // solution -> transcript "go\n" (lines: "go", "")
+    .mockReturnValueOnce("go"); // oracle has only one line
+
+  runAcceptanceMode(readingStory(), "solution.txt", "oracle.txt", undefined);
+
+  const text = out.text();
+  expect(text).toContain("at line 2");
+  expect(text).toContain("<end of transcript>"); // the oracle ran out first
+  expect(process.exitCode).toBe(1);
+
+  process.exitCode = undefined;
 });
