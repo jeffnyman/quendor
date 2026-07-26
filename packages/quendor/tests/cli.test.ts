@@ -7,12 +7,15 @@ import {
   main,
   parseArgs,
   promptForSaveFile,
+  runTerminalLoop,
   setScrollRegion,
 } from "../src/cli.ts";
-import { readCharSync, readLineSync } from "../src/node.ts";
+import { loadStoryFromFile, readCharSync, readLineSync } from "../src/node.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { TextStyle, type Cell } from "../src/screen.ts";
-import type { Machine } from "../src/machine.ts";
+import { RunState, type Machine } from "../src/machine.ts";
+import { Story } from "../src/story.ts";
+import { HeaderOffset } from "../src/header.ts";
 
 // The CLI reads input synchronously via node.ts and touches the filesystem for
 // save/restore; mock both so the tests can drive them without real stdin/disk.
@@ -290,6 +293,20 @@ test("installHostCallbacks: onRestore returns null when the save file is missing
   expect(machine.onRestore()).toBeNull();
 });
 
+test("installHostCallbacks: onRestore returns null when reading the file throws", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("");
+  vi.mocked(existsSync).mockReturnValue(true);
+  vi.mocked(readFileSync).mockImplementation(() => {
+    throw new Error("read error");
+  });
+
+  const machine = hostMachine();
+  installHostCallbacks(machine, "zork1.qzl");
+
+  expect(machine.onRestore()).toBeNull();
+});
+
 test("installHostCallbacks: onClearScreen is a no-op when stdout is not a TTY", () => {
   const out = captureStdout();
   const machine = hostMachine();
@@ -298,6 +315,27 @@ test("installHostCallbacks: onClearScreen is a no-op when stdout is not a TTY", 
   machine.onClearScreen();
 
   expect(out.text()).toBe("");
+});
+
+test("installHostCallbacks: onClearScreen clears below the status bar on a TTY", () => {
+  const out = captureStdout();
+  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+
+  const machine = { screen: { upperHeight: 2 } } as unknown as Machine;
+
+  try {
+    installHostCallbacks(machine, "save.qzl");
+    machine.onClearScreen();
+    // clears from the first lower-window row (upperHeight + 1 = 3) to end of screen
+    expect(out.text()).toBe("\x1b[3;1H\x1b[J");
+  } finally {
+    Object.defineProperty(
+      process.stdout,
+      "isTTY",
+      isTTYDesc ?? { value: undefined, configurable: true },
+    );
+  }
 });
 
 // --- deliverInput ----------------------------------------------------------
@@ -332,4 +370,109 @@ test("deliverInput returns false at end of input (read_char)", () => {
   const machine = { awaitingCharInput: true, provideChar: vi.fn() } as unknown as Machine;
 
   expect(deliverInput(machine)).toBe(false);
+});
+
+// --- runTerminalLoop / main's run path -------------------------------------
+
+/** A minimal real story that quits immediately (initial PC -> 0OP quit). */
+function quitStory(): Story {
+  const bytes = new Uint8Array(0x100);
+  const MAIN = 0x40;
+  bytes[HeaderOffset.Version] = 3;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[MAIN] = 0xba; // quit
+  return new Story(bytes);
+}
+
+test("main loads the story, wires it up, and runs it to completion (TTY: clears the screen)", async () => {
+  process.argv = ["node", "quendor", "game.z3"];
+  const out = captureStdout();
+  vi.mocked(loadStoryFromFile).mockResolvedValue(quitStory());
+
+  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+
+  try {
+    await main();
+
+    expect(loadStoryFromFile).toHaveBeenCalledWith("game.z3");
+    expect(process.exitCode).toBeUndefined();
+    expect(out.text()).toContain("\x1b[2J"); // Std §8: clear the screen on start
+  } finally {
+    Object.defineProperty(
+      process.stdout,
+      "isTTY",
+      isTTYDesc ?? { value: undefined, configurable: true },
+    );
+  }
+});
+
+test("runTerminalLoop delivers a line at a read prompt, then stops when the game halts", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("look");
+
+  const provideInput = vi.fn();
+  const run = vi
+    .fn()
+    .mockReturnValueOnce(RunState.WaitingForInput)
+    .mockReturnValueOnce(RunState.Halted);
+  const machine = { run, provideInput, awaitingCharInput: false } as unknown as Machine;
+
+  runTerminalLoop(machine);
+
+  expect(provideInput).toHaveBeenCalledWith("look");
+  expect(run).toHaveBeenCalledTimes(2);
+});
+
+test("runTerminalLoop stops at end of input", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue(null); // EOF
+
+  const run = vi.fn().mockReturnValue(RunState.WaitingForInput);
+  const machine = { run, provideInput: vi.fn(), awaitingCharInput: false } as unknown as Machine;
+
+  runTerminalLoop(machine);
+
+  expect(run).toHaveBeenCalledTimes(1);
+});
+
+test("runTerminalLoop repaints the upper window and resets the region on a TTY", () => {
+  const out = captureStdout();
+  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+  Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
+  vi.mocked(readLineSync).mockReturnValue("go");
+
+  const run = vi
+    .fn()
+    .mockReturnValueOnce(RunState.WaitingForInput)
+    .mockReturnValueOnce(RunState.Halted);
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    screen: { upperHeight: 1, upper: [[{ ch: "S", style: 0, fg: 1, bg: 1 }]] },
+  } as unknown as Machine;
+
+  try {
+    runTerminalLoop(machine);
+    const text = out.text();
+
+    expect(text).toContain("\x1b[2;24r"); // setScrollRegion(1): region rows 2..24
+    expect(text).toContain("S"); // drawUpperWindow painted the status cell
+    expect(text).toContain("\x1b[r"); // cleanup reset the region on exit
+  } finally {
+    Object.defineProperty(
+      process.stdout,
+      "isTTY",
+      isTTYDesc ?? { value: undefined, configurable: true },
+    );
+    Object.defineProperty(
+      process.stdout,
+      "rows",
+      rowsDesc ?? { value: undefined, configurable: true },
+    );
+  }
 });

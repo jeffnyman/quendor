@@ -202,7 +202,7 @@ export function deliverInput(machine: Machine): boolean {
  * down between prompts, so the prompt-time paint alone would never catch it
  * (repaints are idempotent). Leaves the terminal clean on exit.
  */
-function runTerminalLoop(machine: Machine): void {
+export function runTerminalLoop(machine: Machine): void {
   let statusHeight = 0;
 
   const refreshUpperWindow = (): void => {
