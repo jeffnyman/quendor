@@ -1083,3 +1083,93 @@ test("scan_table stores 0 when the value isn't in the table", () => {
 
   expect(machine.readMemoryWord(GLOBALS)).toBe(0);
 });
+
+// --- execution: restore failure paths --------------------------------------
+
+test("restore fails gracefully when onRestore throws", () => {
+  const machine = new Machine(buildSaveProgram([...restoreInsn(BRANCH_CONTINUE), ...quitInsn()]));
+  machine.onRestore = (): Uint8Array | null => {
+    throw new Error("io error");
+  };
+
+  // The error is caught, restore reports failure (branch not taken), we quit.
+  expect(machine.run()).toBe(RunState.Halted);
+});
+
+test("restore fails gracefully when the blob isn't valid Quetzal", () => {
+  const machine = new Machine(buildSaveProgram([...restoreInsn(BRANCH_CONTINUE), ...quitInsn()]));
+  machine.onRestore = (): Uint8Array | null => new Uint8Array([1, 2, 3, 4]); // not IFZS
+
+  expect(machine.run()).toBe(RunState.Halted); // decode threw, caught, fell through
+});
+
+test("restore rejects a save whose header doesn't match this story", () => {
+  // Story A saves and hands us the blob.
+  let blob: Uint8Array | null = null;
+  const a = new Machine(
+    buildSaveProgram([...storeInsn(G_FIRST, 0x11), ...saveInsn(BRANCH_CONTINUE), ...quitInsn()]),
+  );
+  a.onSave = (data): boolean => {
+    blob = data;
+    return true;
+  };
+  a.run();
+  expect(blob).not.toBeNull();
+
+  // Story B is a *different* release (2 vs A's 0) trying to load A's save.
+  const bBytes = new Uint8Array(0x100);
+  bBytes[HeaderOffset.Version] = 3;
+  bBytes[0x03] = 0x02; // release word (0x02, big-endian) = 2
+  bBytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bBytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bBytes[HeaderOffset.StaticMemoryBase] = (0x100 >> 8) & 0xff;
+  bBytes[HeaderOffset.StaticMemoryBase + 1] = 0x100 & 0xff;
+  bBytes.set([...restoreInsn(BRANCH_CONTINUE), ...quitInsn()], MAIN);
+
+  const b = new Machine(new Story(bBytes));
+  b.onRestore = (): Uint8Array | null => blob;
+
+  // Release mismatch -> restore rejected (branch not taken) -> quit.
+  expect(b.run()).toBe(RunState.Halted);
+});
+
+// --- execution: long-form branch encoding ----------------------------------
+//
+// applyBranchAt (used for save/restore's v1-3 branch result) is the one branch
+// decoder reached with the raw branch byte from memory, so its two-byte
+// long-form path is exercised by giving save/restore a long-form branch.
+
+test("applyBranchAt takes a long-form (two-byte) save branch", () => {
+  // save with a two-byte on-true branch (bit 0x40 clear), offset 5: on success
+  // it jumps over the store to the quit, so the store never runs.
+  const machine = new Machine(
+    buildSaveProgram([
+      0xb5,
+      0x80,
+      0x05, // save ?<long, on-true, offset 5>
+      ...storeInsn(G_FIRST, 0xff), // skipped when save succeeds and branches
+      ...quitInsn(),
+    ]),
+  );
+  machine.onSave = (): boolean => true;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0); // store was jumped over
+});
+
+test("applyBranchAt sign-extends a negative long-form branch offset", () => {
+  // restore with a two-byte offset 0x3ffe (-2). onRestore yields null, so the
+  // branch isn't taken -- but the negative offset still decodes without looping.
+  const machine = new Machine(
+    buildSaveProgram([
+      0xb6,
+      0xbf,
+      0xfe, // restore ?<long, on-true, offset -2>
+      ...quitInsn(),
+    ]),
+  );
+  machine.onRestore = (): Uint8Array | null => null;
+
+  expect(machine.run()).toBe(RunState.Halted); // not taken -> fell through to quit
+});
