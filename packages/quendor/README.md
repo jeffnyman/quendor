@@ -54,7 +54,7 @@ As part of this project page, I state that Quendor will strive to be specificati
 
 The Z-Machine is the virtual machine Infocom designed in 1979 to run its text adventures, and that Inform still targets today. **Quendor** — named for the ancient kingdom that became the Great Underground Empire — is a faithful reimplementation of that machine: give it a story file and it plays.
 
-⚠️ **Pre-1.0, and honest about it.** Quendor plays **Z-code versions 1–4** — enough to run _Zork I_ from start to finish and to play v4 games like _Trinity_, and enough to pass the [czech](#conformance) v3 and v4 conformance suites (349/349 and 367/367). Save/restore (Quetzal) and the windowed screen model — status line, quote boxes, single-keystroke input — work today. Versions 5–8 are in progress. See [Version support](#version-support).
+⚠️ **Pre-1.0, and honest about it.** Quendor plays **Z-code versions 1–5** — enough to run _Zork I_ (both its v3 and v5 releases) from start to finish, to play v4 games like _Trinity_, and to pass the [czech](#conformance) v3, v4, and v5 conformance suites (349/349, 367/367, and 406/406). Save/restore (Quetzal, including v5's in-memory undo) and the windowed screen model — status line, quote boxes, single-keystroke input — work today. Coloured text, Unicode, and mouse input are not yet implemented, and versions 6–8 are still to come. See [Version support](#version-support).
 
 ## Install
 
@@ -139,25 +139,25 @@ The package is fully typed; `Machine`, `Story`, the instruction decoder, the Z-t
 
 ## Version support
 
-| Z-code version | Status                                                                         |
-| -------------- | ------------------------------------------------------------------------------ |
-| v1 – v4        | **Playable.** Runs _Zork I_ and v4 games like _Trinity_; passes czech v3 & v4. |
-| v5             | In progress.                                                                   |
-| v6             | Not yet (graphical, needs the full screen model).                              |
-| v7 – v8        | Not yet.                                                                       |
+| Z-code version | Status                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| v1 – v5        | **Playable.** Runs _Zork I_ (v3 and v5) and v4 games like _Trinity_; passes czech v3, v4 & v5. |
+| v6             | Not yet (graphical, needs the full screen model).                                              |
+| v7 – v8        | Not yet.                                                                                       |
 
-Save/restore uses the standard **Quetzal** format, cross-compatible with other interpreters. The windowed screen model — split windows, status line, quote boxes, and single-keystroke input — is in place for v1–4; v6-style graphics are not yet supported.
+Save/restore uses the standard **Quetzal** format, cross-compatible with other interpreters, and v5's in-memory undo (`save_undo` / `restore_undo`) works too. The windowed screen model — split windows, status line, quote boxes, and single-keystroke input — is in place for v1–5. Coloured text, the Unicode opcodes, and mouse input are not yet implemented, and v6-style graphics are not yet supported.
 
 ## Conformance
 
-Correctness is checked against **czech** (Comprehensive Z-machine Emulation CHecker), a test program that self-verifies a large fraction of the opcode set and prints a pass/fail report. Quendor passes it clean for both v3 and v4:
+Correctness is checked against **czech** (Comprehensive Z-machine Emulation CHecker), a test program that self-verifies a large fraction of the opcode set and prints a pass/fail report. Quendor passes it clean for v3, v4, and v5:
 
 ```
 v3 — Passed: 349, Failed: 0, Print tests: 19
 v4 — Passed: 367, Failed: 0, Print tests: 19
+v5 — Passed: 406, Failed: 0, Print tests: 19
 ```
 
-Both suites run as part of the automated test suite on every CI build, so opcode regressions surface immediately.
+All three suites run as part of the automated test suite on every CI build, so opcode regressions surface immediately. The v3 run is additionally replayed end-to-end and diffed byte-for-byte against a recorded transcript, so even subtle changes in output are caught.
 
 ## Development
 
