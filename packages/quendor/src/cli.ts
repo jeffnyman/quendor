@@ -86,7 +86,7 @@ export function promptForSaveFile(def: string): string {
 const ESC = "\x1b";
 
 /** Reserve the top `height` rows with a DECSTBM scroll region (0 resets to full screen). */
-function setScrollRegion(height: number): void {
+export function setScrollRegion(height: number): void {
   const rows = process.stdout.rows;
 
   if (height > 0 && rows) {
@@ -107,7 +107,7 @@ function setScrollRegion(height: number): void {
  * centered quote box. Adjacent same-style cells are coalesced into one run to
  * keep the escape output compact.
  */
-function drawUpperWindow(grid: Cell[][]): void {
+export function drawUpperWindow(grid: Cell[][]): void {
   process.stdout.write(`${ESC}7`); // save cursor
   grid.forEach((row, r) => {
     let line = `${ESC}[${r + 1};1H${ESC}[0m`;

@@ -1,6 +1,14 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
-import { defaultSaveName, main, parseArgs, promptForSaveFile } from "../src/cli.ts";
+import {
+  defaultSaveName,
+  drawUpperWindow,
+  main,
+  parseArgs,
+  promptForSaveFile,
+  setScrollRegion,
+} from "../src/cli.ts";
 import { readLineSync } from "../src/node.ts";
+import { TextStyle, type Cell } from "../src/screen.ts";
 
 // promptForSaveFile reads a line synchronously via readLineSync; mock the node
 // entry so the tests can drive it without real stdin.
@@ -148,4 +156,47 @@ test("promptForSaveFile returns the typed name, trimmed", () => {
   vi.mocked(readLineSync).mockReturnValue("  mysave.qzl  ");
 
   expect(promptForSaveFile("zork1.qzl")).toBe("mysave.qzl");
+});
+
+// --- terminal rendering: setScrollRegion / drawUpperWindow -----------------
+
+/** Capture everything written to stdout as one string. */
+function captureStdout(): { text: () => string } {
+  const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  return { text: () => write.mock.calls.map((c) => String(c[0])).join("") };
+}
+
+test("setScrollRegion resets to the full screen when height is 0", () => {
+  const out = captureStdout();
+
+  setScrollRegion(0);
+
+  expect(out.text()).toBe("\x1b[r");
+});
+
+test("setScrollRegion carves a region below the status rows when the terminal has a height", () => {
+  const out = captureStdout();
+  const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
+  Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
+
+  try {
+    setScrollRegion(2);
+    // cursor save (ESC 7), scroll region rows 3..24, cursor restore (ESC 8)
+    expect(out.text()).toBe("\x1b7\x1b[3;24r\x1b8");
+  } finally {
+    if (rowsDesc) Object.defineProperty(process.stdout, "rows", rowsDesc);
+    else Object.defineProperty(process.stdout, "rows", { value: undefined, configurable: true });
+  }
+});
+
+const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1 });
+
+test("drawUpperWindow coalesces reverse-video runs, bracketed by cursor save/restore", () => {
+  const out = captureStdout();
+
+  // A is normal; B and C are reverse — the two reverse cells coalesce into one run.
+  drawUpperWindow([[cell("A"), cell("B", TextStyle.Reverse), cell("C", TextStyle.Reverse)]]);
+
+  const E = "\x1b";
+  expect(out.text()).toBe(`${E}7${E}[1;1H${E}[0mA${E}[7mBC${E}[0m${E}8`);
 });
