@@ -2,19 +2,18 @@ import "./style.css";
 
 // The engine, imported through Quendor's public API (src/index.ts) rather than
 // reaching into individual modules.
-import {
-  InstructionReader,
-  Story,
-  Machine,
-  RunState,
-  OperandKind,
-  unwrapStory,
-  readRoutineHeader,
-  formatInstruction,
-  isReturnLike,
-} from "quendor";
-import type { OutputAttrs, Instruction } from "quendor";
+import { Story, Machine, RunState, unwrapStory } from "quendor";
+import type { OutputAttrs } from "quendor";
 import { escapeHtml, hex, outputRunCss, renderUpperRow, signed, zColorCss } from "./format.ts";
+import {
+  computeLabels,
+  currentRoutineAddr,
+  decodeRoutine,
+  disasmEmptyMsg,
+  disasmHtml,
+  routineCodeStart,
+  routineLabel,
+} from "./disasm-model.ts";
 
 document.documentElement.classList.replace("no-js", "js");
 
@@ -84,35 +83,6 @@ function setTerminalColors(fg: number, bg: number): void {
   els.terminal.style.background = bgc;
   els.input.style.color = fgc;
   els.input.style.background = bgc;
-}
-
-function currentRoutineAddr(machine: Machine): number | undefined {
-  return machine.getCallStack()[0]?.routineAddress;
-}
-
-/** The routine target of a `call*` with a constant operand (else null). */
-function callTarget(insn: Instruction): number | null {
-  if (!machine || !insn.opcode.name.startsWith("call")) return null;
-  const op = insn.operands[0];
-  if (op.kind === OperandKind.Variable || op.value === 0) return null;
-  return machine.unpackRoutineAddress(op.value);
-}
-
-/** The in-routine target address of a branch or jump (else null). */
-function jumpOrBranchTarget(insn: Instruction): number | null {
-  if (insn.branch && insn.branch.targetAddress !== undefined) {
-    return insn.branch.targetAddress;
-  }
-
-  if (insn.opcode.name === "jump") {
-    const op = insn.operands[0];
-
-    if (op.kind !== OperandKind.Variable) {
-      return insn.address + insn.length + signed(op.value) - 2;
-    }
-  }
-
-  return null;
 }
 
 function appendOutput(text: string, attrs?: OutputAttrs): void {
@@ -195,123 +165,26 @@ function renderScreen(machine: Machine): void {
 }
 
 function renderDisasm(machine: Machine): void {
-  const m = machine;
-  els.disasm.innerHTML = "";
-
   const following = viewRoutine === null;
   const routineAddr = viewRoutine ?? currentRoutineAddr(machine);
 
-  // toolbar state
   els.dFollowPC.classList.toggle("active", following);
   els.dBack.disabled = navHistory.length === 0;
-  els.dLoc.textContent =
-    routineAddr === undefined
-      ? ""
-      : `routine ${hex(routineAddr)}${following ? " · following PC" : ""}`;
+  els.dLoc.textContent = routineLabel(routineAddr, following);
 
-  if (routineAddr === undefined) {
-    els.disasm.innerHTML = `<div class="empty">halted — use “goto” to inspect a routine</div>`;
+  const codeStart = routineCodeStart(machine, routineAddr, following);
+  if (codeStart === null) {
+    els.disasm.innerHTML = disasmEmptyMsg(routineAddr);
     return;
   }
 
-  let codeStart: number;
+  const insns = decodeRoutine(machine, codeStart);
+  const labels = computeLabels(insns);
+  els.disasm.innerHTML = disasmHtml(insns, machine, labels, breakpoints);
 
-  // §5.5: in v1–5 the entry point (the main frame — no caller, so returnPC 0) is
-  // raw code with no routine header, so decode from routineAddr directly.
-  const atEntry = following && m.version < 6 && machine.getCallStack()[0].returnPC === 0;
-
-  if (atEntry) {
-    codeStart = routineAddr;
-  } else {
-    try {
-      codeStart = readRoutineHeader(m.memory, m.version, routineAddr).codeAddress;
-    } catch {
-      els.disasm.innerHTML = `<div class="empty">not a routine at ${hex(routineAddr)}</div>`;
-      return;
-    }
-  }
-
-  // Pass 1: decode the whole routine.
-  const reader = new InstructionReader(m.memory, m.version, codeStart);
-  const insns: Instruction[] = [];
-
-  for (let i = 0; i < 400; i++) {
-    let insn: Instruction;
-
-    try {
-      insn = reader.next();
-    } catch {
-      break;
-    }
-    insns.push(insn);
-
-    if (isReturnLike(insn)) break;
-  }
-
-  // Pass 2: name in-routine branch/jump targets L1, L2, … in address order.
-  const addrSet = new Set(insns.map((insn) => insn.address));
-  const targets = new Set<number>();
-
-  for (const insn of insns) {
-    const t = jumpOrBranchTarget(insn);
-    if (t !== null && addrSet.has(t)) targets.add(t);
-  }
-
-  const labels = new Map<number, string>();
-
-  [...targets]
-    .sort((a, b) => a - b)
-    .forEach((addr, i) => {
-      labels.set(addr, `L${i + 1}`);
-    });
-
-  // Pass 3: render.
-  let pcRow: HTMLElement | null = null;
-
-  for (const insn of insns) {
-    if (labels.has(insn.address)) {
-      const lbl = document.createElement("div");
-      lbl.className = "dlabel";
-      lbl.textContent = `${labels.get(insn.address)}:`;
-      els.disasm.append(lbl);
-    }
-
-    const row = document.createElement("div");
-    row.className = "dline" + (insn.address === m.programCounter ? " pc" : "");
-    if (breakpoints.has(insn.address)) row.classList.add("bp");
-    row.dataset.addr = String(insn.address);
-
-    let html =
-      `<span class="gutter"></span>` +
-      `<span class="addr">${hex(insn.address)}</span>` +
-      `<span class="text">${escapeHtml(formatInstruction(insn, m.text))}</span>`;
-
-    const ct = callTarget(insn);
-
-    if (ct !== null) {
-      html += `<span class="nav" data-nav="${ct}">→ ${hex(ct)}</span>`;
-    }
-
-    const jt = jumpOrBranchTarget(insn);
-
-    if (jt !== null) {
-      const label = labels.get(jt) ?? hex(jt);
-      html += `<span class="nav" data-scroll="${jt}">↳ ${label}</span>`;
-    }
-
-    row.innerHTML = html;
-    els.disasm.append(row);
-
-    if (insn.address === m.programCounter) {
-      pcRow = row;
-    }
-  }
-
-  if (following && pcRow) {
-    pcRow.scrollIntoView({ block: "center" });
-  } else {
-    els.disasm.scrollTop = 0;
-  }
+  const pcRow = els.disasm.querySelector<HTMLElement>(".dline.pc");
+  if (following && pcRow) pcRow.scrollIntoView({ block: "center" });
+  else els.disasm.scrollTop = 0;
 }
 
 function renderCallStack(machine: Machine): void {
