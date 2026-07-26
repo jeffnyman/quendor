@@ -1479,6 +1479,7 @@ export class Machine {
     this.charBuffer.length = 0;
     this.pendingRead = null;
 
+    this.screen.reset();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
 
