@@ -23,6 +23,7 @@ import {
   routineLabel,
 } from "./disasm-model.ts";
 import { computeControls } from "./controls.ts";
+import { objectsHtml } from "./objects-model.ts";
 
 document.documentElement.classList.replace("no-js", "js");
 
@@ -60,8 +61,6 @@ let memoryBase = 0;
 
 // Object tree: which objects have their detail (attributes/properties) expanded.
 const expandedObjects = new Set<number>();
-// set each render, used when interpreting property values
-let objectCountCache = 0;
 
 // The lower window's current "paper" colors, applied to the whole terminal
 // (not per-span) so a game that runs on, for example, black-on-white reads
@@ -227,59 +226,7 @@ function renderGlobals(machine: Machine): void {
 }
 
 function renderObjects(machine: Machine): void {
-  const m = machine;
-  const objects = m.objects;
-  let count: number;
-
-  try {
-    count = objects.getObjectCount();
-  } catch {
-    els.objects.innerHTML = `<div class="empty">no object table</div>`;
-    return;
-  }
-
-  objectCountCache = count;
-
-  const limit = Math.min(count, 1000);
-  const visited = new Set<number>();
-  const out: string[] = [];
-
-  const renderNode = (n: number, depth: number): void => {
-    if (visited.has(n) || out.length > 4000 || depth > 64) return;
-    visited.add(n);
-
-    const expanded = expandedObjects.has(n);
-    const name = objectName(machine, n);
-
-    out.push(
-      `<div class="objrow" data-obj="${n}" style="padding-left:${8 + depth * 14}px">` +
-        `<span class="chev">${expanded ? "▾" : "▸"}</span> ` +
-        `<span class="num">${n}</span> ` +
-        `${name ? escapeHtml(name) : '<span class="dim">(no name)</span>'}</div>`,
-    );
-
-    if (expanded) out.push(objectDetailHtml(machine, n, depth));
-
-    // children (guarding against malformed/cyclic sibling chains)
-    let c = objects.getChild(n);
-
-    while (c !== 0 && !visited.has(c)) {
-      renderNode(c, depth + 1);
-      c = objects.getSibling(c);
-    }
-  };
-
-  for (let n = 1; n <= limit; n++) {
-    if (objects.getParent(n) === 0) renderNode(n, 0);
-  }
-
-  // Any object not reachable from a root (malformed table) — show it anyway.
-  for (let n = 1; n <= limit; n++) {
-    if (!visited.has(n)) renderNode(n, 0);
-  }
-
-  const note = count > limit ? `<div class="empty">…and ${count - limit} more</div>` : "";
-  els.objects.innerHTML = out.join("") + note;
+  els.objects.innerHTML = objectsHtml(machine, expandedObjects);
 }
 
 function renderMemory(machine: Machine): void {
@@ -318,93 +265,6 @@ function renderMemory(machine: Machine): void {
       renderMemory(machine);
     }
   });
-}
-
-function objectName(machine: Machine, n: number): string {
-  const m = machine;
-  try {
-    const addr = m.objects.getShortNameAddress(n);
-    const nameLen = m.readMemoryByte(addr); // 0 => no short name
-
-    return nameLen > 0 ? m.text.decodeAtAddress(addr + 1) : "";
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Interpret a 16-bit property word by likely meaning. Dictionary references are
- * unmistakable (their addresses are specific), so they win; a value that is a
- * valid object number is shown as that object's name; otherwise it's a number.
- */
-function interpretWord(machine: Machine, w: number): string {
-  const m = machine;
-  const dictWord = m.getDictionaryWord(w);
-
-  if (dictWord) return `"${dictWord}"`;
-
-  if (w >= 1 && w <= objectCountCache) {
-    const name = objectName(machine, w);
-    if (name) return `{${name}}`;
-  }
-
-  return String(signed(w));
-}
-
-function interpretProperty(machine: Machine, dataAddress: number, length: number): string {
-  const m = machine;
-
-  // A single byte is often an object reference (e.g. a room exit).
-  if (length === 1) return interpretWord(machine, m.readMemoryByte(dataAddress));
-
-  // Otherwise interpret word-shaped data as a sequence of 16-bit values.
-  if (length === 0 || length % 2 !== 0 || length > 16) return "";
-
-  const parts: string[] = [];
-
-  for (let i = 0; i < length; i += 2) {
-    parts.push(interpretWord(machine, m.readMemoryWord(dataAddress + i)));
-  }
-  return parts.join(" ");
-}
-
-function objectDetailHtml(machine: Machine, n: number, depth: number): string {
-  const m = machine;
-  const objects = m.objects;
-  const pad = 8 + (depth + 1) * 14;
-  let attrs = "";
-  let props = "";
-
-  try {
-    const set = objects.getSetAttributes(n);
-    attrs = `attrs: ${set.length ? set.join(", ") : "none"}`;
-    props = objects
-      .readProperties(n)
-      .map((p) => {
-        const bytes: string[] = [];
-        for (let i = 0; i < p.length; i++) {
-          bytes.push(
-            m
-              .readMemoryByte(p.dataAddress + i)
-              .toString(16)
-              .padStart(2, "0"),
-          );
-        }
-        const interp = interpretProperty(machine, p.dataAddress, p.length);
-        const meaning = interp ? ` <span class="dim">= ${escapeHtml(interp)}</span>` : "";
-
-        return `<div>P${p.number}: <span class="num">${bytes.join(" ")}</span>${meaning}</div>`;
-      })
-      .join("");
-  } catch {
-    attrs = "(unreadable)";
-  }
-
-  return (
-    `<div class="objdetail" style="padding-left:${pad}px">` +
-    `<div class="dim">parent ${objects.getParent(n)} · sibling ${objects.getSibling(n)} · child ${objects.getChild(n)}</div>` +
-    `<div class="dim">${attrs}</div>${props}</div>`
-  );
 }
 
 function reset(): void {
