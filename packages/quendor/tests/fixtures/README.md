@@ -20,6 +20,11 @@ Source (Inform 6): `entharion/zcode-checkers-source/czech/czech.inf`
 - Reference transcript: `entharion/zcode-checkers/czech/czech.out4`
 - Expected verdict: `Passed: 367, Failed: 0, Print tests: 19`
 
+### czech.z5 (v5)
+
+- Reference transcript: `entharion/zcode-checkers/czech/czech.out5`
+- Expected verdict: `Passed: 406, Failed: 0, Print tests: 19`
+
 The header section of czech's output reports interpreter identity/flags, which
 differ per interpreter and are marked "No tests" — so the conformance tests
 assert czech's own summary line rather than diffing the whole transcript.
