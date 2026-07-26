@@ -72,13 +72,47 @@ quendor path/to/zork1.z3
 
 ### Options
 
-| Flag                      | Description                                                                         |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| `--seed N`                | Fix the RNG seed for reproducible playthroughs (handy for testing and bug reports). |
-| `--tandy`                 | Set the v1–3 "Tandy" flag (some games soften their prose when it's set).            |
-| `--interpreter N`         | Set the interpreter number reported to the game (default `6`, IBM PC).              |
-| `--interpreter-version C` | Set the interpreter version letter (default `A`).                                   |
-| `-h`, `--help`            | Print usage and exit.                                                               |
+| Flag                      | Description                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `--seed N`                | Fix the RNG seed for reproducible playthroughs (handy for testing and bug reports).                                           |
+| `--tandy`                 | Set the v1–3 "Tandy" flag (some games soften their prose when it's set).                                                      |
+| `--interpreter N`         | Set the interpreter number reported to the game (default `6`, IBM PC).                                                        |
+| `--interpreter-version C` | Set the interpreter version letter (default `A`).                                                                             |
+| `--accept FILE`           | Replay a solution file (one command per line) and print the transcript — see [Scripted playthroughs](#scripted-playthroughs). |
+| `--oracle FILE`           | With `--accept`, diff the transcript against a saved one; exit `1` on any difference.                                         |
+| `-h`, `--help`            | Print usage and exit.                                                                                                         |
+
+### Scripted playthroughs
+
+Rather than typing, you can hand quendor a **solution file** — a plain-text list of commands, one per line (although they can be chained commands with periods) — and it plays the game through, printing the transcript:
+
+```bash
+quendor --accept walkthrough.txt zork1.z3
+```
+
+The file is just commands, with `#` comments and blank lines ignored:
+
+```
+# West of House — grab the egg from the tree
+n
+n
+u
+get egg
+```
+
+At a "press a key" prompt, a line naming a key sends that single keystroke: `SPACE`, `RETURN`, `ESC`, or an arrow (`UP` / `DOWN` / `LEFT` / `RIGHT`).
+
+Because quendor's randomness is seeded, the same solution, seed, and game replay **identically every time** — even a game that leans on chance, like a _Zork_ sword fight. That makes a whole playthrough reproducible: record one, then check it still holds later with `--oracle`.
+
+```bash
+# Record a known-good transcript…
+quendor --accept walkthrough.txt --seed 1 zork1.z3 > transcript.txt
+
+# …then confirm a later run still matches it, byte for byte:
+quendor --accept walkthrough.txt --seed 1 --oracle transcript.txt zork1.z3
+```
+
+`--oracle` exits `0` on a match and `1` on the first difference (printing where the two diverge) — a quick way to catch anything that changes how a game plays, whether in the game file or in quendor itself. Pin `--seed` so the reproducibility is explicit rather than riding the default.
 
 ## Use as a library
 
