@@ -180,6 +180,20 @@ th {
   transition: background 0.4s;
 }
 
+.panel.flash {
+  animation: panelflash 0.5s ease-out;
+}
+
+@keyframes panelflash {
+  from {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  to {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
 .dlabel {
   padding: 2px 8px 0 22px;
   color: var(--ok);

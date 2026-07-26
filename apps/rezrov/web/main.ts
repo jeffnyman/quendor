@@ -150,6 +150,29 @@ function appendOutput(text: string, attrs?: OutputAttrs): void {
   els.terminal.scrollTop = els.terminal.scrollHeight;
 }
 
+const lastHtml = new Map<HTMLElement, string>();
+
+/** Set a panel's HTML, flashing its section only when the content actually changed. */
+function paint(el: HTMLElement, html: string): void {
+  if (lastHtml.get(el) === html) return;
+
+  const first = !lastHtml.has(el);
+  lastHtml.set(el, html);
+  el.innerHTML = html;
+
+  if (!first) flashPanel(el);
+}
+
+/** Pulse a panel to show it just updated. Skips hidden panels (inactive tab / Play mode). */
+function flashPanel(el: HTMLElement): void {
+  if (el.offsetParent === null) return;
+
+  const panel = el.closest<HTMLElement>(".panel") ?? el;
+  panel.classList.remove("flash");
+  void panel.offsetWidth; // reflow so the animation replays on every change
+  panel.classList.add("flash");
+}
+
 function refresh(): void {
   if (!machine) return;
 
@@ -202,13 +225,13 @@ function renderDisasm(machine: Machine): void {
 
   const codeStart = routineCodeStart(machine, routineAddr, following);
   if (codeStart === null) {
-    els.disasm.innerHTML = disasmEmptyMsg(routineAddr);
+    paint(els.disasm, disasmEmptyMsg(routineAddr));
     return;
   }
 
   const insns = decodeRoutine(machine, codeStart);
   const labels = computeLabels(insns);
-  els.disasm.innerHTML = disasmHtml(insns, machine, labels, breakpoints);
+  paint(els.disasm, disasmHtml(insns, machine, labels, breakpoints));
 
   const pcRow = els.disasm.querySelector<HTMLElement>(".dline.pc");
   if (following && pcRow) pcRow.scrollIntoView({ block: "center" });
@@ -218,14 +241,17 @@ function renderDisasm(machine: Machine): void {
 function renderCallStack(machine: Machine): void {
   const frames = machine.getCallStack();
 
-  els.callstack.innerHTML = frames
-    .map(
-      (f, i) =>
-        `<div class="kv frame" data-ra="${f.routineAddress}" title="click to view routine">` +
-        `#${i} <span>${hex(f.routineAddress)}</span> ` +
-        `<span class="dim">args=${f.argumentCount} ret=${hex(f.returnPC)}</span></div>`,
-    )
-    .join("");
+  paint(
+    els.callstack,
+    frames
+      .map(
+        (f, i) =>
+          `<div class="kv frame" data-ra="${f.routineAddress}" title="click to view routine">` +
+          `#${i} <span>${hex(f.routineAddress)}</span> ` +
+          `<span class="dim">args=${f.argumentCount} ret=${hex(f.returnPC)}</span></div>`,
+      )
+      .join(""),
+  );
 }
 
 function renderLocals(machine: Machine): void {
@@ -237,8 +263,10 @@ function renderLocals(machine: Machine): void {
   const stackHtml = stack.length
     ? stack.map((v) => `<span>${hex(v)}</span>`).join("&nbsp;")
     : '<span class="dim">empty</span>';
-  els.locals.innerHTML =
-    `<div class="kv">${localsHtml}</div>` + `<div class="kv dim">stack:&nbsp;${stackHtml}</div>`;
+  paint(
+    els.locals,
+    `<div class="kv">${localsHtml}</div>` + `<div class="kv dim">stack:&nbsp;${stackHtml}</div>`,
+  );
 }
 
 function renderGlobals(machine: Machine): void {
@@ -256,13 +284,11 @@ function renderGlobals(machine: Machine): void {
       );
     })
     .join("");
-  els.globals.innerHTML = rows
-    ? `<table>${rows}</table>`
-    : `<div class="empty">all globals zero</div>`;
+  paint(els.globals, rows ? `<table>${rows}</table>` : `<div class="empty">all globals zero</div>`);
 }
 
 function renderObjects(machine: Machine): void {
-  els.objects.innerHTML = objectsHtml(machine, expandedObjects);
+  paint(els.objects, objectsHtml(machine, expandedObjects));
 }
 
 function renderMemory(machine: Machine): void {
@@ -287,20 +313,12 @@ function renderMemory(machine: Machine): void {
         `${cells.join(" ")}  <span class="dim">${escapeHtml(chars.join(""))}</span></div>`,
     );
   }
-  els.memory.innerHTML =
+  paint(
+    els.memory,
     `<div class="kv">addr <input id="memaddr" value="${hex(memoryBase)}" /> ` +
-    `<span class="dim">(click a byte to watch)</span></div>` +
-    rows.join("");
-
-  const input = $<HTMLInputElement>("#memaddr");
-
-  input.addEventListener("change", () => {
-    const v = parseInt(input.value.replace(/^0x/, ""), 16);
-    if (!Number.isNaN(v)) {
-      memoryBase = v & ~0xf;
-      renderMemory(machine);
-    }
-  });
+      `<span class="dim">(click a byte to watch)</span></div>` +
+      rows.join(""),
+  );
 }
 
 function setMode(next: "debug" | "play"): void {
@@ -326,22 +344,12 @@ function setMode(next: "debug" | "play"): void {
   refresh();
 }
 
-/** Briefly pulse the current instruction so each step is visibly felt. */
-function flashPc(): void {
-  const row = els.disasm.querySelector<HTMLElement>(".dline.pc");
-  if (!row) return;
-
-  row.classList.add("flash");
-  setTimeout(() => row.classList.remove("flash"), 300);
-}
-
 function step(): void {
   if (!machine || machine.state === RunState.Halted) return;
   if (machine.state === RunState.WaitingForInput) return;
 
   machine.step();
   refresh();
-  flashPc();
 }
 
 function cont(): void {
@@ -394,6 +402,7 @@ function reset(): void {
   viewRoutine = null;
   navHistory.length = 0;
   expandedObjects.clear();
+  lastHtml.clear();
 
   machine = new Machine(story);
   machine.onOutput = (text, attrs): void => appendOutput(text, attrs);
@@ -632,6 +641,19 @@ els.input.addEventListener("keydown", (e) => {
 });
 
 els.reset.addEventListener("click", reset);
+
+// The memory address box is re-rendered with its panel, so handle it via delegation.
+els.memory.addEventListener("change", (e) => {
+  const input = e.target as HTMLInputElement;
+  if (input.id !== "memaddr" || !machine) return;
+
+  const v = parseInt(input.value.replace(/^0x/, ""), 16);
+  if (!Number.isNaN(v)) {
+    memoryBase = v & ~0xf;
+    renderMemory(machine);
+  }
+});
+
 els.modePlay.addEventListener("click", () => setMode("play"));
 els.modeDebug.addEventListener("click", () => setMode("debug"));
 
