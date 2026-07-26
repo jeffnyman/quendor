@@ -13,15 +13,12 @@ import {
   formatInstruction,
   isReturnLike,
 } from "quendor";
-import type { Cell, OutputAttrs, Instruction } from "quendor";
+import type { OutputAttrs, Instruction } from "quendor";
+import { escapeHtml, hex, outputRunCss, renderUpperRow, signed, zColorCss } from "./format.ts";
 
 document.documentElement.classList.replace("no-js", "js");
 
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel) as T;
-
-const hex = (n: number, w = 4): string => "0x" + n.toString(16).padStart(w, "0");
-
-const signed = (v: number): number => (v >= 0x8000 ? v - 0x10000 : v);
 
 const els = {
   file: $<HTMLInputElement>("#file"),
@@ -72,25 +69,6 @@ const mode: "debug" | "play" = "debug";
 const viewRoutine: number | null = null;
 const navHistory: (number | null)[] = [];
 
-/** Z-Machine colour number → CSS colour (null = default/inherit). */
-function zColorCss(n: number): string | null {
-  return (
-    {
-      2: "#000000",
-      3: "#e05a5a",
-      4: "#3fb950",
-      5: "#e3d34a",
-      6: "#5a8ce0",
-      7: "#c678dd",
-      8: "#4ac3d3",
-      9: "#ffffff",
-      10: "#bbbbbb",
-      11: "#888888",
-      12: "#555555",
-    }[n] ?? null
-  );
-}
-
 function setTerminalColors(fg: number, bg: number): void {
   if (fg === termFg && bg === termBg) return;
 
@@ -106,30 +84,6 @@ function setTerminalColors(fg: number, bg: number): void {
   els.terminal.style.background = bgc;
   els.input.style.color = fgc;
   els.input.style.background = bgc;
-}
-
-/** Build the inline CSS for a run given style bits and colours. */
-function attrCss(style: number, fg: number, bg: number): string[] {
-  const fgc = zColorCss(fg);
-  const bgc = zColorCss(bg);
-  const css: string[] = [];
-
-  if (style & 1) {
-    // reverse video: swap fg/bg (falling back to the theme colours)
-    css.push(`color:${bgc ?? "var(--bg)"}`, `background:${fgc ?? "var(--fg)"}`);
-  } else {
-    if (fgc) css.push(`color:${fgc}`);
-    if (bgc) css.push(`background:${bgc}`);
-  }
-
-  if (style & 2) css.push("font-weight:700");
-  if (style & 4) css.push("font-style:italic");
-
-  return css;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
 }
 
 function currentRoutineAddr(machine: Machine): number | undefined {
@@ -161,54 +115,15 @@ function jumpOrBranchTarget(insn: Instruction): number | null {
   return null;
 }
 
-function renderUpperRow(row: Cell[]): string {
-  let html = "";
-  let i = 0;
-
-  while (i < row.length) {
-    const { style, fg, bg } = row[i];
-    let text = "";
-    while (i < row.length && row[i].style === style && row[i].fg === fg && row[i].bg === bg) {
-      text += row[i].ch;
-      i++;
-    }
-
-    const escaped = escapeHtml(text);
-    const css = attrCss(style, fg, bg);
-
-    if (css.length === 0) {
-      html += escaped;
-    } else {
-      html += `<span style="${css.join(";")}">${escaped}</span>`;
-    }
-  }
-
-  return `<div class="upperrow">${html}</div>`;
-}
-
 function appendOutput(text: string, attrs?: OutputAttrs): void {
   const style = attrs?.style ?? 0;
   const fg = attrs?.foreground ?? 1;
   const bg = attrs?.background ?? 1;
 
   // A normal (non-reverse) run defines the page colour for the whole area.
-  const reverse = (style & 1) !== 0;
+  if ((style & 1) === 0) setTerminalColors(fg, bg);
 
-  if (!reverse) setTerminalColors(fg, bg);
-
-  // Only style inline what differs from the page: reverse video (a local
-  // swap), bold, italic, and any color that isn't the current page color.
-  const css: string[] = [];
-
-  if (reverse) {
-    css.push(`color:${zColorCss(bg) ?? "var(--bg)"}`, `background:${zColorCss(fg) ?? "var(--fg)"}`);
-  } else {
-    if (fg !== termFg && zColorCss(fg)) css.push(`color:${zColorCss(fg)}`);
-    if (bg !== termBg && zColorCss(bg)) css.push(`background:${zColorCss(bg)}`);
-  }
-
-  if (style & 2) css.push("font-weight:700");
-  if (style & 4) css.push("font-style:italic");
+  const css = outputRunCss(style, fg, bg, termFg, termBg);
 
   if (css.length === 0) {
     els.terminal.append(document.createTextNode(text));

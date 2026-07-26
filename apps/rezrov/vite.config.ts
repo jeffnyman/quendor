@@ -10,4 +10,9 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["quendor"],
   },
+  test: {
+    coverage: {
+      reportsDirectory: "./test-rezrov/coverage",
+    },
+  },
 });
