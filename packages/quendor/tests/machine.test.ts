@@ -1173,3 +1173,88 @@ test("applyBranchAt sign-extends a negative long-form branch offset", () => {
 
   expect(machine.run()).toBe(RunState.Halted); // not taken -> fell through to quit
 });
+
+// --- execution: v4/v5 save/restore (store form) ----------------------------
+//
+// v1-3 save/restore branch on their result; v4+ store it (0 = failed, 1 = just
+// saved, 2 = just restored). v4 keeps the 0OP opcodes (0xb5/0xb6) but in store
+// form; v5 moves them to the extended opcodes save (EXT:0x00) and restore
+// (EXT:0x01), each here with no operands (types byte 0xff) and a store byte.
+// All memory is dynamic so restore's memory revert is observable.
+
+const G_SECOND = 0x11; // variable number of the second global (address GLOBALS + 2)
+
+function buildStoreSaveProgram(version: number, main: number[]): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = version;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+  bytes[HeaderOffset.StaticMemoryBase] = (0x100 >> 8) & 0xff; // all memory dynamic
+  bytes[HeaderOffset.StaticMemoryBase + 1] = 0x100 & 0xff;
+
+  bytes.set(main, MAIN);
+
+  return new Story(bytes);
+}
+
+test("v4 save stores its result via the 0OP save opcode", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(4, [0xb5, G_FIRST, ...quitInsn()]), // 0OP save -> global 0
+  );
+  machine.onSave = (): boolean => true;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(1); // 1 = just saved
+});
+
+test("v5 save stores its result via the EXT save opcode", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [0xbe, 0x00, 0xff, G_FIRST, ...quitInsn()]), // EXT save -> global 0
+  );
+  machine.onSave = (): boolean => true;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(1); // 1 = just saved
+});
+
+test("v5 save/restore round-trips through the EXT opcodes", () => {
+  // store 0x11; save -> G_SECOND; if the result is 2 (just restored) skip to
+  // quit; else mutate to 0x22 and restore. restore reverts memory and resumes
+  // right after the save with result 2, so the je then jumps to quit.
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [
+      ...storeInsn(G_FIRST, 0x11), // MAIN+0:  state = 0x11
+      0xbe,
+      0x00,
+      0xff,
+      G_SECOND, // MAIN+3:  save -> G_SECOND (store byte @ MAIN+6)
+      0x41,
+      G_SECOND,
+      0x02,
+      0xc9, // MAIN+7:  je G_SECOND, #2 ?<on-true, offset 9 -> quit>
+      ...storeInsn(G_FIRST, 0x22), // MAIN+11: mutate state
+      0xbe,
+      0x01,
+      0xff,
+      G_SECOND, // MAIN+14: restore -> G_SECOND
+      ...quitInsn(), // MAIN+18: quit
+    ]),
+  );
+
+  let blob: Uint8Array | null = null;
+  machine.onSave = (data): boolean => {
+    blob = data;
+    return true;
+  };
+  machine.onRestore = (): Uint8Array | null => blob;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0x11); // memory reverted to the save point
+  expect(machine.readMemoryWord(GLOBALS + 2)).toBe(2); // restore stored result 2
+});
