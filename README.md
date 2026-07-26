@@ -176,14 +176,14 @@ This project uses pnpm catalogs to pin shared dependency versions in one place. 
 To advance the pin, for example after new material has been added to entharion itself:
 
 ```bash
-git submodule update --remote --recursive
+git submodule update --remote --recursive --init
 git add entharion
 git commit -m "chore: update entharion submodule reference"
 ```
 
 That goes through the normal branch/PR workflow like any other change.
 
-To just check whether entharion has new content without committing anything, run the same `git submodule update --remote --recursive` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init --recursive`, which snaps back to quendor's actual pinned commit.
+To just check whether entharion has new content without committing anything, run the same `git submodule update --remote --recursive --init` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init --recursive`, which snaps back to quendor's actual pinned commit.
 
 ### AI Coding Assistants
 
