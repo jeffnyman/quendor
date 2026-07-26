@@ -345,10 +345,12 @@ export class ZText {
 
         out += result.text;
         i += result.consumed;
+        // Unreachable: zWordsToZChars masks each Z-character to 5 bits (0..31),
+        // so neither this guard's branch nor its throw can ever execute.
+        /* v8 ignore start -- @preserve */
       } else if (zchar > 31) {
-        // Unreachable: zWordsToZChars masks each Z-character to 5 bits (0..31).
-        /* v8 ignore next -- @preserve */
         throw new Error(`Unexpected Z-character value: ${zchar}`);
+        /* v8 ignore stop -- @preserve */
       } else {
         out += alphabet.readChar(zchar);
       }

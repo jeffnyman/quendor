@@ -121,6 +121,17 @@ test("a jump back to an already-visited address is not walked again", () => {
   expect(runs).toHaveLength(1);
 });
 
+test("a target reached twice from one run is walked only once", () => {
+  // @0: fakecall #05, fakecall #05, rtrue. Both calls resolve to routine @10, so
+  // 10 is queued twice; the second dequeue hits the already-visited guard.
+  const bytes = [0x90, 0x05, 0x90, 0x05, 0xb0, 0, 0, 0, 0, 0, 0x00, 0xb0];
+  const story = fakeStory(bytes, [fakecall, rtrue]);
+  const runs = disassembleReachable(story, 0);
+
+  expect(runs).toHaveLength(2); // MAIN + routine @10 (decoded once, not twice)
+  expect(runs[1]).toMatchObject({ startAddress: 10, isRoutineStart: true });
+});
+
 test("an unrecognized opcode stops only that run; other queued runs still complete", () => {
   const fakereturn: Opcode = {
     kind: OpcodeKind.ZeroOp,
