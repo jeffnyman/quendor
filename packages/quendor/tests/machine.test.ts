@@ -813,3 +813,19 @@ test("read_char blocks awaiting a single keystroke, and provideChar delivers it"
   expect(machine.run()).toBe(RunState.Halted);
   expect(machine.memory.readWord(GLOBALS)).toBe("x".charCodeAt(0)); // 'x' = 120
 });
+
+test("globalAddress returns the byte address of a global variable", () => {
+  const base = 0x0400;
+  const machine = new Machine(
+    buildStory(0x600, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      // global variables table pointer (0x0c, word)
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (base >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = base & 0xff;
+    }),
+  );
+
+  expect(machine.globalAddress(0)).toBe(base);
+  expect(machine.globalAddress(1)).toBe(base + 2);
+  expect(machine.globalAddress(5)).toBe(base + 10);
+});
