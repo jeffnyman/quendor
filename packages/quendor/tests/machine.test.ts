@@ -1016,3 +1016,70 @@ test("pendingInputKind is null when running and 'char' while blocked on read_cha
 
   expect(machine.pendingInputKind).toBe("char");
 });
+
+test("a watchpoint pauses the machine when a watched location changes", () => {
+  const machine = new Machine(buildProgram([...storeInsn(G_FIRST, 0x00ff), ...quitInsn()]));
+  machine.watchWord(machine.globalAddress(0)); // watch global 0 (both bytes)
+
+  expect(machine.run()).toBe(RunState.Paused);
+  expect(machine.lastWatchHit).not.toBeNull();
+  expect(machine.lastWatchHit?.newValue).toBe(0xff);
+});
+
+// --- execution: scan_table -------------------------------------------------
+
+// scan_table (VAR:0x17 -> opcode byte 0xf7) searches a table for a value.
+// Operands: value, table, length (word-sized, step 2 by default).
+function scanTableInsn(
+  value: number,
+  table: number,
+  length: number,
+  store: number,
+  branch: number,
+): number[] {
+  return [
+    0xf7,
+    0x03, // three large-constant operands, then omitted
+    (value >> 8) & 0xff,
+    value & 0xff,
+    (table >> 8) & 0xff,
+    table & 0xff,
+    (length >> 8) & 0xff,
+    length & 0xff,
+    store & 0xff,
+    branch & 0xff,
+  ];
+}
+
+/** A v4 story with a 3-word table at 0x70 and a scan_table program at MAIN. */
+function buildScanStory(value: number): Story {
+  const TABLE = 0x70;
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 4; // scan_table is v4+
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+
+  bytes.set([0x00, 0x01, 0x00, 0x02, 0x00, 0x03], TABLE); // words 1, 2, 3
+  bytes.set([...scanTableInsn(value, TABLE, 3, G_FIRST, BRANCH_CONTINUE), ...quitInsn()], MAIN);
+
+  return new Story(bytes);
+}
+
+test("scan_table stores the address of a value it finds", () => {
+  const machine = new Machine(buildScanStory(0x0002));
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0x72); // 0x0002 sits at table + 2
+});
+
+test("scan_table stores 0 when the value isn't in the table", () => {
+  const machine = new Machine(buildScanStory(0x0099));
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0);
+});
