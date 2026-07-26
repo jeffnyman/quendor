@@ -98,7 +98,8 @@ test("unwrapStory throws when a Blorb file has no ZCOD chunk", () => {
 // after it, and fills each entry's `start` with the resulting offset.
 
 interface IndexedResource {
-  usage: "Pict" | "Snd " | "Exec";
+  /** Normally "Pict" / "Snd " / "Exec"; widened to string so tests can inject a malformed usage. */
+  usage: string;
   number: number;
   type: string;
   data: Uint8Array;
@@ -332,4 +333,136 @@ test("describeBlorb renders the metadata block, sound loops, and the executable 
   expect(out).toContain("Sounds (1):");
   expect(out).toContain("[loops forever]");
   expect(out).toContain("Executable:");
+});
+
+// --- edge cases: malformed images, unknown types, resource-only Blorbs ------
+
+test("parseBlorb yields zero dimensions for a malformed PNG and a JPEG with no SOF", () => {
+  const notPng = new Uint8Array(24); // no "IHDR" 4CC at offset 12
+  const noSof = new Uint8Array([0xff, 0xd8, ...Array<number>(12).fill(0)]); // SOI then no marker byte
+
+  const blorb = buildIndexedBlorb([
+    { usage: "Pict", number: 1, type: "PNG ", data: notPng },
+    { usage: "Pict", number: 2, type: "JPEG", data: noSof },
+  ]);
+  const res = parseBlorb(blorb);
+
+  expect(res?.pictures.get(1)).toMatchObject({ width: 0, height: 0 }); // pngDimensions: not IHDR
+  expect(res?.pictures.get(2)).toMatchObject({ width: 0, height: 0 }); // jpegDimensions: no SOF found
+});
+
+test("parseBlorb skips an unknown picture type and tags an unknown sound as 'other'", () => {
+  const blorb = buildIndexedBlorb([
+    { usage: "Pict", number: 1, type: "GIF ", data: new Uint8Array(8) }, // unrecognized picture
+    { usage: "Snd ", number: 2, type: "WAVE", data: new Uint8Array(4) }, // unrecognized sound
+  ]);
+  const res = parseBlorb(blorb);
+
+  expect(res?.pictures.has(1)).toBe(false); // parsePicture returned undefined -> not stored
+  expect(res?.sounds.get(2)?.format).toBe("other"); // no SOUND_FORMATS entry -> "other"
+});
+
+test("extractBlorb names a JPEG and sounds, omitting the story for a resource-only Blorb", () => {
+  const blorb = buildIndexedBlorb([
+    { usage: "Pict", number: 1, type: "JPEG", data: jpegData(10, 10) },
+    { usage: "Snd ", number: 2, type: "FORM", data: new Uint8Array([0, 0, 0, 0]) }, // aiff -> .aiff
+    { usage: "Snd ", number: 3, type: "SONG", data: new Uint8Array(4) }, // song -> .snd fallback
+  ]);
+  const names = extractBlorb(blorb).map((f) => f.name);
+
+  expect(names).toContain("pic-001.jpg");
+  expect(names).toContain("snd-002.aiff");
+  expect(names).toContain("snd-003.snd");
+  expect(names.some((n) => n.startsWith("story"))).toBe(false); // no ZCOD -> no story file
+});
+
+test("extractBlorb uses a .dat extension for a story with no valid version byte", () => {
+  const blorb = buildIndexedBlorb([], [{ type: "ZCOD", data: new Uint8Array(0) }]);
+
+  expect(extractBlorb(blorb).map((f) => f.name)).toContain("story.dat");
+});
+
+test("describeBlorb reports a resource-only Blorb, labels unknown chunks, and lists no resources", () => {
+  const blorb = buildBlorb([
+    { type: "RIdx", data: new Uint8Array(4) }, // resource count 0
+    { type: "ZZZZ", data: new Uint8Array(2) }, // chunk type with no known description
+  ]);
+  const out = describeBlorb(blorb);
+
+  expect(out).toContain("none (resource-only"); // storyLine, no ZCOD
+  expect(out).toContain('"ZZZZ"'); // listed with no "— description" suffix
+  expect(out).toContain("(none)"); // empty resource listing
+});
+
+test("describeBlorb omits the resource section for a Blorb with no RIdx", () => {
+  const blorb = buildBlorb([{ type: "ZCOD", data: new Uint8Array([5, 0, 0]) }]);
+  const out = describeBlorb(blorb);
+
+  expect(out).toContain("ZCOD present");
+  expect(out).not.toContain("Resources (");
+});
+
+// An AIFF FORM *body* ("AIFF" + COMM + SSND) that buildChunk("FORM", …) wraps into
+// a decodable FORM/AIFF sound chunk (8-bit PCM at 8000 Hz).
+const RATE_8000 = [0x40, 0x0b, 0xfa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+function aiffBody(channels: number, frames: number): Uint8Array {
+  const comm = new Uint8Array(18);
+  const cv = new DataView(comm.buffer);
+  cv.setUint16(0, channels);
+  cv.setUint32(2, frames);
+  cv.setUint16(6, 8); // 8-bit
+  comm.set(RATE_8000, 8);
+
+  const ssnd = new Uint8Array(8 + channels * frames); // offset(4) + blockSize(4) + samples
+  const commChunk = buildChunk("COMM", comm);
+  const ssndChunk = buildChunk("SSND", ssnd);
+
+  const body = new Uint8Array(4 + commChunk.length + ssndChunk.length);
+  writeFourCC(body, 0, "AIFF");
+  body.set(commChunk, 4);
+  body.set(ssndChunk, 4 + commChunk.length);
+
+  return body;
+}
+
+test("describeBlorb decodes AIFF sounds (mono and stereo) and annotates a repeating loop count", () => {
+  const blorb = buildIndexedBlorb(
+    [
+      { usage: "Snd ", number: 2, type: "FORM", data: aiffBody(2, 1) }, // stereo, decodable
+      { usage: "Snd ", number: 4, type: "FORM", data: aiffBody(1, 1) }, // mono, decodable
+    ],
+    [{ type: "Loop", data: u32Pair(2, 5) }], // sound #2 loops x5
+  );
+  const out = describeBlorb(blorb);
+
+  expect(out).toContain("stereo"); // decodeAiff succeeded: channels === 2
+  expect(out).toContain("mono"); // channels === 1
+  expect(out).toContain("8000Hz");
+  expect(out).toContain("[loops x5]"); // non-zero repeat count
+});
+
+test("describeBlorb falls back to the raw type for a non-AIFF sound and marks an unparsed picture", () => {
+  const blorb = buildIndexedBlorb([
+    { usage: "Pict", number: 1, type: "GIF ", data: new Uint8Array(4) }, // unparsed -> "?" dimensions
+    { usage: "Snd ", number: 3, type: "OGGV", data: new Uint8Array(4) }, // not FORM -> raw type, no loop
+  ]);
+  const out = describeBlorb(blorb);
+
+  expect(out).toMatch(/GIF\s+\?/); // picture not in the parsed map -> "?"
+  expect(out).toContain("OGGV"); // sound shown by its raw type (soundInfo returned it verbatim)
+});
+
+test("describeBlorb trims text at a NUL and skips an unknown resource usage", () => {
+  const blorb = buildIndexedBlorb(
+    [{ usage: "Xtra", number: 9, type: "ZCOD", data: new Uint8Array(2) }], // usage neither Pict/Snd/Exec
+    [
+      { type: "AUTH", data: ascii("A\0B") }, // embedded NUL -> readText stops at "A"
+      { type: "SNam", data: new Uint8Array([0, 0x5a, 0, 0, 0, 0x6b]) }, // "Z", NUL unit, "k" -> "Zk"
+    ],
+  );
+  const out = describeBlorb(blorb);
+
+  expect(out).toContain('Author (AUTH): "A"'); // readText broke at the NUL
+  expect(out).toContain('Story name (SNam): "Zk"'); // storyName skipped the zero code unit
 });
