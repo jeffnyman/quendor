@@ -6,6 +6,7 @@ import {
   hex,
   outputRunCss,
   renderUpperRow,
+  resolveAttrs,
   signed,
   zColorCss,
 } from "../web/format.ts";
@@ -65,6 +66,15 @@ test("outputRunCss reverse video swaps fg/bg regardless of the page", () => {
 test("outputRunCss adds bold/italic style bits", () => {
   expect(outputRunCss(2, 3, 4, 3, 4)).toEqual(["font-weight:700"]);
   expect(outputRunCss(4, 3, 4, 3, 4)).toEqual(["font-style:italic"]);
+});
+
+test("resolveAttrs applies Z-Machine defaults when attrs is absent", () => {
+  expect(resolveAttrs(undefined)).toEqual({ style: 0, fg: 1, bg: 1 });
+  expect(resolveAttrs({ style: 2, foreground: 4, background: 6 })).toEqual({
+    style: 2,
+    fg: 4,
+    bg: 6,
+  });
 });
 
 const cell = (ch: string, style = 0, fg = 1, bg = 1): Cell => ({ ch, style, fg, bg });

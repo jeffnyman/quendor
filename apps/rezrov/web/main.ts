@@ -2,9 +2,17 @@ import "./style.css";
 
 // The engine, imported through Quendor's public API (src/index.ts) rather than
 // reaching into individual modules.
-import { Story, Machine, RunState, unwrapStory } from "quendor";
+import { Story, Machine, unwrapStory } from "quendor";
 import type { OutputAttrs } from "quendor";
-import { escapeHtml, hex, outputRunCss, renderUpperRow, signed, zColorCss } from "./format.ts";
+import {
+  escapeHtml,
+  hex,
+  outputRunCss,
+  renderUpperRow,
+  resolveAttrs,
+  signed,
+  zColorCss,
+} from "./format.ts";
 import {
   computeLabels,
   currentRoutineAddr,
@@ -14,6 +22,7 @@ import {
   routineCodeStart,
   routineLabel,
 } from "./disasm-model.ts";
+import { computeControls } from "./controls.ts";
 
 document.documentElement.classList.replace("no-js", "js");
 
@@ -86,9 +95,7 @@ function setTerminalColors(fg: number, bg: number): void {
 }
 
 function appendOutput(text: string, attrs?: OutputAttrs): void {
-  const style = attrs?.style ?? 0;
-  const fg = attrs?.foreground ?? 1;
-  const bg = attrs?.background ?? 1;
+  const { style, fg, bg } = resolveAttrs(attrs);
 
   // A normal (non-reverse) run defines the page colour for the whole area.
   if ((style & 1) === 0) setTerminalColors(fg, bg);
@@ -120,29 +127,15 @@ function refresh(): void {
   renderObjects(machine);
   renderMemory(machine);
 
-  // MORE RENDERS
-
-  const waiting = machine.state === RunState.WaitingForInput;
-  const halted = machine.state === RunState.Halted;
-
-  // In Play mode, single-key (read_char) prompts are captured live via keydown,
-  // so the line-input box is disabled and a hint is shown instead.
-  const keyPrompt = waiting && machine.pendingInputKind === "char" && mode === "play";
-  const morePrompt = waiting && machine.pendingInputKind === "more" && mode === "play";
+  const c = computeControls(machine.state, machine.pendingInputKind, mode);
 
   els.reset.disabled = false;
-  els.step.disabled = halted || waiting;
-  els.cont.disabled = halted;
-  els.input.disabled = !waiting || keyPrompt || morePrompt;
-  els.input.placeholder = morePrompt
-    ? "[MORE] — press any key…"
-    : keyPrompt
-      ? "press a key…"
-      : "type a command and press Enter...";
+  els.step.disabled = c.stepDisabled;
+  els.cont.disabled = c.contDisabled;
+  els.input.disabled = c.inputDisabled;
+  els.input.placeholder = c.placeholder;
 
-  if (waiting && !keyPrompt && !morePrompt) {
-    els.input.focus();
-  }
+  if (c.focusInput) els.input.focus();
 }
 
 function renderState(machine: Machine): void {

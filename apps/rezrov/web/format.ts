@@ -1,4 +1,4 @@
-import type { Cell } from "quendor";
+import type { Cell, OutputAttrs } from "quendor";
 
 // Pure formatting helpers: value → string/CSS. No DOM access, so these are
 // unit-testable in isolation (and keep the DOM render functions thin).
@@ -77,6 +77,15 @@ export function outputRunCss(
   if (style & 4) css.push("font-style:italic");
 
   return css;
+}
+
+/** Resolve OutputAttrs with Z-Machine defaults (style 0, colours 1) for a run. */
+export function resolveAttrs(attrs?: OutputAttrs): { style: number; fg: number; bg: number } {
+  return {
+    style: attrs?.style ?? 0,
+    fg: attrs?.foreground ?? 1,
+    bg: attrs?.background ?? 1,
+  };
 }
 
 /** Render one upper-window row to HTML, coalescing runs of identical style. */
