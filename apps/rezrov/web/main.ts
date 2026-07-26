@@ -24,6 +24,7 @@ import {
 } from "./disasm-model.ts";
 import { computeControls } from "./controls.ts";
 import { objectsHtml } from "./objects-model.ts";
+import { keyToZscii, shouldRedirectToInput } from "./keys.ts";
 
 document.documentElement.classList.replace("no-js", "js");
 
@@ -77,40 +78,6 @@ let viewRoutine: number | null = null;
 const navHistory: (number | null)[] = [];
 
 let shownWatchHit: object | null = null;
-
-/** Map a browser keydown to a Z-Machine input (ZSCII) code, or null to ignore. */
-function keyToZscii(e: KeyboardEvent): number | null {
-  switch (e.key) {
-    case "Enter":
-      return 13;
-    case "Escape":
-      return 27;
-    case "Backspace":
-      return 8;
-    case "Tab":
-      return 9;
-    case "ArrowUp":
-      return 129;
-    case "ArrowDown":
-      return 130;
-    case "ArrowLeft":
-      return 131;
-    case "ArrowRight":
-      return 132;
-  }
-
-  if (e.key.length === 1) {
-    const code = e.key.charCodeAt(0);
-
-    if (code >= 32 && code <= 126) return code; // printable ASCII/ZSCII
-  }
-
-  if (/^F([1-9]|1[0-2])$/.test(e.key)) {
-    return 133 + Number(e.key.slice(1)) - 1; // F1..F12
-  }
-
-  return null;
-}
 
 function setTerminalColors(fg: number, bg: number): void {
   if (fg === termFg && bg === termBg) return;
@@ -352,6 +319,21 @@ function step(): void {
   refresh();
 }
 
+/** Print a note when a *new* watchpoint fired during a run (not a code breakpoint). */
+function announceWatchHit(machine: Machine): void {
+  const hit = machine.lastWatchHit;
+  if (machine.state !== RunState.Paused || !hit || hit === shownWatchHit) return;
+
+  shownWatchHit = hit;
+
+  const msg = document.createElement("span");
+  msg.className = "watchmsg";
+  msg.textContent = `\n[watchpoint ${hex(hit.address)}: ${hex(hit.oldValue, 2)} → ${hex(hit.newValue, 2)}]\n`;
+
+  els.terminal.append(msg);
+  els.terminal.scrollTop = els.terminal.scrollHeight;
+}
+
 function cont(): void {
   if (!machine || machine.state === RunState.Halted) return;
 
@@ -361,23 +343,7 @@ function cont(): void {
     appendOutput(`\n[error: ${(err as Error).message}]\n`);
   }
 
-  // Announce a watchpoint hit (a new one, distinct from a code-breakpoint pause).
-  if (
-    machine.state === RunState.Paused &&
-    machine.lastWatchHit &&
-    machine.lastWatchHit !== shownWatchHit
-  ) {
-    shownWatchHit = machine.lastWatchHit;
-
-    const h = machine.lastWatchHit;
-    const msg = document.createElement("span");
-
-    msg.className = "watchmsg";
-    msg.textContent = `\n[watchpoint ${hex(h.address)}: ${hex(h.oldValue, 2)} → ${hex(h.newValue, 2)}]\n`;
-
-    els.terminal.append(msg);
-    els.terminal.scrollTop = els.terminal.scrollHeight;
-  }
+  announceWatchHit(machine);
 
   // If a breakpoint/watchpoint stopped us mid-play, drop into the debugger.
   if (machine.state === RunState.Paused && mode === "play") {
@@ -678,53 +644,50 @@ els.dump.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-window.addEventListener("keydown", (e) => {
-  // Play mode: a [More] prompt is up (the fixed window filled with unread text).
-  // Any key pages forward, revealing the next screenful.
-  if (mode === "play" && machine?.pendingInputKind === "more") {
+/** read_char: deliver a single mapped keystroke to the machine in real time. */
+function deliverCharKey(e: KeyboardEvent, machine: Machine): void {
+  const code = keyToZscii(e);
+  if (code === null) return;
+
+  e.preventDefault();
+  machine.provideKey(code);
+  cont();
+}
+
+/** Play mode: a keystroke outside the command box jumps into it. */
+function redirectTyping(e: KeyboardEvent): void {
+  if (!shouldRedirectToInput(e, els.input)) return;
+
+  els.input.focus();
+
+  if (e.key.length === 1) {
+    // Capture the first character so it isn't lost to the unfocused window.
+    els.input.value += e.key;
+    e.preventDefault();
+  }
+}
+
+function handlePlayKeydown(e: KeyboardEvent): void {
+  if (!machine) return;
+
+  // [More] prompt: any key pages forward, revealing the next screenful.
+  if (machine.pendingInputKind === "more") {
     e.preventDefault();
     cont();
     return;
   }
 
-  // Play mode: deliver individual keystrokes to a pending read_char in real time.
-  if (mode === "play" && machine?.pendingInputKind === "char") {
-    const code = keyToZscii(e);
-
-    if (code !== null) {
-      e.preventDefault();
-      machine.provideKey(code);
-      cont();
-    }
-
+  if (machine.pendingInputKind === "char") {
+    deliverCharKey(e, machine);
     return;
   }
 
-  // Play mode: start typing anywhere (e.g. after clicking the terminal) and the
-  // keystroke jumps into the command box, so players never have to click it. The
-  // line box is enabled only while a line prompt is active, which gates this.
-  if (
-    mode === "play" &&
-    e.target !== els.input &&
-    !els.input.disabled &&
-    !e.metaKey &&
-    !e.ctrlKey &&
-    !e.altKey &&
-    !e.isComposing
-  ) {
-    els.input.focus();
+  redirectTyping(e);
+}
 
-    if (e.key.length === 1) {
-      // Capture the first character so it isn't lost to the unfocused window.
-      els.input.value += e.key;
-      e.preventDefault();
-    }
-
-    return;
-  }
-
-  // Debug shortcuts (not while typing in the input box).
-  if (mode !== "debug" || e.target === els.input) return;
+/** Debug mode: F10 steps, F5 continues (but not while typing in the input box). */
+function handleDebugKeydown(e: KeyboardEvent): void {
+  if (e.target === els.input) return;
 
   if (e.key === "F10") {
     e.preventDefault();
@@ -733,4 +696,9 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     cont();
   }
+}
+
+window.addEventListener("keydown", (e) => {
+  if (mode === "play") handlePlayKeydown(e);
+  else handleDebugKeydown(e);
 });
