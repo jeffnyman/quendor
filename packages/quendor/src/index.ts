@@ -50,6 +50,7 @@ export {
 } from "./opcodes.js";
 export type { Opcode } from "./opcodes.js";
 
+export { readRoutineHeader, type RoutineHeader } from "./routine.js";
 export { formatInstruction, formatVariable, formatResolvedOperands } from "./disasm.js";
 export { disassembleReachable } from "./disassembler.js";
 export type { DisassembledRun } from "./disassembler.js";
@@ -70,3 +71,6 @@ export type { DecodedQuetzal, QuetzalState, QuetzalFrame } from "./quetzal.js";
 // --- resources (Blorb pictures/sounds) -------------------------------------
 export { describeBlorb, extractBlorb, parseBlorb, unwrapStory } from "./blorb.ts";
 export { decodeAiff, type DecodedAudio } from "./aiff.js";
+
+// --- screen models ---------------------------------------------------------
+export type { OutputAttrs, Cell } from "./screen.js";

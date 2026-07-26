@@ -31,6 +31,8 @@ export class Screen {
   cursorRow = 0;
   cursorCol = 0;
   currentWindow = 0;
+  /** The v3 status bar text, or null when not applicable / not yet drawn. */
+  statusLine: string | null = null;
 
   /** Sink for lower-window (main transcript) text. */
   onLowerOutput: (text: string, attrs: OutputAttrs) => void = () => {};
