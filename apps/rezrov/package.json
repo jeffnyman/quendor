@@ -10,6 +10,9 @@
     "preview": "vp preview --host --open",
     "lint:css": "stylelint 'web/**/*.css'"
   },
+  "dependencies": {
+    "quendor": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "stylelint": "catalog:",

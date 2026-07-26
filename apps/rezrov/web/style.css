@@ -8,3 +8,199 @@
   margin: 0;
   padding: 0;
 }
+
+:root {
+  --bg: #1e1e2e;
+  --fg: #cdd6f4;
+  --accent: #89b4fa;
+  --muted: #7f849c;
+  --panel: #252537;
+  --panel2: #2d2d44;
+  --border: #3b3b55;
+
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+  text-rendering: optimizelegibility;
+}
+
+:where(html, body) {
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    13px/1.4 ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+
+  .title {
+    font-weight: 700;
+    color: var(--accent);
+    margin-right: 8px;
+  }
+}
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  min-height: 0;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel > h2 {
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+}
+
+.panel .body {
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.grow {
+  flex: 1;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px 0;
+  background: var(--panel);
+}
+
+.dtoolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.dim {
+  color: var(--muted);
+}
+
+.dbgonly {
+  display: none;
+}
+
+button,
+.filebtn {
+  background: var(--panel2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dtoolbar button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.dtoolbar button.active {
+  background: var(--bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tabs button {
+  padding: 3px 10px;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-size: 11px;
+}
+
+.tabs button.active {
+  background: var(--bg);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button:hover:not(:disabled),
+.filebtn:hover {
+  border-color: var(--accent);
+}
+
+#inputrow {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid var(--border);
+}
+
+#inputrow input {
+  flex: 1;
+  background: var(--panel2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+#inputrow input:disabled {
+  opacity: 0.5;
+}
+
+#state.halted {
+  color: var(--muted);
+}
+
+#screentop {
+  background: #000;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+#screentop:empty {
+  display: none;
+}
