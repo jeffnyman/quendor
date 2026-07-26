@@ -458,6 +458,26 @@ export class Machine {
     return this.pendingRead?.kind === "read_char";
   }
 
+  /**
+   * Deliver a single keystroke (ZSCII code) to a pending `read_char` — for
+   * real-time keystroke input, unlike `provideInput` which is line-oriented.
+   * No-op unless the machine is blocked on a `read_char`.
+   */
+  provideKey(zsciiCode: number): void {
+    if (this.pendingRead?.kind !== "read_char") return;
+
+    const storeVariable = this.pendingRead.storeVariable;
+    this.pendingRead = null;
+
+    if (storeVariable >= 0) {
+      this.writeVariable(storeVariable, zsciiCode);
+    }
+
+    if (this.runState === RunState.WaitingForInput) {
+      this.runState = RunState.Running;
+    }
+  }
+
   /** Satisfy a pending read_char with a single keystroke (no line semantics). */
   provideChar(ch: string): void {
     if (this.pendingRead?.kind !== "read_char") return;

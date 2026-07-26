@@ -814,6 +814,40 @@ test("read_char blocks awaiting a single keystroke, and provideChar delivers it"
   expect(machine.memory.readWord(GLOBALS)).toBe("x".charCodeAt(0)); // 'x' = 120
 });
 
+test("provideKey delivers a raw ZSCII code to a pending read_char", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+      // read_char 1 -> G_FIRST ; quit
+      bytes.set([0xf6, 0x7f, 0x01, G_FIRST, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.run()).toBe(RunState.WaitingForInput);
+  expect(machine.awaitingCharInput).toBe(true);
+
+  machine.provideKey(0x81); // ZSCII 129 (cursor up) — a raw, non-ASCII key
+
+  expect(machine.awaitingCharInput).toBe(false);
+  expect(machine.run()).toBe(RunState.Halted);
+  expect(machine.memory.readWord(GLOBALS)).toBe(0x81);
+});
+
+test("provideKey is a no-op when the machine isn't awaiting a keystroke", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+    }),
+  );
+
+  machine.provideKey(65); // nothing pending — should do nothing
+  expect(machine.awaitingCharInput).toBe(false);
+});
+
 test("globalAddress returns the byte address of a global variable", () => {
   const base = 0x0400;
   const machine = new Machine(
