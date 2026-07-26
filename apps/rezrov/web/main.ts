@@ -2,7 +2,7 @@ import "./style.css";
 
 // The engine, imported through Quendor's public API (src/index.ts) rather than
 // reaching into individual modules.
-import { Story, Machine, RunState, unwrapStory } from "quendor";
+import { Story, Machine, RunState, unwrapStory, dumpAll } from "quendor";
 import type { OutputAttrs } from "quendor";
 import {
   escapeHtml,
@@ -77,6 +77,40 @@ let viewRoutine: number | null = null;
 const navHistory: (number | null)[] = [];
 
 let shownWatchHit: object | null = null;
+
+/** Map a browser keydown to a Z-Machine input (ZSCII) code, or null to ignore. */
+function keyToZscii(e: KeyboardEvent): number | null {
+  switch (e.key) {
+    case "Enter":
+      return 13;
+    case "Escape":
+      return 27;
+    case "Backspace":
+      return 8;
+    case "Tab":
+      return 9;
+    case "ArrowUp":
+      return 129;
+    case "ArrowDown":
+      return 130;
+    case "ArrowLeft":
+      return 131;
+    case "ArrowRight":
+      return 132;
+  }
+
+  if (e.key.length === 1) {
+    const code = e.key.charCodeAt(0);
+
+    if (code >= 32 && code <= 126) return code; // printable ASCII/ZSCII
+  }
+
+  if (/^F([1-9]|1[0-2])$/.test(e.key)) {
+    return 133 + Number(e.key.slice(1)) - 1; // F1..F12
+  }
+
+  return null;
+}
 
 function setTerminalColors(fg: number, bg: number): void {
   if (fg === termFg && bg === termBg) return;
@@ -292,6 +326,24 @@ function setMode(next: "debug" | "play"): void {
   refresh();
 }
 
+/** Briefly pulse the current instruction so each step is visibly felt. */
+function flashPc(): void {
+  const row = els.disasm.querySelector<HTMLElement>(".dline.pc");
+  if (!row) return;
+
+  row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 300);
+}
+
+function step(): void {
+  if (!machine || machine.state === RunState.Halted) return;
+  if (machine.state === RunState.WaitingForInput) return;
+
+  machine.step();
+  refresh();
+  flashPc();
+}
+
 function cont(): void {
   if (!machine || machine.state === RunState.Halted) return;
 
@@ -413,6 +465,30 @@ async function onFileChange(): Promise<void> {
   await loadStory(new Uint8Array(await f.arrayBuffer()));
 }
 
+function scrollToAddress(address: number): void {
+  const row = els.disasm.querySelector<HTMLElement>(`.dline[data-addr="${address}"]`);
+
+  if (!row) return;
+
+  row.scrollIntoView({ block: "center" });
+  row.classList.add("flash");
+
+  setTimeout(() => row.classList.remove("flash"), 500);
+}
+
+function toggleBreakpoint(address: number): void {
+  if (!machine) return;
+
+  if (breakpoints.has(address)) {
+    breakpoints.delete(address);
+    machine.breakpoints.delete(address);
+  } else {
+    breakpoints.add(address);
+    machine.breakpoints.add(address);
+  }
+  renderDisasm(machine);
+}
+
 els.file.addEventListener("change", () => void onFileChange());
 
 els.dFollowPC.addEventListener("click", navFollowPC);
@@ -502,4 +578,137 @@ document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((btn) => {
     els.objects.style.display = tab === "objects" ? "" : "none";
     els.memory.style.display = tab === "memory" ? "" : "none";
   });
+});
+
+// Disassembly clicks: nav links navigate/scroll; otherwise toggle a breakpoint.
+els.disasm.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement;
+  const navEl = target.closest<HTMLElement>(".nav[data-nav]");
+
+  if (navEl) {
+    navTo(Number(navEl.dataset.nav));
+    return;
+  }
+
+  const scrollEl = target.closest<HTMLElement>(".nav[data-scroll]");
+
+  if (scrollEl) {
+    scrollToAddress(Number(scrollEl.dataset.scroll));
+    return;
+  }
+
+  const line = target.closest<HTMLElement>(".dline[data-addr]");
+
+  if (line) toggleBreakpoint(Number(line.dataset.addr));
+});
+
+function submitInput(): void {
+  if (!machine || machine.state !== RunState.WaitingForInput) return;
+
+  const line = els.input.value;
+
+  appendOutput(line + "\n");
+
+  els.input.value = "";
+  machine.provideInput(line);
+
+  // Play: run straight to the next prompt. Debug: pause just past the read so
+  // you can step through the command's parsing and execution.
+  if (mode === "play") cont();
+  else refresh();
+}
+
+els.step.addEventListener("click", () => step());
+els.cont.addEventListener("click", () => cont());
+
+els.input.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  // Submitting a line can synchronously advance the game to a read_char or [More]
+  // prompt. Stop this Enter from bubbling to the window handler, which would
+  // otherwise treat it as that prompt's keypress and skip the narration in a
+  // single stroke.
+  e.stopPropagation();
+  submitInput();
+});
+
+els.reset.addEventListener("click", reset);
+els.modePlay.addEventListener("click", () => setMode("play"));
+els.modeDebug.addEventListener("click", () => setMode("debug"));
+
+document.body.classList.add("mode-debug");
+
+els.dump.addEventListener("click", () => {
+  if (!storyBytes) return;
+
+  const story = new Story(storyBytes);
+  const text = dumpAll(story);
+  const h = story.header;
+  const name = `dump-r${h.release}-s${h.serialNumber}.txt`;
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const a = document.createElement("a");
+
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+});
+
+window.addEventListener("keydown", (e) => {
+  // Play mode: a [More] prompt is up (the fixed window filled with unread text).
+  // Any key pages forward, revealing the next screenful.
+  if (mode === "play" && machine?.pendingInputKind === "more") {
+    e.preventDefault();
+    cont();
+    return;
+  }
+
+  // Play mode: deliver individual keystrokes to a pending read_char in real time.
+  if (mode === "play" && machine?.pendingInputKind === "char") {
+    const code = keyToZscii(e);
+
+    if (code !== null) {
+      e.preventDefault();
+      machine.provideKey(code);
+      cont();
+    }
+
+    return;
+  }
+
+  // Play mode: start typing anywhere (e.g. after clicking the terminal) and the
+  // keystroke jumps into the command box, so players never have to click it. The
+  // line box is enabled only while a line prompt is active, which gates this.
+  if (
+    mode === "play" &&
+    e.target !== els.input &&
+    !els.input.disabled &&
+    !e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.isComposing
+  ) {
+    els.input.focus();
+
+    if (e.key.length === 1) {
+      // Capture the first character so it isn't lost to the unfocused window.
+      els.input.value += e.key;
+      e.preventDefault();
+    }
+
+    return;
+  }
+
+  // Debug shortcuts (not while typing in the input box).
+  if (mode !== "debug" || e.target === els.input) return;
+
+  if (e.key === "F10") {
+    e.preventDefault();
+    step();
+  } else if (e.key === "F5") {
+    e.preventDefault();
+    cont();
+  }
 });
