@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { HeaderOffset } from "../src/header.ts";
-import { Story } from "../src/story.ts";
+import { assertStoryImage, Story } from "../src/story.ts";
 
 test("readAbbreviations decodes all 96 entries", () => {
   const abbrevTableAddress = 64;
@@ -26,4 +26,27 @@ test("readAbbreviations decodes all 96 entries", () => {
 
   expect(abbreviations).toHaveLength(96);
   expect(abbreviations.every((text) => text === "a")).toBe(true);
+});
+
+test("assertStoryImage accepts a well-formed story image", () => {
+  const bytes = new Uint8Array(64);
+  bytes[HeaderOffset.Version] = 3;
+
+  expect(() => assertStoryImage(bytes)).not.toThrow();
+});
+
+test("assertStoryImage rejects a file too short to hold a header, naming the source", () => {
+  expect(() => assertStoryImage(new Uint8Array(10), "notes.txt")).toThrow(
+    /notes\.txt is not a Z-code story file/,
+  );
+});
+
+test("assertStoryImage rejects a version byte outside 1-8", () => {
+  const bytes = new Uint8Array(64); // version byte defaults to 0
+
+  expect(() => assertStoryImage(bytes)).toThrow(/version byte 0x00/);
+});
+
+test("assertStoryImage rejects an empty file", () => {
+  expect(() => assertStoryImage(new Uint8Array(0))).toThrow(/0 bytes/);
 });

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { Story } from "./story.ts";
+import { assertStoryImage, Story } from "./story.ts";
 import { unwrapStory } from "./blorb.ts";
 
 /**
@@ -11,6 +11,9 @@ import { unwrapStory } from "./blorb.ts";
  */
 export async function loadStoryFromFile(path: string): Promise<Story> {
   const buffer = await readFile(path);
+  const bytes = unwrapStory(new Uint8Array(buffer));
 
-  return new Story(unwrapStory(new Uint8Array(buffer)));
+  assertStoryImage(bytes, path);
+
+  return new Story(bytes);
 }
