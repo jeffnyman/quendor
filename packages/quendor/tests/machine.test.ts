@@ -588,6 +588,84 @@ test("run() is a no-op while WaitingForInput, so a debugger 'continue' can't ski
   expect(readAsciiz(machine, TEXTBUF + 1)).toBe("open door");
 });
 
+// --- execution: tokenize ---------------------------------------------------
+//
+// tokenize (v5+) re-lexes an already-filled text buffer into a parse buffer
+// against a dictionary -- the same lexing sread does, but on demand (games
+// re-parse against alternate dictionaries). The v5 text buffer is length-
+// prefixed (byte 1 = length, text from byte 2) and v4+ dictionary words are
+// 6-byte (9 z-char) encodings, so this needs its own harness rather than
+// buildReadProgram's v3 one. The text buffer is pre-filled, so nothing blocks.
+
+/** Encode a word as a v4+ dictionary entry: 9 z-chars packed into 3 words. */
+function dictWordBytesV4(word: string): number[] {
+  const zchars = Array.from(word.slice(0, 9)).map((c) => 6 + (c.charCodeAt(0) - "a".charCodeAt(0)));
+
+  while (zchars.length < 9) zchars.push(5); // pad with a harmless shift
+
+  const words = [0, 1, 2].map((w) => {
+    const i = w * 3;
+    return (zchars[i] << 10) | (zchars[i + 1] << 5) | zchars[i + 2];
+  });
+
+  words[2] |= 0x8000; // terminator bit on the final word
+
+  return words.flatMap((w) => [(w >> 8) & 0xff, w & 0xff]);
+}
+
+/** A v5 story: `tokenize TEXTBUF PARSEBUF; ret 0`, text buffer pre-filled with
+ *  "open door", against a two-word (6-byte-entry) dictionary of "door", "open". */
+function buildTokenizeProgram(): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 5;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.DictionaryAddress] = (DICT >> 8) & 0xff;
+  bytes[HeaderOffset.DictionaryAddress + 1] = DICT & 0xff;
+
+  // tokenize #TEXTBUF #PARSEBUF (VAR 0xfb, two small-constant operands); then ret 0
+  bytes.set([0xfb, 0x5f, TEXTBUF, PARSEBUF, 0x9b, 0x00], MAIN);
+
+  const input = "open door";
+  bytes[TEXTBUF] = 20; // max input length
+  bytes[TEXTBUF + 1] = input.length; // v5 length prefix
+  bytes.set(
+    Array.from(input).map((c) => c.charCodeAt(0)),
+    TEXTBUF + 2,
+  );
+  bytes[PARSEBUF] = 5; // max parsed words
+
+  // dictionary: 0 separators, 6-byte entries, 2 sorted entries (door < open)
+  bytes[DICT] = 0;
+  bytes[DICT + 1] = 6;
+  bytes[DICT + 2] = 0x00;
+  bytes[DICT + 3] = 0x02;
+  bytes.set([...dictWordBytesV4("door"), ...dictWordBytesV4("open")], DICT_BASE);
+
+  return new Story(bytes);
+}
+
+test("tokenize lexes a pre-filled text buffer into the parse buffer", () => {
+  const machine = new Machine(buildTokenizeProgram());
+
+  machine.run();
+
+  // parse buffer: [maxWords][count][entryAddr, length, textPosition] * count.
+  // Text positions use the v5 offset of 2 (past the max/length prefix bytes).
+  expect(machine.memory.readByte(PARSEBUF + 1)).toBe(2);
+
+  // token 0 "open" -> second entry (6-byte entries), length 4, at text position 2
+  expect(machine.memory.readWord(PARSEBUF + 2)).toBe(DICT_BASE + 6);
+  expect(machine.memory.readByte(PARSEBUF + 4)).toBe(4);
+  expect(machine.memory.readByte(PARSEBUF + 5)).toBe(2);
+
+  // token 1 "door" -> first entry, length 4, at text position 7
+  expect(machine.memory.readWord(PARSEBUF + 6)).toBe(DICT_BASE);
+  expect(machine.memory.readByte(PARSEBUF + 8)).toBe(4);
+  expect(machine.memory.readByte(PARSEBUF + 9)).toBe(7);
+});
+
 // --- execution: quit / restart ---------------------------------------------
 
 /** 0OP `quit` (0xba). */
@@ -1257,4 +1335,61 @@ test("v5 save/restore round-trips through the EXT opcodes", () => {
 
   expect(machine.readMemoryWord(GLOBALS)).toBe(0x11); // memory reverted to the save point
   expect(machine.readMemoryWord(GLOBALS + 2)).toBe(2); // restore stored result 2
+});
+
+// --- execution: save_undo / restore_undo (EXT opcodes, in-memory) -----------
+//
+// save_undo (EXT:0x09) / restore_undo (EXT:0x0a) mirror save/restore but keep
+// the snapshot in an in-memory history rather than going through a host file
+// callback, so no onSave/onRestore is needed. Result convention matches save:
+// 0 = failed/unavailable, 1 = just saved, 2 = just restored.
+
+test("save_undo snapshots state and stores success", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [0xbe, 0x09, 0xff, G_FIRST, ...quitInsn()]), // EXT save_undo -> global 0
+  );
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(1); // 1 = snapshot taken
+});
+
+test("restore_undo stores 0 when there's nothing to undo", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [0xbe, 0x0a, 0xff, G_FIRST, ...quitInsn()]), // EXT restore_undo -> global 0
+  );
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0); // empty history -> failure
+});
+
+test("save_undo/restore_undo round-trips in memory", () => {
+  // Same control flow as the v5 save/restore round-trip, but the snapshot lives
+  // in memory: store 0x11; save_undo; mutate to 0x22; restore_undo reverts memory
+  // and resumes right after the save_undo with result 2, so the je jumps to quit.
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [
+      ...storeInsn(G_FIRST, 0x11), // MAIN+0:  state = 0x11
+      0xbe,
+      0x09,
+      0xff,
+      G_SECOND, // MAIN+3:  save_undo -> G_SECOND (store byte @ MAIN+6)
+      0x41,
+      G_SECOND,
+      0x02,
+      0xc9, // MAIN+7:  je G_SECOND, #2 ?<on-true, offset 9 -> quit>
+      ...storeInsn(G_FIRST, 0x22), // MAIN+11: mutate state
+      0xbe,
+      0x0a,
+      0xff,
+      G_SECOND, // MAIN+14: restore_undo -> G_SECOND
+      ...quitInsn(), // MAIN+18: quit
+    ]),
+  );
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0x11); // memory reverted to the save_undo point
+  expect(machine.readMemoryWord(GLOBALS + 2)).toBe(2); // restore_undo stored result 2
 });
