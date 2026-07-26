@@ -227,12 +227,22 @@ export function runTerminalLoop(machine: Machine): void {
     if (!deliverInput(machine)) break; // end of input
   }
 
-  // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /
-  // restore (ESC 8). ESC[r homes the cursor as a side effect, and we want the
-  // shell prompt to resume where the game left off — below the transcript, not
-  // jumped to the top.
-  if (process.stdout.isTTY && statusHeight > 0) {
-    process.stdout.write(`${ESC}7${ESC}[r${ESC}8`);
+  // Leave the terminal clean. Reset the scroll region unconditionally (a no-op
+  // if none was set) so a stray margin can't leave the console scroll-locked,
+  // and erase the reserved status rows so the bar doesn't ghost in the
+  // scrollback. Wrapped in save (ESC 7) / restore (ESC 8): ESC[r and the erases
+  // move the cursor, but we want the shell prompt to resume where the game left
+  // off — below the transcript, not jumped to the top.
+  if (process.stdout.isTTY) {
+    let cleanup = `${ESC}7${ESC}[r`; // save cursor, reset the scroll region to full screen
+
+    for (let row = 1; row <= statusHeight; row++) {
+      cleanup += `${ESC}[${row};1H${ESC}[0m${ESC}[2K`; // home to each frozen status row and erase it
+    }
+
+    cleanup += `${ESC}8`; // restore the cursor to the transcript
+
+    process.stdout.write(cleanup);
   }
 }
 

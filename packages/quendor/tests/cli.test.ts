@@ -463,6 +463,7 @@ test("runTerminalLoop repaints the upper window and resets the region on a TTY",
     expect(text).toContain("\x1b[2;24r"); // setScrollRegion(1): region rows 2..24
     expect(text).toContain("S"); // drawUpperWindow painted the status cell
     expect(text).toContain("\x1b[r"); // cleanup reset the region on exit
+    expect(text).toContain("\x1b[1;1H\x1b[0m\x1b[2K"); // cleanup erased the frozen status row
   } finally {
     Object.defineProperty(
       process.stdout,
@@ -473,6 +474,37 @@ test("runTerminalLoop repaints the upper window and resets the region on a TTY",
       process.stdout,
       "rows",
       rowsDesc ?? { value: undefined, configurable: true },
+    );
+  }
+});
+
+test("runTerminalLoop resets the scroll region on exit even without a status bar", () => {
+  // Defensive: a game that never opened an upper window (statusHeight stays 0)
+  // should still reset the region on exit, so a stray margin can't leave the
+  // console scroll-locked. No status rows means nothing to erase.
+  const out = captureStdout();
+  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+
+  const run = vi.fn().mockReturnValue(RunState.Halted);
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    screen: { upperHeight: 0, upper: [] },
+  } as unknown as Machine;
+
+  try {
+    runTerminalLoop(machine);
+    const text = out.text();
+
+    expect(text).toContain("\x1b[r"); // region reset unconditionally
+    expect(text).not.toContain("\x1b[2K"); // nothing to erase
+  } finally {
+    Object.defineProperty(
+      process.stdout,
+      "isTTY",
+      isTTYDesc ?? { value: undefined, configurable: true },
     );
   }
 });
