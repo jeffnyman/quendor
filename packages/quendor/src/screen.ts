@@ -33,6 +33,8 @@ export class Screen {
   currentWindow = 0;
   /** The v3 status bar text, or null when not applicable / not yet drawn. */
   statusLine: string | null = null;
+  foreground: number = DEFAULT_COLOR;
+  background: number = DEFAULT_COLOR;
 
   /** Sink for lower-window (main transcript) text. */
   onLowerOutput: (text: string, attrs: OutputAttrs) => void = () => {};
@@ -128,6 +130,18 @@ export class Screen {
       row[this.cursorCol] = { ch, style: this.style, fg: DEFAULT_COLOR, bg: DEFAULT_COLOR };
       this.cursorCol++;
     }
+  }
+
+  reset(): void {
+    this.upperHeight = 0;
+    this.upper = [];
+    this.currentWindow = 0;
+    this.style = TextStyle.Roman;
+    this.cursorRow = 0;
+    this.cursorCol = 0;
+    this.foreground = DEFAULT_COLOR;
+    this.background = DEFAULT_COLOR;
+    this.statusLine = null;
   }
 
   eraseWindow(window: number): void {
