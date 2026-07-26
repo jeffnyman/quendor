@@ -562,6 +562,16 @@ export class Machine {
         return this.store(o[0] | o[1]);
       case "not":
         return this.store(~o[0] & 0xffff);
+      case "art_shift": {
+        const n = toS16(o[0]);
+        const p = toS16(o[1]);
+        return this.store((p >= 0 ? n << p : n >> -p) & 0xffff);
+      }
+      case "log_shift": {
+        const n = o[0];
+        const p = toS16(o[1]);
+        return this.store((p >= 0 ? n << p : n >>> -p) & 0xffff);
+      }
       case "test":
         return this.branchOn((o[0] & o[1]) === o[1]);
 
@@ -609,10 +619,16 @@ export class Machine {
 
       // --- calls / returns ---
       case "call":
+      case "call_vs":
       case "call_1s":
       case "call_2s":
       case "call_vs2":
         return this.call(o[0], o.slice(1), this.currentInstruction.storeVariable ?? -1);
+      case "call_1n":
+      case "call_2n":
+      case "call_vn":
+      case "call_vn2":
+        return this.call(o[0], o.slice(1), -1);
       case "ret":
         return this.return_(o[0]);
       case "rtrue":
@@ -621,6 +637,8 @@ export class Machine {
         return this.return_(0);
       case "ret_popped":
         return this.return_(this.readVariable(0));
+      case "check_arg_count":
+        return this.branchOn(o[0] <= this.current.argumentCount);
 
       // --- load / store / memory ---
       case "load":
@@ -715,6 +733,8 @@ export class Machine {
       // --- input ---
       case "sread":
         return this.sread(o);
+      case "aread":
+        return this.aread(o);
       case "read_char": {
         // read_char always stores; a missing store variable is a decode bug.
         const variable = this.currentInstruction.storeVariable;
@@ -751,6 +771,8 @@ export class Machine {
         return this.random(toS16(o[0]));
       case "verify":
         return this.branchOn(this.computedChecksum === this.headerChecksum);
+      case "piracy":
+        return this.branchOn(true);
       case "quit":
         this.runState = RunState.Halted;
         return;
@@ -789,6 +811,15 @@ export class Machine {
   private sread(o: number[]): void {
     if (this.version <= 3) this.showStatus(); // v1-3 refresh the status bar
     this.beginRead("sread", o[0], o[1], -1);
+  }
+
+  private aread(o: number[]): void {
+    this.beginRead(
+      "aread",
+      o[0],
+      o.length > 1 ? o[1] : 0,
+      this.currentInstruction.storeVariable ?? -1,
+    );
   }
 
   private readChar(storeVariable: number): void {

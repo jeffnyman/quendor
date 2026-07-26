@@ -91,6 +91,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x17, "div", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x18, "mod", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x19, "call_2s", F.Call | F.Store, 4, 8],
+  [OpcodeKind.TwoOp, 0x1a, "call_2n", F.Call, 5, 8],
 
   // one-operand opcodes
   [OpcodeKind.OneOp, 0x00, "jz", F.Branch, 1, 8],
@@ -109,6 +110,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.OneOp, 0x0d, "print_paddr", F.None, 1, 8],
   [OpcodeKind.OneOp, 0x0e, "load", F.FirstOpByRef | F.Store, 1, 8],
   [OpcodeKind.OneOp, 0x0f, "not", F.Store, 1, 4],
+  [OpcodeKind.OneOp, 0x0f, "call_1n", F.Call, 5, 8],
 
   // zero-operand opcodes
   [OpcodeKind.ZeroOp, 0x00, "rtrue", F.Return, 1, 8],
@@ -124,13 +126,16 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0c, "show_status", F.None, 3, 3],
   [OpcodeKind.ZeroOp, 0x0d, "verify", F.Branch, 3, 8],
+  [OpcodeKind.ZeroOp, 0x0f, "piracy", F.Branch, 5, 8],
 
   // variable-operand opcodes
   [OpcodeKind.VarOp, 0x00, "call", F.Call | F.Store, 1, 4],
+  [OpcodeKind.VarOp, 0x00, "call_vs", F.Call | F.Store, 5, 8],
   [OpcodeKind.VarOp, 0x01, "storew", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x02, "storeb", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x03, "put_prop", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x04, "sread", F.None, 1, 4],
+  [OpcodeKind.VarOp, 0x04, "aread", F.Store, 5, 8],
   [OpcodeKind.VarOp, 0x05, "print_char", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x06, "print_num", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x07, "random", F.Store, 1, 8],
@@ -147,6 +152,14 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x15, "sound_effect", F.None, 3, 8],
   [OpcodeKind.VarOp, 0x16, "read_char", F.Store, 4, 8],
   [OpcodeKind.VarOp, 0x17, "scan_table", F.Store | F.Branch, 4, 8],
+  [OpcodeKind.VarOp, 0x18, "not", F.Store, 5, 8],
+  [OpcodeKind.VarOp, 0x19, "call_vn", F.Call, 5, 8],
+  [OpcodeKind.VarOp, 0x1a, "call_vn2", F.Call | F.DoubleVar, 5, 8],
+  [OpcodeKind.VarOp, 0x1f, "check_arg_count", F.Branch, 5, 8],
+
+  // extended opcodes
+  [OpcodeKind.Ext, 0x02, "log_shift", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x03, "art_shift", F.Store, 5, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;
