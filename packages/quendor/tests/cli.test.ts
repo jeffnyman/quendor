@@ -1,20 +1,31 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import {
   defaultSaveName,
+  deliverInput,
   drawUpperWindow,
+  installHostCallbacks,
   main,
   parseArgs,
   promptForSaveFile,
   setScrollRegion,
 } from "../src/cli.ts";
-import { readLineSync } from "../src/node.ts";
+import { readCharSync, readLineSync } from "../src/node.ts";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { TextStyle, type Cell } from "../src/screen.ts";
+import type { Machine } from "../src/machine.ts";
 
-// promptForSaveFile reads a line synchronously via readLineSync; mock the node
-// entry so the tests can drive it without real stdin.
+// The CLI reads input synchronously via node.ts and touches the filesystem for
+// save/restore; mock both so the tests can drive them without real stdin/disk.
 vi.mock("../src/node.ts", () => ({
   loadStoryFromFile: vi.fn(),
   readLineSync: vi.fn(),
+  readCharSync: vi.fn(),
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
 }));
 
 // --- parseArgs -------------------------------------------------------------
@@ -199,4 +210,126 @@ test("drawUpperWindow coalesces reverse-video runs, bracketed by cursor save/res
 
   const E = "\x1b";
   expect(out.text()).toBe(`${E}7${E}[1;1H${E}[0mA${E}[7mBC${E}[0m${E}8`);
+});
+
+// --- installHostCallbacks --------------------------------------------------
+
+/** A minimal Machine stand-in: just the slots installHostCallbacks writes to. */
+function hostMachine(): Machine {
+  return { screen: { upperHeight: 0 } } as unknown as Machine;
+}
+
+test("installHostCallbacks: onOutput writes text straight to stdout", () => {
+  const out = captureStdout();
+  const machine = hostMachine();
+
+  installHostCallbacks(machine, "save.qzl");
+  machine.onOutput("hello");
+
+  expect(out.text()).toBe("hello");
+});
+
+test("installHostCallbacks: onSoundEffect bleeps for 1 and 2, ignores sampled sounds", () => {
+  const out = captureStdout();
+  const machine = hostMachine();
+
+  installHostCallbacks(machine, "save.qzl");
+  machine.onSoundEffect(1, 0, 0, 0);
+  machine.onSoundEffect(3, 0, 0, 0); // sampled — ignored
+  machine.onSoundEffect(2, 0, 0, 0);
+
+  expect(out.text()).toBe("\x07\x07");
+});
+
+test("installHostCallbacks: onSave prompts, writes the file, and returns true", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue(""); // accept the default name
+  vi.mocked(writeFileSync).mockReturnValue(undefined);
+
+  const machine = hostMachine();
+  installHostCallbacks(machine, "zork1.qzl");
+
+  const data = new Uint8Array([1, 2, 3]);
+  expect(machine.onSave(data)).toBe(true);
+  expect(writeFileSync).toHaveBeenCalledWith("zork1.qzl", data);
+});
+
+test("installHostCallbacks: onSave returns false when the write throws", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("");
+  vi.mocked(writeFileSync).mockImplementation(() => {
+    throw new Error("disk full");
+  });
+
+  const machine = hostMachine();
+  installHostCallbacks(machine, "zork1.qzl");
+
+  expect(machine.onSave(new Uint8Array([1]))).toBe(false);
+});
+
+test("installHostCallbacks: onRestore reads an existing save file", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("");
+  vi.mocked(existsSync).mockReturnValue(true);
+  vi.mocked(readFileSync).mockReturnValue(Buffer.from([4, 5, 6]));
+
+  const machine = hostMachine();
+  installHostCallbacks(machine, "zork1.qzl");
+
+  expect(machine.onRestore()).toEqual(new Uint8Array([4, 5, 6]));
+});
+
+test("installHostCallbacks: onRestore returns null when the save file is missing", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue("");
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  const machine = hostMachine();
+  installHostCallbacks(machine, "zork1.qzl");
+
+  expect(machine.onRestore()).toBeNull();
+});
+
+test("installHostCallbacks: onClearScreen is a no-op when stdout is not a TTY", () => {
+  const out = captureStdout();
+  const machine = hostMachine();
+
+  installHostCallbacks(machine, "save.qzl");
+  machine.onClearScreen();
+
+  expect(out.text()).toBe("");
+});
+
+// --- deliverInput ----------------------------------------------------------
+
+test("deliverInput reads a line and provides it (line input)", () => {
+  vi.mocked(readLineSync).mockReturnValue("go north");
+  const provideInput = vi.fn();
+  const machine = { awaitingCharInput: false, provideInput } as unknown as Machine;
+
+  expect(deliverInput(machine)).toBe(true);
+  expect(provideInput).toHaveBeenCalledWith("go north");
+});
+
+test("deliverInput returns false at end of input (line)", () => {
+  vi.mocked(readLineSync).mockReturnValue(null);
+  const machine = { awaitingCharInput: false, provideInput: vi.fn() } as unknown as Machine;
+
+  expect(deliverInput(machine)).toBe(false);
+});
+
+test("deliverInput reads a single key (read_char) and provides it", () => {
+  vi.mocked(readCharSync).mockReturnValue("x");
+  const provideChar = vi.fn();
+  const machine = { awaitingCharInput: true, provideChar } as unknown as Machine;
+
+  expect(deliverInput(machine)).toBe(true);
+  expect(provideChar).toHaveBeenCalledWith("x");
+});
+
+test("deliverInput returns false at end of input (read_char)", () => {
+  vi.mocked(readCharSync).mockReturnValue(null);
+  const machine = { awaitingCharInput: true, provideChar: vi.fn() } as unknown as Machine;
+
+  expect(deliverInput(machine)).toBe(false);
 });

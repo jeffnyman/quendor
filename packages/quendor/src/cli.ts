@@ -133,7 +133,7 @@ export function drawUpperWindow(grid: Cell[][]): void {
  * Wire the machine's host callbacks to the terminal: text output, screen
  * clears, the sound bell, and the save/restore file prompts.
  */
-function installHostCallbacks(machine: Machine, defaultSave: string): void {
+export function installHostCallbacks(machine: Machine, defaultSave: string): void {
   machine.onOutput = (text): void => {
     process.stdout.write(text);
   };
@@ -181,7 +181,7 @@ function installHostCallbacks(machine: Machine, defaultSave: string): void {
  * Deliver whatever input the machine is waiting for: a single keystroke (any
  * key) for read_char, or a line for sread/aread. Returns false at end of input.
  */
-function deliverInput(machine: Machine): boolean {
+export function deliverInput(machine: Machine): boolean {
   if (machine.awaitingCharInput) {
     const ch = readCharSync();
     if (ch === null) return false;
