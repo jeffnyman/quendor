@@ -911,3 +911,108 @@ test("show_status draws a time bar when Flags 1 marks a time game", () => {
   expect(machine.run()).toBe(RunState.Halted);
   expect(machine.screen.statusLine).toContain("Time: 13:05");
 });
+
+// --- debugger / inspection API ---------------------------------------------
+
+test("readMemoryByte and readMemoryWord read raw memory (big-endian word)", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[0x50] = 0xab;
+      bytes[0x51] = 0xcd;
+    }),
+  );
+
+  expect(machine.readMemoryByte(0x50)).toBe(0xab);
+  expect(machine.readMemoryWord(0x50)).toBe(0xabcd);
+});
+
+test("decodeAt decodes the instruction at a given address", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[0x40] = 0xba; // 0OP quit
+    }),
+  );
+
+  expect(machine.decodeAt(0x40).opcode.name).toBe("quit");
+});
+
+test("unpackRoutineAddress unpacks a v3 packed routine address (x2)", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+  );
+
+  expect(machine.unpackRoutineAddress(0x40)).toBe(0x80);
+});
+
+test("getGlobals returns all 240 global values", () => {
+  const machine = new Machine(
+    buildStory(0x400, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+      bytes[GLOBALS + 2] = 0x12; // global 1, high byte
+      bytes[GLOBALS + 3] = 0x34; // global 1, low byte
+    }),
+  );
+
+  const globals = machine.getGlobals();
+  expect(globals).toHaveLength(240);
+  expect(globals[1]).toBe(0x1234);
+});
+
+test("addWatchpoint, watchWord, and removeWatchpoint manage the watch set", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+  );
+
+  machine.addWatchpoint(0x10);
+  expect(machine.watchpoints.has(0x10)).toBe(true);
+
+  machine.watchWord(0x20); // watches both bytes of the word
+  expect(machine.watchpoints.has(0x20)).toBe(true);
+  expect(machine.watchpoints.has(0x21)).toBe(true);
+
+  machine.removeWatchpoint(0x10);
+  expect(machine.watchpoints.has(0x10)).toBe(false);
+});
+
+test("getLocals, getCallStack, and getEvalStack reflect the current routine after a call", () => {
+  const machine = new Machine(
+    buildProgram(
+      [...callInsn(ROUTINE_PACKED, [0x1234], G_FIRST), ...retConst(0)],
+      routine([0x0000], retVar(0x01)),
+    ),
+  );
+
+  machine.step(); // execute the call — now inside the routine
+
+  expect(machine.getLocals()).toEqual([0x1234]); // arg mapped to local 1
+  expect(machine.getEvalStack()).toEqual([]); // nothing pushed yet
+
+  const stack = machine.getCallStack();
+  expect(stack).toHaveLength(2); // routine (innermost) + main
+  expect(stack[0].routineAddress).toBe(ROUTINE);
+});
+
+test("pendingInputKind is null when running and 'char' while blocked on read_char", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes.set([0xf6, 0x7f, 0x01, G_FIRST, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.pendingInputKind).toBeNull();
+
+  machine.run();
+
+  expect(machine.pendingInputKind).toBe("char");
+});
