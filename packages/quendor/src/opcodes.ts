@@ -117,8 +117,10 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x01, "rfalse", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x02, "print", F.ZText, 1, 8],
   [OpcodeKind.ZeroOp, 0x03, "print_ret", F.Return | F.ZText, 1, 8],
+  [OpcodeKind.ZeroOp, 0x05, "save", F.Store, 4, 4],
   [OpcodeKind.ZeroOp, 0x05, "save", F.Branch, 1, 3],
   [OpcodeKind.ZeroOp, 0x06, "restore", F.Branch, 1, 3],
+  [OpcodeKind.ZeroOp, 0x06, "restore", F.Store, 4, 4],
   [OpcodeKind.ZeroOp, 0x07, "restart", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x09, "pop", F.None, 1, 4],
@@ -158,6 +160,8 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x1f, "check_arg_count", F.Branch, 5, 8],
 
   // extended opcodes
+  [OpcodeKind.Ext, 0x00, "save", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x01, "restore", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x02, "log_shift", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x03, "art_shift", F.Store, 5, 8],
 ];
