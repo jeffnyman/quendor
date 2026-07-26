@@ -709,6 +709,9 @@ export class Machine {
       case "buffer_mode":
         // NOTE: not sure what to do
         return;
+      case "show_status":
+        this.showStatus();
+        return;
       case "split_window":
         this.screen.splitWindow(o[0], this.version <= 3);
         return;
@@ -805,11 +808,30 @@ export class Machine {
     // simply goes nowhere, which keeps it off the screen as intended.
   }
 
+  private objectShortName(objNum: number): string {
+    try {
+      const addr = this.objects.getShortNameAddress(objNum);
+      const len = this.memory.readByte(addr);
+      return len > 0 ? this.text.decodeAtAddress(addr + 1) : "";
+    } catch {
+      return "";
+    }
+  }
+
   /** Draw the v1-3 status bar from globals 0 (location), 1 and 2 (score/time). */
   private showStatus(): void {
     if (this.version > 3) return;
 
-    // NOTE: NEED TO IMPLEMENT SCREEN TO MAKE THIS WORK
+    const location = this.memory.readWord(this.globalsAddress);
+    const left = location ? this.objectShortName(location) : "";
+    const g1 = this.memory.readWord(this.globalsAddress + 2);
+    const g2 = this.memory.readWord(this.globalsAddress + 4);
+    const timeGame = (this.memory.readByte(0x01) & 0x02) !== 0;
+    const right = timeGame
+      ? `Time: ${g1 % 24}:${String(g2 % 60).padStart(2, "0")}`
+      : `Score: ${toS16(g1)}  Moves: ${g2}`;
+
+    this.screen.setStatusLine(left, right);
   }
 
   private call(packedAddress: number, args: number[], storeVariable: number): void {

@@ -51,6 +51,20 @@ export class Screen {
     this.width = Math.max(1, width);
   }
 
+  /** Compose the v3 status bar: location on the left, score/time on the right. */
+  setStatusLine(left: string, right: string): void {
+    const w = this.width;
+    let line = " " + left;
+
+    if (line.length + right.length + 1 <= w) {
+      line = line.padEnd(w - right.length - 1) + right + " ";
+    } else {
+      line = (line + " " + right).slice(0, w);
+    }
+
+    this.statusLine = line.slice(0, w);
+  }
+
   /** Split off `lines` rows for the upper window. v3 clears the upper window. */
   splitWindow(lines: number, clear: boolean): void {
     const previous = this.upper;
