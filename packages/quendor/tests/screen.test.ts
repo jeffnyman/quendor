@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { Screen } from "../src/screen.ts";
+import { Screen, TextStyle } from "../src/screen.ts";
 
 // Screen.print routes by the selected window: window 0 (lower) is the scrolling
 // transcript via onLowerOutput; window 1 (upper) is the fixed status grid. The
@@ -46,6 +46,47 @@ test("upper-window writes clip at the right edge (no scroll)", () => {
   screen.print("toolong");
 
   expect(screen.upper[0].map((c) => c.ch).join("")).toBe("toolo");
+});
+
+test("setCursor positions the upper-window cursor (0-based)", () => {
+  const screen = new Screen(10);
+
+  screen.setCursor(2, 5);
+
+  expect(screen.cursorRow).toBe(2);
+  expect(screen.cursorCol).toBe(5);
+});
+
+test("splitWindow homes the cursor when it falls outside the shrunk upper window", () => {
+  const screen = new Screen(10);
+
+  screen.setCursor(5, 3); // cursor deep in a taller window
+  screen.splitWindow(2, true); // now only 2 rows -> row 5 is out of range
+
+  expect(screen.cursorRow).toBe(0);
+  expect(screen.cursorCol).toBe(0);
+});
+
+test("print to the upper window is a no-op when the cursor is past the last row", () => {
+  const screen = new Screen(10);
+
+  screen.splitWindow(1, true); // one upper row
+  screen.setWindow(1); // homes the cursor to (0,0)
+  screen.setCursor(3, 0); // then move it beyond the single row
+  screen.print("x"); // guarded: no row to stamp into
+
+  expect(screen.upperRows()[0].trimEnd()).toBe(""); // nothing written
+});
+
+test("splitWindow without clearing preserves existing upper rows (v4+ behavior)", () => {
+  const screen = new Screen(10);
+  screen.splitWindow(2, true);
+  screen.setWindow(1);
+  screen.print("keep"); // upper[0] = "keep..."
+
+  screen.splitWindow(2, false); // re-split without clearing
+
+  expect(screen.upperRows()[0].trimEnd()).toBe("keep"); // row carried over
 });
 
 test("upperRows renders each row as a full-width string for the host", () => {
@@ -110,6 +151,38 @@ test("eraseWindow(-1) unsplits, empties the upper grid, and clears the lower win
   expect(screen.upperRows()).toEqual([]); // grid emptied
 });
 
+test("eraseWindow(-2) blanks the upper grid and clears the lower window, staying split", () => {
+  const screen = statusScreen(2);
+  let cleared = 0;
+  screen.onClearLower = (): void => {
+    cleared++;
+  };
+
+  screen.eraseWindow(-2);
+
+  expect(cleared).toBe(1); // lower window cleared
+  expect(screen.upperHeight).toBe(2); // still split (unlike -1)
+  expect(screen.upperRows().every((r) => r.trim() === "")).toBe(true); // upper grid blanked
+});
+
+test("eraseWindow with an unknown window is a harmless no-op that still repaints", () => {
+  const screen = statusScreen(1);
+  let cleared = 0;
+  let updates = 0;
+  screen.onClearLower = (): void => {
+    cleared++;
+  };
+  screen.onUpperUpdate = (): void => {
+    updates++;
+  };
+
+  screen.eraseWindow(2); // not -2/-1/1/0
+
+  expect(cleared).toBe(0); // nothing cleared
+  expect(screen.upperRows()[0].trimEnd()).toBe("status"); // upper untouched
+  expect(updates).toBe(1); // repaint hook still fires
+});
+
 // onUpperUpdate lets the host repaint the upper window the moment it changes,
 // not just at the next input prompt — the only way to catch a quote box that a
 // game draws and tears down between prompts.
@@ -144,4 +217,35 @@ test("setStatusLine truncates to the screen width when both sides can't fit", ()
 
   expect(screen.statusLine).toHaveLength(20);
   expect(screen.statusLine?.startsWith(" A Long")).toBe(true);
+});
+
+test("the default host callbacks are harmless no-ops before a host wires them up", () => {
+  const screen = new Screen(10);
+
+  // No onLowerOutput / onClearLower installed: routing text and erasing must not throw.
+  expect(() => screen.print("hi")).not.toThrow(); // default onLowerOutput
+  expect(() => screen.eraseWindow(0)).not.toThrow(); // default onClearLower
+});
+
+test("reset returns the screen to its initial state", () => {
+  const screen = new Screen(10);
+  screen.splitWindow(3, true);
+  screen.setWindow(1);
+  screen.setCursor(1, 2);
+  screen.style = TextStyle.Bold;
+  screen.foreground = 5;
+  screen.background = 6;
+  screen.setStatusLine("Loc", "Score");
+
+  screen.reset();
+
+  expect(screen.upperHeight).toBe(0);
+  expect(screen.upper).toEqual([]);
+  expect(screen.currentWindow).toBe(0);
+  expect(screen.style).toBe(TextStyle.Roman);
+  expect(screen.cursorRow).toBe(0);
+  expect(screen.cursorCol).toBe(0);
+  expect(screen.foreground).toBe(1); // back to the default color
+  expect(screen.background).toBe(1);
+  expect(screen.statusLine).toBeNull();
 });

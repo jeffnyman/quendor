@@ -49,4 +49,4 @@ On Windows, the `pre-commit`/`pre-push` hooks can crash with `env.exe: ... MapVi
 - `tools-mac/` / `tools-win/` — compiled ztools binaries per platform.
 
 - [ ] Before citing spec behavior in a comment, check the actual PDF in `entharion/specs/` rather than relying on general knowledge of the format. If no PDF-reading tool is available, extract text first, e.g. `pdftotext -layout <file> -`.
-- [ ] `entharion` isn't checked out by a plain clone. If it's missing locally, say so rather than assuming the reference material doesn't exist for this project — the fix is `git submodule update --init`.
+- [ ] `entharion` isn't checked out by a plain clone. If it's missing locally, say so rather than assuming the reference material doesn't exist for this project — the fix is `git submodule update --init --recursive` (entharion nests its own submodules).

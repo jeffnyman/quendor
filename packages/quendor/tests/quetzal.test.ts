@@ -72,3 +72,112 @@ test("rejects bytes that are not an IFZS FORM", () => {
 
   expect(() => decodeQuetzal(notQuetzal, new Uint8Array(16), 16)).toThrow();
 });
+
+// --- malformed / partial saves ---------------------------------------------
+//
+// The round-trips above only ever produce well-formed blobs, so these build
+// IFZS FORMs by hand to drive the decoder's chunk-structure error paths and its
+// UMem (uncompressed) branch.
+
+function iffChunk(type: string, data: Uint8Array): Uint8Array {
+  const pad = data.length % 2;
+  const c = new Uint8Array(8 + data.length + pad);
+  const v = new DataView(c.buffer);
+
+  for (let i = 0; i < 4; i++) c[i] = type.charCodeAt(i);
+  v.setUint32(4, data.length);
+  c.set(data, 8);
+
+  return c;
+}
+
+function ifzs(chunks: { type: string; data: Uint8Array }[]): Uint8Array {
+  const built = chunks.map((c) => iffChunk(c.type, c.data));
+  const body = built.reduce((n, c) => n + c.length, 0);
+  const form = new Uint8Array(12 + body);
+  const v = new DataView(form.buffer);
+
+  for (let i = 0; i < 4; i++) form[i] = "FORM".charCodeAt(i);
+  v.setUint32(4, 4 + body);
+  for (let i = 0; i < 4; i++) form[8 + i] = "IFZS".charCodeAt(i);
+
+  let off = 12;
+  for (const c of built) {
+    form.set(c, off);
+    off += c.length;
+  }
+
+  return form;
+}
+
+// A valid 13-byte IFhd: release, 6-char serial, checksum, 3-byte PC.
+function ifhdData(): Uint8Array {
+  const d = new Uint8Array(13);
+  const v = new DataView(d.buffer);
+
+  v.setUint16(0, 0x0102);
+  for (let i = 0; i < 6; i++) d[2 + i] = "860725".charCodeAt(i);
+  v.setUint16(8, 0xabcd);
+  d[10] = 0x12;
+  d[11] = 0x34;
+  d[12] = 0x56;
+
+  return d;
+}
+
+const emptyStks = { type: "Stks", data: new Uint8Array(0) };
+
+test("decodeQuetzal throws when the IFhd chunk is missing", () => {
+  const blob = ifzs([{ type: "UMem", data: new Uint8Array(8) }, emptyStks]);
+
+  expect(() => decodeQuetzal(blob, new Uint8Array(8), 8)).toThrow("IFhd");
+});
+
+test("decodeQuetzal reads an uncompressed UMem chunk", () => {
+  const mem = Uint8Array.from({ length: 8 }, (_, i) => i + 1);
+  const blob = ifzs([{ type: "IFhd", data: ifhdData() }, { type: "UMem", data: mem }, emptyStks]);
+
+  const decoded = decodeQuetzal(blob, new Uint8Array(8), 8);
+
+  expect(Array.from(decoded.dynamicMemory)).toEqual(Array.from(mem));
+});
+
+test("decodeQuetzal throws when neither CMem nor UMem is present", () => {
+  const blob = ifzs([{ type: "IFhd", data: ifhdData() }, emptyStks]);
+
+  expect(() => decodeQuetzal(blob, new Uint8Array(8), 8)).toThrow("CMem/UMem");
+});
+
+test("decodeQuetzal throws when the Stks chunk is missing", () => {
+  const blob = ifzs([
+    { type: "IFhd", data: ifhdData() },
+    { type: "UMem", data: new Uint8Array(8) },
+  ]);
+
+  expect(() => decodeQuetzal(blob, new Uint8Array(8), 8)).toThrow("Stks");
+});
+
+test("encode/decode tolerate a story image longer than the original snapshot", () => {
+  // A shorter original snapshot: bytes past its end are treated as 0 (the `?? 0`
+  // fallbacks in both compress and decompress). Trailing zeros form an RLE run.
+  const original = new Uint8Array(16);
+  const current = Uint8Array.from({ length: 64 }, (_, i) => (i < 32 ? (i + 1) & 0xff : 0));
+
+  const decoded = decodeQuetzal(encodeQuetzal(sampleState(current), original), original, 64);
+
+  expect(Array.from(decoded.dynamicMemory)).toEqual(Array.from(current));
+});
+
+test("decodeQuetzal fills the remainder from the original when a CMem is truncated", () => {
+  // A lone zero-run marker with no length byte, against an empty original: the
+  // decoder must fill the rest of the image from the (zero) original, not crash.
+  const blob = ifzs([
+    { type: "IFhd", data: ifhdData() },
+    { type: "CMem", data: new Uint8Array([0x00]) },
+    emptyStks,
+  ]);
+
+  const decoded = decodeQuetzal(blob, new Uint8Array(0), 4);
+
+  expect(Array.from(decoded.dynamicMemory)).toEqual([0, 0, 0, 0]);
+});

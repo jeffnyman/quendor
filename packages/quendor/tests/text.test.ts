@@ -281,10 +281,30 @@ test("tokenizeCommand handles a separator that opens the input", () => {
   ]);
 });
 
+test("tokenizeCommand skips a leading run of spaces before the first word", () => {
+  const { text, dictAddress } = withSeparators([]);
+
+  expect(text.tokenizeCommand("  go", dictAddress)).toEqual([{ start: 2, length: 2, text: "go" }]);
+});
+
 test("encodeWord escapes a character outside the alphabets as a 10-bit ZSCII sequence", () => {
   const text = newText(3);
 
   // '@' is in none of the alphabets (A0/A1/A2), so it encodes as the 5,6,hi,lo
   // ZSCII escape — and must survive a decode round-trip.
   expect(text.decode(text.encodeWord("@"))).toBe("@");
+});
+
+test("encodeWord encodes an embedded space as Z-char 0", () => {
+  const text = newText(3);
+
+  expect(text.decode(text.encodeWord("a b"))).toBe("a b");
+});
+
+test("encodeWord uses the v1-2 shift base for a shifted-alphabet character", () => {
+  const text = newText(1);
+
+  // 'A' lives in alphabet A1; v1-2 shift-up is Z-char 2 (v3+ uses 4). It must
+  // still round-trip through decode.
+  expect(text.decode(text.encodeWord("A"))).toBe("A");
 });

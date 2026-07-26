@@ -588,6 +588,84 @@ test("run() is a no-op while WaitingForInput, so a debugger 'continue' can't ski
   expect(readAsciiz(machine, TEXTBUF + 1)).toBe("open door");
 });
 
+// --- execution: tokenize ---------------------------------------------------
+//
+// tokenize (v5+) re-lexes an already-filled text buffer into a parse buffer
+// against a dictionary -- the same lexing sread does, but on demand (games
+// re-parse against alternate dictionaries). The v5 text buffer is length-
+// prefixed (byte 1 = length, text from byte 2) and v4+ dictionary words are
+// 6-byte (9 z-char) encodings, so this needs its own harness rather than
+// buildReadProgram's v3 one. The text buffer is pre-filled, so nothing blocks.
+
+/** Encode a word as a v4+ dictionary entry: 9 z-chars packed into 3 words. */
+function dictWordBytesV4(word: string): number[] {
+  const zchars = Array.from(word.slice(0, 9)).map((c) => 6 + (c.charCodeAt(0) - "a".charCodeAt(0)));
+
+  while (zchars.length < 9) zchars.push(5); // pad with a harmless shift
+
+  const words = [0, 1, 2].map((w) => {
+    const i = w * 3;
+    return (zchars[i] << 10) | (zchars[i + 1] << 5) | zchars[i + 2];
+  });
+
+  words[2] |= 0x8000; // terminator bit on the final word
+
+  return words.flatMap((w) => [(w >> 8) & 0xff, w & 0xff]);
+}
+
+/** A v5 story: `tokenize TEXTBUF PARSEBUF; ret 0`, text buffer pre-filled with
+ *  "open door", against a two-word (6-byte-entry) dictionary of "door", "open". */
+function buildTokenizeProgram(): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 5;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.DictionaryAddress] = (DICT >> 8) & 0xff;
+  bytes[HeaderOffset.DictionaryAddress + 1] = DICT & 0xff;
+
+  // tokenize #TEXTBUF #PARSEBUF (VAR 0xfb, two small-constant operands); then ret 0
+  bytes.set([0xfb, 0x5f, TEXTBUF, PARSEBUF, 0x9b, 0x00], MAIN);
+
+  const input = "open door";
+  bytes[TEXTBUF] = 20; // max input length
+  bytes[TEXTBUF + 1] = input.length; // v5 length prefix
+  bytes.set(
+    Array.from(input).map((c) => c.charCodeAt(0)),
+    TEXTBUF + 2,
+  );
+  bytes[PARSEBUF] = 5; // max parsed words
+
+  // dictionary: 0 separators, 6-byte entries, 2 sorted entries (door < open)
+  bytes[DICT] = 0;
+  bytes[DICT + 1] = 6;
+  bytes[DICT + 2] = 0x00;
+  bytes[DICT + 3] = 0x02;
+  bytes.set([...dictWordBytesV4("door"), ...dictWordBytesV4("open")], DICT_BASE);
+
+  return new Story(bytes);
+}
+
+test("tokenize lexes a pre-filled text buffer into the parse buffer", () => {
+  const machine = new Machine(buildTokenizeProgram());
+
+  machine.run();
+
+  // parse buffer: [maxWords][count][entryAddr, length, textPosition] * count.
+  // Text positions use the v5 offset of 2 (past the max/length prefix bytes).
+  expect(machine.memory.readByte(PARSEBUF + 1)).toBe(2);
+
+  // token 0 "open" -> second entry (6-byte entries), length 4, at text position 2
+  expect(machine.memory.readWord(PARSEBUF + 2)).toBe(DICT_BASE + 6);
+  expect(machine.memory.readByte(PARSEBUF + 4)).toBe(4);
+  expect(machine.memory.readByte(PARSEBUF + 5)).toBe(2);
+
+  // token 1 "door" -> first entry, length 4, at text position 7
+  expect(machine.memory.readWord(PARSEBUF + 6)).toBe(DICT_BASE);
+  expect(machine.memory.readByte(PARSEBUF + 8)).toBe(4);
+  expect(machine.memory.readByte(PARSEBUF + 9)).toBe(7);
+});
+
 // --- execution: quit / restart ---------------------------------------------
 
 /** 0OP `quit` (0xba). */
@@ -910,4 +988,408 @@ test("show_status draws a time bar when Flags 1 marks a time game", () => {
 
   expect(machine.run()).toBe(RunState.Halted);
   expect(machine.screen.statusLine).toContain("Time: 13:05");
+});
+
+// --- debugger / inspection API ---------------------------------------------
+
+test("readMemoryByte and readMemoryWord read raw memory (big-endian word)", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[0x50] = 0xab;
+      bytes[0x51] = 0xcd;
+    }),
+  );
+
+  expect(machine.readMemoryByte(0x50)).toBe(0xab);
+  expect(machine.readMemoryWord(0x50)).toBe(0xabcd);
+});
+
+test("decodeAt decodes the instruction at a given address", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[0x40] = 0xba; // 0OP quit
+    }),
+  );
+
+  expect(machine.decodeAt(0x40).opcode.name).toBe("quit");
+});
+
+test("unpackRoutineAddress unpacks a v3 packed routine address (x2)", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+  );
+
+  expect(machine.unpackRoutineAddress(0x40)).toBe(0x80);
+});
+
+test("getGlobals returns all 240 global values", () => {
+  const machine = new Machine(
+    buildStory(0x400, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+      bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+      bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+      bytes[GLOBALS + 2] = 0x12; // global 1, high byte
+      bytes[GLOBALS + 3] = 0x34; // global 1, low byte
+    }),
+  );
+
+  const globals = machine.getGlobals();
+  expect(globals).toHaveLength(240);
+  expect(globals[1]).toBe(0x1234);
+});
+
+test("addWatchpoint, watchWord, and removeWatchpoint manage the watch set", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 3;
+    }),
+  );
+
+  machine.addWatchpoint(0x10);
+  expect(machine.watchpoints.has(0x10)).toBe(true);
+
+  machine.watchWord(0x20); // watches both bytes of the word
+  expect(machine.watchpoints.has(0x20)).toBe(true);
+  expect(machine.watchpoints.has(0x21)).toBe(true);
+
+  machine.removeWatchpoint(0x10);
+  expect(machine.watchpoints.has(0x10)).toBe(false);
+});
+
+test("getLocals, getCallStack, and getEvalStack reflect the current routine after a call", () => {
+  const machine = new Machine(
+    buildProgram(
+      [...callInsn(ROUTINE_PACKED, [0x1234], G_FIRST), ...retConst(0)],
+      routine([0x0000], retVar(0x01)),
+    ),
+  );
+
+  machine.step(); // execute the call — now inside the routine
+
+  expect(machine.getLocals()).toEqual([0x1234]); // arg mapped to local 1
+  expect(machine.getEvalStack()).toEqual([]); // nothing pushed yet
+
+  const stack = machine.getCallStack();
+  expect(stack).toHaveLength(2); // routine (innermost) + main
+  expect(stack[0].routineAddress).toBe(ROUTINE);
+});
+
+test("pendingInputKind is null when running and 'char' while blocked on read_char", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes.set([0xf6, 0x7f, 0x01, G_FIRST, ...quitInsn()], MAIN);
+    }),
+  );
+
+  expect(machine.pendingInputKind).toBeNull();
+
+  machine.run();
+
+  expect(machine.pendingInputKind).toBe("char");
+});
+
+test("a watchpoint pauses the machine when a watched location changes", () => {
+  const machine = new Machine(buildProgram([...storeInsn(G_FIRST, 0x00ff), ...quitInsn()]));
+  machine.watchWord(machine.globalAddress(0)); // watch global 0 (both bytes)
+
+  expect(machine.run()).toBe(RunState.Paused);
+  expect(machine.lastWatchHit).not.toBeNull();
+  expect(machine.lastWatchHit?.newValue).toBe(0xff);
+});
+
+// --- execution: scan_table -------------------------------------------------
+
+// scan_table (VAR:0x17 -> opcode byte 0xf7) searches a table for a value.
+// Operands: value, table, length (word-sized, step 2 by default).
+function scanTableInsn(
+  value: number,
+  table: number,
+  length: number,
+  store: number,
+  branch: number,
+): number[] {
+  return [
+    0xf7,
+    0x03, // three large-constant operands, then omitted
+    (value >> 8) & 0xff,
+    value & 0xff,
+    (table >> 8) & 0xff,
+    table & 0xff,
+    (length >> 8) & 0xff,
+    length & 0xff,
+    store & 0xff,
+    branch & 0xff,
+  ];
+}
+
+/** A v4 story with a 3-word table at 0x70 and a scan_table program at MAIN. */
+function buildScanStory(value: number): Story {
+  const TABLE = 0x70;
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 4; // scan_table is v4+
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+
+  bytes.set([0x00, 0x01, 0x00, 0x02, 0x00, 0x03], TABLE); // words 1, 2, 3
+  bytes.set([...scanTableInsn(value, TABLE, 3, G_FIRST, BRANCH_CONTINUE), ...quitInsn()], MAIN);
+
+  return new Story(bytes);
+}
+
+test("scan_table stores the address of a value it finds", () => {
+  const machine = new Machine(buildScanStory(0x0002));
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0x72); // 0x0002 sits at table + 2
+});
+
+test("scan_table stores 0 when the value isn't in the table", () => {
+  const machine = new Machine(buildScanStory(0x0099));
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0);
+});
+
+// --- execution: restore failure paths --------------------------------------
+
+test("restore fails gracefully when onRestore throws", () => {
+  const machine = new Machine(buildSaveProgram([...restoreInsn(BRANCH_CONTINUE), ...quitInsn()]));
+  machine.onRestore = (): Uint8Array | null => {
+    throw new Error("io error");
+  };
+
+  // The error is caught, restore reports failure (branch not taken), we quit.
+  expect(machine.run()).toBe(RunState.Halted);
+});
+
+test("restore fails gracefully when the blob isn't valid Quetzal", () => {
+  const machine = new Machine(buildSaveProgram([...restoreInsn(BRANCH_CONTINUE), ...quitInsn()]));
+  machine.onRestore = (): Uint8Array | null => new Uint8Array([1, 2, 3, 4]); // not IFZS
+
+  expect(machine.run()).toBe(RunState.Halted); // decode threw, caught, fell through
+});
+
+test("restore rejects a save whose header doesn't match this story", () => {
+  // Story A saves and hands us the blob.
+  let blob: Uint8Array | null = null;
+  const a = new Machine(
+    buildSaveProgram([...storeInsn(G_FIRST, 0x11), ...saveInsn(BRANCH_CONTINUE), ...quitInsn()]),
+  );
+  a.onSave = (data): boolean => {
+    blob = data;
+    return true;
+  };
+  a.run();
+  expect(blob).not.toBeNull();
+
+  // Story B is a *different* release (2 vs A's 0) trying to load A's save.
+  const bBytes = new Uint8Array(0x100);
+  bBytes[HeaderOffset.Version] = 3;
+  bBytes[0x03] = 0x02; // release word (0x02, big-endian) = 2
+  bBytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bBytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bBytes[HeaderOffset.StaticMemoryBase] = (0x100 >> 8) & 0xff;
+  bBytes[HeaderOffset.StaticMemoryBase + 1] = 0x100 & 0xff;
+  bBytes.set([...restoreInsn(BRANCH_CONTINUE), ...quitInsn()], MAIN);
+
+  const b = new Machine(new Story(bBytes));
+  b.onRestore = (): Uint8Array | null => blob;
+
+  // Release mismatch -> restore rejected (branch not taken) -> quit.
+  expect(b.run()).toBe(RunState.Halted);
+});
+
+// --- execution: long-form branch encoding ----------------------------------
+//
+// applyBranchAt (used for save/restore's v1-3 branch result) is the one branch
+// decoder reached with the raw branch byte from memory, so its two-byte
+// long-form path is exercised by giving save/restore a long-form branch.
+
+test("applyBranchAt takes a long-form (two-byte) save branch", () => {
+  // save with a two-byte on-true branch (bit 0x40 clear), offset 5: on success
+  // it jumps over the store to the quit, so the store never runs.
+  const machine = new Machine(
+    buildSaveProgram([
+      0xb5,
+      0x80,
+      0x05, // save ?<long, on-true, offset 5>
+      ...storeInsn(G_FIRST, 0xff), // skipped when save succeeds and branches
+      ...quitInsn(),
+    ]),
+  );
+  machine.onSave = (): boolean => true;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0); // store was jumped over
+});
+
+test("applyBranchAt sign-extends a negative long-form branch offset", () => {
+  // restore with a two-byte offset 0x3ffe (-2). onRestore yields null, so the
+  // branch isn't taken -- but the negative offset still decodes without looping.
+  const machine = new Machine(
+    buildSaveProgram([
+      0xb6,
+      0xbf,
+      0xfe, // restore ?<long, on-true, offset -2>
+      ...quitInsn(),
+    ]),
+  );
+  machine.onRestore = (): Uint8Array | null => null;
+
+  expect(machine.run()).toBe(RunState.Halted); // not taken -> fell through to quit
+});
+
+// --- execution: v4/v5 save/restore (store form) ----------------------------
+//
+// v1-3 save/restore branch on their result; v4+ store it (0 = failed, 1 = just
+// saved, 2 = just restored). v4 keeps the 0OP opcodes (0xb5/0xb6) but in store
+// form; v5 moves them to the extended opcodes save (EXT:0x00) and restore
+// (EXT:0x01), each here with no operands (types byte 0xff) and a store byte.
+// All memory is dynamic so restore's memory revert is observable.
+
+const G_SECOND = 0x11; // variable number of the second global (address GLOBALS + 2)
+
+function buildStoreSaveProgram(version: number, main: number[]): Story {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = version;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+  bytes[HeaderOffset.StaticMemoryBase] = (0x100 >> 8) & 0xff; // all memory dynamic
+  bytes[HeaderOffset.StaticMemoryBase + 1] = 0x100 & 0xff;
+
+  bytes.set(main, MAIN);
+
+  return new Story(bytes);
+}
+
+test("v4 save stores its result via the 0OP save opcode", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(4, [0xb5, G_FIRST, ...quitInsn()]), // 0OP save -> global 0
+  );
+  machine.onSave = (): boolean => true;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(1); // 1 = just saved
+});
+
+test("v5 save stores its result via the EXT save opcode", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [0xbe, 0x00, 0xff, G_FIRST, ...quitInsn()]), // EXT save -> global 0
+  );
+  machine.onSave = (): boolean => true;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(1); // 1 = just saved
+});
+
+test("v5 save/restore round-trips through the EXT opcodes", () => {
+  // store 0x11; save -> G_SECOND; if the result is 2 (just restored) skip to
+  // quit; else mutate to 0x22 and restore. restore reverts memory and resumes
+  // right after the save with result 2, so the je then jumps to quit.
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [
+      ...storeInsn(G_FIRST, 0x11), // MAIN+0:  state = 0x11
+      0xbe,
+      0x00,
+      0xff,
+      G_SECOND, // MAIN+3:  save -> G_SECOND (store byte @ MAIN+6)
+      0x41,
+      G_SECOND,
+      0x02,
+      0xc9, // MAIN+7:  je G_SECOND, #2 ?<on-true, offset 9 -> quit>
+      ...storeInsn(G_FIRST, 0x22), // MAIN+11: mutate state
+      0xbe,
+      0x01,
+      0xff,
+      G_SECOND, // MAIN+14: restore -> G_SECOND
+      ...quitInsn(), // MAIN+18: quit
+    ]),
+  );
+
+  let blob: Uint8Array | null = null;
+  machine.onSave = (data): boolean => {
+    blob = data;
+    return true;
+  };
+  machine.onRestore = (): Uint8Array | null => blob;
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0x11); // memory reverted to the save point
+  expect(machine.readMemoryWord(GLOBALS + 2)).toBe(2); // restore stored result 2
+});
+
+// --- execution: save_undo / restore_undo (EXT opcodes, in-memory) -----------
+//
+// save_undo (EXT:0x09) / restore_undo (EXT:0x0a) mirror save/restore but keep
+// the snapshot in an in-memory history rather than going through a host file
+// callback, so no onSave/onRestore is needed. Result convention matches save:
+// 0 = failed/unavailable, 1 = just saved, 2 = just restored.
+
+test("save_undo snapshots state and stores success", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [0xbe, 0x09, 0xff, G_FIRST, ...quitInsn()]), // EXT save_undo -> global 0
+  );
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(1); // 1 = snapshot taken
+});
+
+test("restore_undo stores 0 when there's nothing to undo", () => {
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [0xbe, 0x0a, 0xff, G_FIRST, ...quitInsn()]), // EXT restore_undo -> global 0
+  );
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0); // empty history -> failure
+});
+
+test("save_undo/restore_undo round-trips in memory", () => {
+  // Same control flow as the v5 save/restore round-trip, but the snapshot lives
+  // in memory: store 0x11; save_undo; mutate to 0x22; restore_undo reverts memory
+  // and resumes right after the save_undo with result 2, so the je jumps to quit.
+  const machine = new Machine(
+    buildStoreSaveProgram(5, [
+      ...storeInsn(G_FIRST, 0x11), // MAIN+0:  state = 0x11
+      0xbe,
+      0x09,
+      0xff,
+      G_SECOND, // MAIN+3:  save_undo -> G_SECOND (store byte @ MAIN+6)
+      0x41,
+      G_SECOND,
+      0x02,
+      0xc9, // MAIN+7:  je G_SECOND, #2 ?<on-true, offset 9 -> quit>
+      ...storeInsn(G_FIRST, 0x22), // MAIN+11: mutate state
+      0xbe,
+      0x0a,
+      0xff,
+      G_SECOND, // MAIN+14: restore_undo -> G_SECOND
+      ...quitInsn(), // MAIN+18: quit
+    ]),
+  );
+
+  machine.run();
+
+  expect(machine.readMemoryWord(GLOBALS)).toBe(0x11); // memory reverted to the save_undo point
+  expect(machine.readMemoryWord(GLOBALS + 2)).toBe(2); // restore_undo stored result 2
 });

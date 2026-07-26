@@ -85,6 +85,9 @@ function walkRun(
 
     return { startAddress: address, isRoutineStart, instructions, error: undefined };
   } catch (err) {
+    // The try wraps only InstructionReader.next(), which throws Error objects
+    // exclusively, so the String(err) fallback is defensive and unreachable.
+    /* v8 ignore next -- @preserve */
     const error = err instanceof Error ? err.message : String(err);
 
     return { startAddress: address, isRoutineStart, instructions, error };

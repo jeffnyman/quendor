@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { readSync } from "node:fs";
-import { readLineSync } from "../src/stdin-node.ts";
+import { readLineSync, readCharSync } from "../src/stdin-node.ts";
 
 vi.mock("node:fs", () => ({ readSync: vi.fn() }));
 
@@ -78,4 +78,30 @@ test("stops on a non-EAGAIN read error, returning null when nothing was read", (
   });
 
   expect(readLineSync()).toBeNull();
+});
+
+test("readCharSync returns one byte and leaves raw mode alone when not a TTY", () => {
+  feed("k");
+
+  expect(readCharSync()).toBe("k");
+});
+
+test("readCharSync toggles raw mode on and off around the read on a TTY", () => {
+  feed("q");
+
+  const stdin = process.stdin;
+  const isTTYDesc = Object.getOwnPropertyDescriptor(stdin, "isTTY");
+  const rawDesc = Object.getOwnPropertyDescriptor(stdin, "setRawMode");
+  const setRawMode = vi.fn();
+
+  Object.defineProperty(stdin, "isTTY", { value: true, configurable: true });
+  Object.defineProperty(stdin, "setRawMode", { value: setRawMode, configurable: true });
+
+  try {
+    expect(readCharSync()).toBe("q");
+    expect(setRawMode.mock.calls).toEqual([[true], [false]]);
+  } finally {
+    Object.defineProperty(stdin, "isTTY", isTTYDesc ?? { value: undefined, configurable: true });
+    Object.defineProperty(stdin, "setRawMode", rawDesc ?? { value: undefined, configurable: true });
+  }
 });

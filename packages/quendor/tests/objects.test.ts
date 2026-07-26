@@ -194,6 +194,22 @@ test("readProperties decodes all three v4+ size-byte forms", () => {
   ]);
 });
 
+test("readProperties decodes a v4+ two-byte size form with an explicit non-zero length", () => {
+  // buildV4Table only exercises the length-byte-of-0 => 64 special case; this
+  // covers the ordinary path where the explicit length byte is non-zero.
+  const bytes = new Uint8Array(160);
+
+  bytes[139] = 150; // object 1's property table @150 (entry @126, prop-table addr @138-139)
+  bytes[150] = 0; // no short name
+  bytes[151] = 0x80 | 17; // two-byte size form, property 17
+  bytes[152] = 3; // explicit length 3
+  bytes[156] = 0; // terminator, right after the 3-byte property data
+
+  const objects = new ObjectTable(new Memory(bytes), 5, 0);
+
+  expect(objects.readProperties(1)).toEqual([{ number: 17, dataAddress: 153, length: 3 }]);
+});
+
 // --- mutation: attributes, links, and tree surgery -------------------------
 
 /**

@@ -86,7 +86,7 @@ export function promptForSaveFile(def: string): string {
 const ESC = "\x1b";
 
 /** Reserve the top `height` rows with a DECSTBM scroll region (0 resets to full screen). */
-function setScrollRegion(height: number): void {
+export function setScrollRegion(height: number): void {
   const rows = process.stdout.rows;
 
   if (height > 0 && rows) {
@@ -107,7 +107,7 @@ function setScrollRegion(height: number): void {
  * centered quote box. Adjacent same-style cells are coalesced into one run to
  * keep the escape output compact.
  */
-function drawUpperWindow(grid: Cell[][]): void {
+export function drawUpperWindow(grid: Cell[][]): void {
   process.stdout.write(`${ESC}7`); // save cursor
   grid.forEach((row, r) => {
     let line = `${ESC}[${r + 1};1H${ESC}[0m`;
@@ -133,7 +133,7 @@ function drawUpperWindow(grid: Cell[][]): void {
  * Wire the machine's host callbacks to the terminal: text output, screen
  * clears, the sound bell, and the save/restore file prompts.
  */
-function installHostCallbacks(machine: Machine, defaultSave: string): void {
+export function installHostCallbacks(machine: Machine, defaultSave: string): void {
   machine.onOutput = (text): void => {
     process.stdout.write(text);
   };
@@ -181,7 +181,7 @@ function installHostCallbacks(machine: Machine, defaultSave: string): void {
  * Deliver whatever input the machine is waiting for: a single keystroke (any
  * key) for read_char, or a line for sread/aread. Returns false at end of input.
  */
-function deliverInput(machine: Machine): boolean {
+export function deliverInput(machine: Machine): boolean {
   if (machine.awaitingCharInput) {
     const ch = readCharSync();
     if (ch === null) return false;
@@ -202,7 +202,7 @@ function deliverInput(machine: Machine): boolean {
  * down between prompts, so the prompt-time paint alone would never catch it
  * (repaints are idempotent). Leaves the terminal clean on exit.
  */
-function runTerminalLoop(machine: Machine): void {
+export function runTerminalLoop(machine: Machine): void {
   let statusHeight = 0;
 
   const refreshUpperWindow = (): void => {
@@ -227,12 +227,22 @@ function runTerminalLoop(machine: Machine): void {
     if (!deliverInput(machine)) break; // end of input
   }
 
-  // Leave the terminal clean: reset the scroll region, wrapped in save (ESC 7) /
-  // restore (ESC 8). ESC[r homes the cursor as a side effect, and we want the
-  // shell prompt to resume where the game left off — below the transcript, not
-  // jumped to the top.
-  if (process.stdout.isTTY && statusHeight > 0) {
-    process.stdout.write(`${ESC}7${ESC}[r${ESC}8`);
+  // Leave the terminal clean. Reset the scroll region unconditionally (a no-op
+  // if none was set) so a stray margin can't leave the console scroll-locked,
+  // and erase the reserved status rows so the bar doesn't ghost in the
+  // scrollback. Wrapped in save (ESC 7) / restore (ESC 8): ESC[r and the erases
+  // move the cursor, but we want the shell prompt to resume where the game left
+  // off — below the transcript, not jumped to the top.
+  if (process.stdout.isTTY) {
+    let cleanup = `${ESC}7${ESC}[r`; // save cursor, reset the scroll region to full screen
+
+    for (let row = 1; row <= statusHeight; row++) {
+      cleanup += `${ESC}[${row};1H${ESC}[0m${ESC}[2K`; // home to each frozen status row and erase it
+    }
+
+    cleanup += `${ESC}8`; // restore the cursor to the transcript
+
+    process.stdout.write(cleanup);
   }
 }
 

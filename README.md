@@ -32,7 +32,7 @@
   <a href="https://vscode.dev/github/jeffnyman/quendor"><img alt="Open with vscode" src="https://img.shields.io/static/v1?logo=visualstudiocode&label=&message=Open%20in%20Visual%20Studio%20Code&labelColor=2c2c32&color=007acc&logoColor=007acc"></a>
 </p>
 
-<div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/></div>
+<div align="center"><img src="https://img.shields.io/badge/NO%20AI-100%25%20Made%20By%20Human-2e7d32?style=for-the-badge&labelColor=8b1a1a" alt="No AI - 100% Made By Human"/><br><em>See "Crafted by Humans, Optimized for Everyone" below</em></div>
 
 ---
 
@@ -140,7 +140,7 @@ vp install
 Optional: `entharion` (specs, tools, and other Z-machine reference material) is a git submodule and isn't checked out by a plain clone. Nothing in the build, tests, or checks depends on it. Pull it in only if you want the reference material locally:
 
 ```bash
-git submodule update --init
+git submodule update --init --recursive
 ```
 
 See [Development](#development) above for the day-to-day commands.
@@ -171,19 +171,19 @@ This project uses pnpm catalogs to pin shared dependency versions in one place. 
 
 ### Updating the `entharion` Reference
 
-`entharion` is pinned to a specific commit in quendor's history: a plain `git submodule update --init` (see [Getting Started](#getting-started)) always checks out that exact commit, never whatever's currently on entharion's `main`.
+`entharion` is pinned to a specific commit in quendor's history: a plain `git submodule update --init --recursive` (see [Getting Started](#getting-started)) always checks out that exact commit (and entharion's nested submodules at the commits it pins), never whatever's currently on entharion's `main`.
 
 To advance the pin, for example after new material has been added to entharion itself:
 
 ```bash
-git submodule update --remote
+git submodule update --remote --recursive --init
 git add entharion
 git commit -m "chore: update entharion submodule reference"
 ```
 
 That goes through the normal branch/PR workflow like any other change.
 
-To just check whether entharion has new content without committing anything, run the same `git submodule update --remote` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init`, which snaps back to quendor's actual pinned commit.
+To just check whether entharion has new content without committing anything, run the same `git submodule update --remote --recursive --init` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init --recursive`, which snaps back to quendor's actual pinned commit.
 
 ### AI Coding Assistants
 

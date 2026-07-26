@@ -140,6 +140,19 @@ export class Machine {
   private readonly screenWidth: number;
   private readonly screenHeight: number;
 
+  // In-memory undo history for save_undo / restore_undo (bounded).
+  private readonly undoStack: {
+    dynamicMemory: Uint8Array;
+    stack: number[];
+    frames: Frame[];
+    pc: number;
+    currentFont: number;
+  }[] = [];
+
+  private static readonly MAX_UNDO = 25;
+
+  private currentFont = 1;
+
   constructor(
     story: Story,
     options: {
@@ -562,6 +575,16 @@ export class Machine {
         return this.store(o[0] | o[1]);
       case "not":
         return this.store(~o[0] & 0xffff);
+      case "art_shift": {
+        const n = toS16(o[0]);
+        const p = toS16(o[1]);
+        return this.store((p >= 0 ? n << p : n >> -p) & 0xffff);
+      }
+      case "log_shift": {
+        const n = o[0];
+        const p = toS16(o[1]);
+        return this.store((p >= 0 ? n << p : n >>> -p) & 0xffff);
+      }
       case "test":
         return this.branchOn((o[0] & o[1]) === o[1]);
 
@@ -609,10 +632,16 @@ export class Machine {
 
       // --- calls / returns ---
       case "call":
+      case "call_vs":
       case "call_1s":
       case "call_2s":
       case "call_vs2":
         return this.call(o[0], o.slice(1), this.currentInstruction.storeVariable ?? -1);
+      case "call_1n":
+      case "call_2n":
+      case "call_vn":
+      case "call_vn2":
+        return this.call(o[0], o.slice(1), -1);
       case "ret":
         return this.return_(o[0]);
       case "rtrue":
@@ -621,6 +650,8 @@ export class Machine {
         return this.return_(0);
       case "ret_popped":
         return this.return_(this.readVariable(0));
+      case "check_arg_count":
+        return this.branchOn(o[0] <= this.current.argumentCount);
 
       // --- load / store / memory ---
       case "load":
@@ -715,12 +746,16 @@ export class Machine {
       // --- input ---
       case "sread":
         return this.sread(o);
+      case "aread":
+        return this.aread(o);
       case "read_char": {
         // read_char always stores; a missing store variable is a decode bug.
         const variable = this.currentInstruction.storeVariable;
         if (variable === undefined) throw new Error("read_char without a store variable");
         return this.readChar(variable);
       }
+      case "tokenize":
+        return this.opTokenize(o);
 
       // --- screen / windows ---
       case "set_text_style":
@@ -751,6 +786,8 @@ export class Machine {
         return this.random(toS16(o[0]));
       case "verify":
         return this.branchOn(this.computedChecksum === this.headerChecksum);
+      case "piracy":
+        return this.branchOn(true);
       case "quit":
         this.runState = RunState.Halted;
         return;
@@ -760,6 +797,10 @@ export class Machine {
         return this.doSave();
       case "restore":
         return this.doRestore();
+      case "save_undo":
+        return this.doSaveUndo();
+      case "restore_undo":
+        return this.doRestoreUndo();
 
       default:
         throw new Error(
@@ -786,9 +827,85 @@ export class Machine {
     }
   }
 
+  /** save_undo: snapshot the full machine state to the in-memory undo history. */
+  private doSaveUndo(): void {
+    const operandAddr = this.resultOperandAddr();
+
+    this.undoStack.push({
+      dynamicMemory: this.memory.bytes.slice(0, this.staticBase),
+      stack: [...this.stack],
+      frames: this.frames.map((f) => ({ ...f, locals: [...f.locals] })),
+      pc: operandAddr,
+      currentFont: this.currentFont,
+    });
+
+    if (this.undoStack.length > Machine.MAX_UNDO) {
+      this.undoStack.shift();
+    }
+
+    this.applyResult(operandAddr, 1); // saved successfully
+  }
+
+  /** restore_undo: pop and restore the most recent save_undo snapshot. */
+  private doRestoreUndo(): void {
+    const snap = this.undoStack.pop();
+
+    if (!snap) return this.applyResult(this.resultOperandAddr(), 0); // nothing to undo
+
+    this.memory.bytes.set(snap.dynamicMemory, 0);
+    this.stack.length = 0;
+
+    for (const v of snap.stack) this.stack.push(v);
+
+    this.frames.length = 0;
+
+    for (const f of snap.frames) this.frames.push({ ...f, locals: [...f.locals] });
+
+    this.current = this.frames[this.frames.length - 1];
+    this.currentFont = snap.currentFont;
+    this.applyResult(snap.pc, 2); // resume at the save_undo point with result 2
+  }
+
+  /** tokenize: lexically analyse a text buffer into a parse buffer. */
+  private opTokenize(o: number[]): void {
+    const textBuffer = o[0];
+    const parseBuffer = o[1];
+    const dict = o.length > 2 ? o[2] : 0;
+    const skipUnknown = o.length > 3 && o[3] !== 0; // flag: keep unmatched slots
+    let text = "";
+
+    if (this.version >= 5) {
+      const len = this.memory.readByte(textBuffer + 1);
+
+      for (let i = 0; i < len; i++) {
+        text += String.fromCharCode(this.memory.readByte(textBuffer + 2 + i));
+      }
+    } else {
+      for (let i = 0; ; i++) {
+        const c = this.memory.readByte(textBuffer + 1 + i);
+
+        if (c === 0) break;
+        text += String.fromCharCode(c);
+      }
+    }
+
+    const offset = this.version >= 5 ? 2 : 1;
+
+    this.tokenizeInto(text.toLowerCase(), parseBuffer, offset, dict, skipUnknown);
+  }
+
   private sread(o: number[]): void {
     if (this.version <= 3) this.showStatus(); // v1-3 refresh the status bar
     this.beginRead("sread", o[0], o[1], -1);
+  }
+
+  private aread(o: number[]): void {
+    this.beginRead(
+      "aread",
+      o[0],
+      o.length > 1 ? o[1] : 0,
+      this.currentInstruction.storeVariable ?? -1,
+    );
   }
 
   private readChar(storeVariable: number): void {
@@ -1349,14 +1466,20 @@ export class Machine {
     this.memory.bytes.set(this.originalDynamic, 0);
     // Rst: re-establish interpreter header fields
     this.setupHeaderCapabilities();
+
     this.stack.length = 0;
     this.frames.length = 0;
+
     // keep restarts reproducible
     this.rngState = this.randomSeed;
+
+    this.currentFont = 1;
     this.memoryStreams.length = 0;
     this.screenStreamEnabled = true;
     this.charBuffer.length = 0;
     this.pendingRead = null;
+
+    this.screen.reset();
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
 

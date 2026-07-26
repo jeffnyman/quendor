@@ -15,6 +15,7 @@ import { Machine } from "../src/machine.ts";
 const suites = [
   { version: 3, file: "czech.z3", verdict: "Passed: 349, Failed: 0, Print tests: 19" },
   { version: 4, file: "czech.z4", verdict: "Passed: 367, Failed: 0, Print tests: 19" },
+  { version: 5, file: "czech.z5", verdict: "Passed: 406, Failed: 0, Print tests: 19" },
 ];
 
 for (const { version, file, verdict } of suites) {

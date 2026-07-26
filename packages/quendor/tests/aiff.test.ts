@@ -117,3 +117,23 @@ test("decodeAiff returns null for an unsupported bit depth", () => {
 
   expect(decodeAiff(bytes)).toBeNull();
 });
+
+test("decodeAiff returns null for a negative sample rate (extended-float sign bit set)", () => {
+  // Same magnitude as RATE_8000 but with the sign bit set -> -8000 Hz, rejected.
+  const negRate = [0xc0, 0x0b, 0xfa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+  const bytes = aiff(commData(1, 1, 8, negRate), ssndData(new Uint8Array([1])));
+
+  expect(decodeAiff(bytes)).toBeNull();
+});
+
+test("decodeAiff skips a chunk that is neither COMM nor SSND", () => {
+  const bytes = buildForm("AIFF", [
+    chunk("COMM", commData(1, 2, 8, RATE_8000)),
+    chunk("ANNO", new Uint8Array([0x41, 0x42])), // an annotation chunk the decoder ignores
+    chunk("SSND", ssndData(new Uint8Array([10, 20]))),
+  ]);
+  const d = decodeAiff(bytes);
+
+  expect(d?.channels).toBe(1);
+  expect(d?.frames).toBe(2);
+});
