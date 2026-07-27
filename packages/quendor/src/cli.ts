@@ -113,7 +113,12 @@ function sgr(cell: Cell): string {
 
   if (cell.style & TextStyle.Bold) codes.push(1);
   if (cell.style & TextStyle.Italic) codes.push(3);
-  if (cell.style & TextStyle.Reverse) codes.push(7);
+  // Reverse video is deliberately not applied. Games (Beyond Zork's VT100 mode)
+  // build "panels" out of reverse-video text without padding lines to a fixed
+  // width, which leaves ragged black gaps in a terminal. The information games
+  // actually encode with it — selection highlights, emphasis — they carry with
+  // colour instead (BZ's menu marks the current item white vs. red), so dropping
+  // reverse renders room text as plain colour-on-black, like every other game.
   if (cell.fg >= 2 && cell.fg <= 9) codes.push(28 + cell.fg); // 30 + (fg - 2)
   if (cell.bg >= 2 && cell.bg <= 9) codes.push(38 + cell.bg); // 40 + (bg - 2)
 

@@ -185,16 +185,17 @@ function captureStdout(): { text: () => string } {
 
 const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1, font: 1 });
 
-test("renderFrame draws each grid row, coalescing reverse-video runs, then parks the cursor", () => {
+test("renderFrame ignores reverse video, so a row of it coalesces into one run", () => {
   const E = "\x1b";
   const screen = {
-    // A normal, B/C reverse (coalesced), D normal (reverse turns back off)
+    // reverse video isn't applied (see sgr): B/C get the same default SGR as A/D,
+    // so the whole row is a single run rather than a reverse-video island.
     grid: [[cell("A"), cell("B", TextStyle.Reverse), cell("C", TextStyle.Reverse), cell("D")]],
     height: 1,
     lowerCursor: { row: 0, col: 3 },
   } as unknown as Screen;
 
-  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0mA${E}[0;7mBC${E}[0mD${E}[0m${E}[1;4H`);
+  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0mABCD${E}[0m${E}[1;4H`);
 });
 
 test("renderFrame emits ANSI colour for non-default fg/bg (2-9)", () => {
