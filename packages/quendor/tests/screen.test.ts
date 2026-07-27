@@ -249,3 +249,102 @@ test("reset returns the screen to its initial state", () => {
   expect(screen.background).toBe(1);
   expect(screen.statusLine).toBeNull();
 });
+
+// --- grid model: lower window, scrolling, and paging -----------------------
+//
+// The lower window is laid onto the same cell grid as the upper window (as well
+// as being streamed to onLowerOutput). It wraps at the right edge and scrolls its
+// own region, and content persists across splits — which is what lets a game draw
+// in a tall upper window, shrink it, and keep the drawing (Std §8.7.2.1/2).
+
+/** A grid row as a right-trimmed string. */
+function gridRow(screen: Screen, row: number): string {
+  return screen.grid[row]
+    .map((c) => c.ch)
+    .join("")
+    .replace(/\s+$/, "");
+}
+
+test("lower-window text is laid onto the grid, wrapping at the right edge", () => {
+  const screen = new Screen(5, 4);
+
+  screen.print("abcdefg"); // width 5 -> "abcde" then wrap to "fg"
+
+  expect(gridRow(screen, 0)).toBe("abcde");
+  expect(gridRow(screen, 1)).toBe("fg");
+});
+
+test("a newline advances the lower cursor to the next row", () => {
+  const screen = new Screen(10, 4);
+
+  screen.print("a\nb");
+
+  expect(gridRow(screen, 0)).toBe("a");
+  expect(gridRow(screen, 1)).toBe("b");
+});
+
+test("the lower window scrolls its region when text reaches the bottom", () => {
+  const screen = new Screen(10, 3);
+
+  screen.print("one\ntwo\nthree\nfour"); // "one" scrolls off the top
+
+  expect(gridRow(screen, 0)).toBe("two");
+  expect(gridRow(screen, 1)).toBe("three");
+  expect(gridRow(screen, 2)).toBe("four");
+});
+
+test("onMore fires once a screenful has scrolled by, and resetPaging clears the count", () => {
+  const screen = new Screen(10, 4); // lower height 4 -> paging threshold 3 scrolls
+  let more = 0;
+  screen.onMore = (): void => {
+    more++;
+  };
+
+  screen.print("\n".repeat(6)); // 6 newlines -> 3 scrolls -> one [More]
+
+  expect(more).toBe(1);
+  expect(screen.linesSinceInput).toBe(0); // reset when it fired
+
+  screen.print("\n\n\n\n"); // one more scroll
+  expect(screen.linesSinceInput).toBe(1);
+  screen.resetPaging();
+  expect(screen.linesSinceInput).toBe(0);
+});
+
+test("shrinking a v4/5 split keeps whatever was drawn in the upper window (the All Roads fix)", () => {
+  const screen = new Screen(20, 15);
+
+  screen.splitWindow(10, false); // a tall upper window
+  screen.setWindow(1);
+  screen.setCursor(3, 2);
+  screen.print("BOX"); // drawn at upper row 3
+
+  screen.splitWindow(1, false); // shrink to one row — must NOT discard row 3
+
+  expect(screen.upperHeight).toBe(1);
+  expect(gridRow(screen, 3)).toBe("  BOX"); // still on the grid, as a backdrop
+});
+
+test("a v3 split (clear=true) blanks the upper region", () => {
+  const screen = new Screen(20, 15);
+
+  screen.splitWindow(5, false);
+  screen.setWindow(1);
+  screen.setCursor(2, 0);
+  screen.print("OLD");
+
+  screen.splitWindow(5, true); // v3-style: clears the upper window
+
+  expect(gridRow(screen, 2)).toBe("");
+});
+
+test("a split pushes the lower cursor below the new upper window", () => {
+  const screen = new Screen(10, 10);
+
+  screen.print("l0\nl1\nl2"); // lower cursor ends on row 2
+  screen.splitWindow(5, false); // upper window swallows rows 0-4, incl. the cursor
+  screen.setWindow(0);
+  screen.print("X"); // must land below the upper window, not on row 2
+
+  expect(gridRow(screen, 5)).toBe("X");
+});

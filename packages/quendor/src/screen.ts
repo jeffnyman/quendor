@@ -7,6 +7,7 @@ export const TextStyle = {
 } as const;
 
 const DEFAULT_COLOR = 1;
+const DEFAULT_HEIGHT = 25;
 
 /** Attributes attached to lower-window (transcript) output. */
 export interface OutputAttrs {
@@ -23,18 +24,43 @@ export interface Cell {
   bg: number;
 }
 
+/**
+ * The Z-Machine screen (V3-V5) as a single persistent character grid. The two
+ * "windows" are row-range views into it: the upper window is rows [0, upperHeight)
+ * and never scrolls; the lower window is the rest and scrolls within its own
+ * region. Content printed to the grid stays until overwritten or scrolled off —
+ * which is what lets a game draw in a tall upper window, shrink it, and keep the
+ * drawing as a backdrop (Std §8.7.2.1). See docs/screen-model.md.
+ *
+ * The lower window is *also* streamed verbatim to `onLowerOutput` (the transcript),
+ * independent of the grid: the grid is the display, the stream is the printed-text
+ * history. Hosts render the grid; acceptance/transcripts read the stream.
+ */
 export class Screen {
   readonly width: number;
+  readonly height: number;
   style: number = TextStyle.Roman;
-  upper: Cell[][] = [];
-  upperHeight = 0;
-  cursorRow = 0;
-  cursorCol = 0;
-  currentWindow = 0;
-  /** The v3 status bar text, or null when not applicable / not yet drawn. */
-  statusLine: string | null = null;
   foreground: number = DEFAULT_COLOR;
   background: number = DEFAULT_COLOR;
+
+  /** The whole screen; windows are row-range views into this. */
+  grid: Cell[][];
+  upperHeight = 0;
+  currentWindow = 0;
+
+  /** Upper-window cursor (0-based, within the upper window). */
+  cursorRow = 0;
+  cursorCol = 0;
+
+  /** Lower-window cursor (0-based, absolute grid coordinates). */
+  private lowerRow = 0;
+  private lowerCol = 0;
+
+  /** Lower-window lines scrolled since the last input; drives the `[More]` prompt. */
+  linesSinceInput = 0;
+
+  /** The v3 status bar text, or null when not applicable / not yet drawn. */
+  statusLine: string | null = null;
 
   /** Sink for lower-window (main transcript) text. */
   onLowerOutput: (text: string, attrs: OutputAttrs) => void = () => {};
@@ -49,8 +75,22 @@ export class Screen {
    */
   onUpperUpdate: () => void = () => {};
 
-  constructor(width: number) {
+  /**
+   * Fired when a screenful of lower-window text has scrolled by without input.
+   * The interactive host pauses with a `[More]` prompt; a scripted run leaves this
+   * a no-op so it never blocks. Display chrome only — never reaches `onLowerOutput`.
+   */
+  onMore: () => void = () => {};
+
+  constructor(width: number, height: number = DEFAULT_HEIGHT) {
     this.width = Math.max(1, width);
+    this.height = Math.max(1, height);
+    this.grid = this.blankGrid();
+  }
+
+  /** The upper window's rows: a view over the top `upperHeight` grid rows. */
+  get upper(): Cell[][] {
+    return this.grid.slice(0, this.upperHeight);
   }
 
   /** Compose the v3 status bar: location on the left, score/time on the right. */
@@ -67,21 +107,26 @@ export class Screen {
     this.statusLine = line.slice(0, w);
   }
 
-  /** Split off `lines` rows for the upper window. v3 clears the upper window. */
+  /**
+   * Set the upper window to `lines` rows. v3 clears the new upper region; v4/5
+   * leaves the grid untouched (§8.7.2), so a shrink keeps whatever was drawn.
+   * A split that would swallow the lower cursor pushes it down (§8.7.2.2).
+   */
   splitWindow(lines: number, clear: boolean): void {
-    const previous = this.upper;
+    this.upperHeight = Math.max(0, Math.min(lines, this.height));
 
-    lines = Math.max(0, Math.min(lines, 255));
+    if (clear) this.blankRows(0, this.upperHeight);
 
-    this.upper = Array.from({ length: lines }, (_, r) =>
-      !clear && previous[r] ? previous[r] : this.blankRow(),
-    );
-
-    this.upperHeight = lines;
-
-    if (this.cursorRow >= lines) {
+    // Home the upper cursor if it now sits outside the upper window.
+    if (this.cursorRow >= this.upperHeight) {
       this.cursorRow = 0;
       this.cursorCol = 0;
+    }
+
+    // The lower window can't start underneath the upper one (§8.7.2.2).
+    if (this.lowerRow < this.upperHeight) {
+      this.lowerRow = this.upperHeight;
+      this.lowerCol = 0;
     }
 
     this.onUpperUpdate();
@@ -90,7 +135,7 @@ export class Screen {
   setWindow(window: number): void {
     this.currentWindow = window;
 
-    // Selecting the upper window homes the cursor to the top-left.
+    // Selecting the upper window homes its cursor to the top-left (§8.7.2).
     if (window === 1) {
       this.cursorRow = 0;
       this.cursorCol = 0;
@@ -106,39 +151,44 @@ export class Screen {
   }
 
   /**
-   * Route printed text to the current window. Window 0 (lower) is the scrolling
-   * transcript; window 1 (upper) is the fixed status region, whose characters
-   * are stamped into the cell grid at the cursor. The upper window does not
-   * scroll, so a newline or running past the right edge simply stops the write.
+   * Route printed text to the current window. The lower window (0) is the
+   * scrolling transcript: text is streamed to `onLowerOutput` and laid onto the
+   * grid, wrapping and scrolling its region. The upper window (1) overlays
+   * characters into the cell grid at the cursor and never scrolls, so a newline
+   * or running past the right edge simply stops the write (§8.7.3.1).
    */
   print(text: string): void {
     if (this.currentWindow === 0) {
-      this.onLowerOutput(text, {
-        style: this.style,
-        foreground: DEFAULT_COLOR,
-        background: DEFAULT_COLOR,
-      });
+      this.printLower(text);
       return;
     }
 
-    if (this.cursorRow >= this.upper.length) return;
+    if (this.cursorRow >= this.upperHeight) return;
 
-    const row = this.upper[this.cursorRow];
+    const row = this.grid[this.cursorRow];
 
     for (const ch of text) {
       if (ch === "\n" || this.cursorCol >= this.width) break;
-      row[this.cursorCol] = { ch, style: this.style, fg: DEFAULT_COLOR, bg: DEFAULT_COLOR };
+      row[this.cursorCol] = this.cell(ch);
       this.cursorCol++;
     }
   }
 
+  /** Reset the paging counter: the player has caught up (after input or `[More]`). */
+  resetPaging(): void {
+    this.linesSinceInput = 0;
+  }
+
   reset(): void {
+    this.grid = this.blankGrid();
     this.upperHeight = 0;
-    this.upper = [];
     this.currentWindow = 0;
     this.style = TextStyle.Roman;
     this.cursorRow = 0;
     this.cursorCol = 0;
+    this.lowerRow = 0;
+    this.lowerCol = 0;
+    this.linesSinceInput = 0;
     this.foreground = DEFAULT_COLOR;
     this.background = DEFAULT_COLOR;
     this.statusLine = null;
@@ -146,18 +196,31 @@ export class Screen {
 
   eraseWindow(window: number): void {
     if (window === -1) {
-      // unsplit and clear everything
+      // Clear the whole screen and unsplit (§8.7.3.3).
+      this.blankRows(0, this.height);
       this.upperHeight = 0;
-      this.upper = [];
       this.cursorRow = 0;
       this.cursorCol = 0;
+      this.lowerRow = 0;
+      this.lowerCol = 0;
+      this.currentWindow = 0;
       this.onClearLower();
     } else if (window === -2) {
-      this.upper = this.upper.map(() => this.blankRow());
+      // Clear both regions but keep the split.
+      this.blankRows(0, this.height);
+      this.cursorRow = 0;
+      this.cursorCol = 0;
+      this.lowerRow = this.upperHeight;
+      this.lowerCol = 0;
       this.onClearLower();
     } else if (window === 1) {
-      this.upper = this.upper.map(() => this.blankRow());
+      this.blankRows(0, this.upperHeight);
+      this.cursorRow = 0;
+      this.cursorCol = 0;
     } else if (window === 0) {
+      this.blankRows(this.upperHeight, this.height);
+      this.lowerRow = this.upperHeight;
+      this.lowerCol = 0;
       this.onClearLower();
     }
 
@@ -169,12 +232,73 @@ export class Screen {
     return this.upper.map((row) => row.map((c) => c.ch).join(""));
   }
 
+  // --- lower-window text flow ------------------------------------------------
+
+  private printLower(text: string): void {
+    this.onLowerOutput(text, {
+      style: this.style,
+      foreground: this.foreground,
+      background: this.background,
+    });
+
+    for (const ch of text) {
+      if (ch === "\n") {
+        this.lowerNewline();
+      } else {
+        if (this.lowerCol >= this.width) this.lowerNewline();
+        this.grid[this.lowerRow][this.lowerCol] = this.cell(ch);
+        this.lowerCol++;
+      }
+    }
+  }
+
+  private lowerNewline(): void {
+    this.lowerCol = 0;
+    this.lowerRow++;
+
+    if (this.lowerRow >= this.height) {
+      this.scrollLower();
+      this.lowerRow = this.height - 1;
+    }
+  }
+
+  /** Scroll the lower region up one line, and page when a screenful has passed. */
+  private scrollLower(): void {
+    for (let r = this.upperHeight; r < this.height - 1; r++) {
+      this.grid[r] = this.grid[r + 1];
+    }
+    this.grid[this.height - 1] = this.blankRow();
+
+    const lowerHeight = this.height - this.upperHeight;
+    this.linesSinceInput++;
+
+    if (this.linesSinceInput >= lowerHeight - 1) {
+      this.linesSinceInput = 0;
+      this.onMore();
+    }
+  }
+
+  // --- grid helpers ----------------------------------------------------------
+
+  private cell(ch: string): Cell {
+    return { ch, style: this.style, fg: this.foreground, bg: this.background };
+  }
+
   private blankRow(): Cell[] {
     return Array.from({ length: this.width }, () => ({
       ch: " ",
       style: 0,
       fg: DEFAULT_COLOR,
-      bg: DEFAULT_COLOR,
+      bg: this.background,
     }));
+  }
+
+  private blankGrid(): Cell[][] {
+    return Array.from({ length: this.height }, () => this.blankRow());
+  }
+
+  /** Blank grid rows in the half-open range [start, end). */
+  private blankRows(start: number, end: number): void {
+    for (let r = start; r < end; r++) this.grid[r] = this.blankRow();
   }
 }
