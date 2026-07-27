@@ -69,3 +69,44 @@ export function readCharSync(): string | null {
 
   return ch;
 }
+
+/**
+ * Read a keystroke for read_char, decoding terminal arrow-key escape sequences
+ * (`ESC [ A/B/C/D` or the SS3 `ESC O ...` form) to their ZSCII codes 129-132, so
+ * games that navigate with arrows (Beyond Zork's menus) work. Returns the ZSCII
+ * code, or null at end of input.
+ *
+ * A whole escape sequence arrives buffered together in raw mode, so a single
+ * `readSync` into a small buffer grabs it in one call — and a lone key comes back
+ * as one byte, sidestepping the ESC-vs-escape-sequence ambiguity of byte-at-a-time
+ * reads.
+ */
+export function readKeySync(): number | null {
+  const stdin = process.stdin;
+
+  if (stdin.isTTY) stdin.setRawMode(true);
+
+  const buf = Buffer.alloc(8);
+  let n = 0;
+
+  for (;;) {
+    try {
+      n = readSync(0, buf, 0, buf.length, null);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EAGAIN") continue;
+    }
+    break;
+  }
+
+  if (stdin.isTTY) stdin.setRawMode(false);
+
+  if (n <= 0) return null; // EOF
+
+  if (n >= 3 && buf[0] === 0x1b && (buf[1] === 0x5b || buf[1] === 0x4f)) {
+    const arrow = { 0x41: 129, 0x42: 130, 0x44: 131, 0x43: 132 }[buf[2]];
+    if (arrow !== undefined) return arrow; // up / down / left / right
+  }
+
+  const first = buf[0];
+  return first === 0x0a ? 0x0d : first; // normalize LF to Return (13)
+}
