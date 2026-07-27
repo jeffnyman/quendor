@@ -1,19 +1,8 @@
 import { expect, test } from "vite-plus/test";
-import { keyToZscii, shouldRedirectToInput } from "../web/keys.ts";
+import { keyToZscii } from "../web/keys.ts";
 
 /** A minimal keydown event — keyToZscii only reads `.key`. */
 const key = (k: string): KeyboardEvent => ({ key: k }) as unknown as KeyboardEvent;
-
-const box = (disabled = false): HTMLInputElement => ({ disabled }) as unknown as HTMLInputElement;
-const evt = (over: Partial<KeyboardEvent> = {}): KeyboardEvent =>
-  ({
-    target: null,
-    metaKey: false,
-    ctrlKey: false,
-    altKey: false,
-    isComposing: false,
-    ...over,
-  }) as unknown as KeyboardEvent;
 
 test("maps named control keys to ZSCII", () => {
   expect(keyToZscii(key("Enter"))).toBe(13);
@@ -44,24 +33,4 @@ test("returns null for keys with no ZSCII mapping", () => {
   expect(keyToZscii(key("Shift"))).toBeNull();
   expect(keyToZscii(key("F13"))).toBeNull(); // outside F1-F12
   expect(keyToZscii(key("Dead"))).toBeNull();
-});
-
-test("shouldRedirectToInput: a plain key with the box enabled and unfocused → true", () => {
-  expect(shouldRedirectToInput(evt(), box(false))).toBe(true);
-});
-
-test("shouldRedirectToInput: false when the box is disabled", () => {
-  expect(shouldRedirectToInput(evt(), box(true))).toBe(false);
-});
-
-test("shouldRedirectToInput: false when the event already targets the box", () => {
-  const input = box(false);
-  expect(shouldRedirectToInput(evt({ target: input }), input)).toBe(false);
-});
-
-test("shouldRedirectToInput: false for modifier or IME keystrokes", () => {
-  expect(shouldRedirectToInput(evt({ ctrlKey: true }), box())).toBe(false);
-  expect(shouldRedirectToInput(evt({ metaKey: true }), box())).toBe(false);
-  expect(shouldRedirectToInput(evt({ altKey: true }), box())).toBe(false);
-  expect(shouldRedirectToInput(evt({ isComposing: true }), box())).toBe(false);
 });

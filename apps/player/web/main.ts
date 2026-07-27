@@ -3,8 +3,9 @@ import "./style.css";
 // The engine, through Quendor's public API — the same surface rezrov uses, but
 // here with none of the debugger: just load a story and play it.
 import { Story, Machine, RunState, unwrapStory } from "quendor";
-import { escapeHtml, renderRow } from "./format.ts";
-import { keyToZscii, shouldRedirectToInput } from "./keys.ts";
+import type { Cell } from "quendor";
+import { escapeHtml, renderCells, renderRow } from "./format.ts";
+import { keyToZscii } from "./keys.ts";
 
 document.documentElement.classList.replace("no-js", "js");
 
@@ -13,20 +14,49 @@ const $ = <T extends HTMLElement>(sel: string): T => document.querySelector(sel)
 const els = {
   file: $<HTMLInputElement>("#file"),
   screen: $("#screen"),
+  // Off-screen; it edits the text, the caret is drawn inline on the grid.
   input: $<HTMLInputElement>("#input"),
 };
 
 let storyBytes: Uint8Array | null = null;
 let machine: Machine | null = null;
 
+/** True while the game is blocked on a full line of input (not a single key or [More]). */
+function isLineReading(m: Machine): boolean {
+  return (
+    m.state === RunState.WaitingForInput &&
+    m.pendingInputKind !== "more" &&
+    m.pendingInputKind !== "char"
+  );
+}
+
+/**
+ * Render the cursor row with the in-progress input line overlaid: the game's
+ * cells up to the cursor column, then the typed text with a caret, drawn where
+ * the game actually left the cursor. This is why the player has no input box —
+ * you type at the prompt, exactly as a real interpreter echoes input.
+ */
+function renderInputRow(row: Cell[], col: number): string {
+  const before = renderCells(row.slice(0, col));
+  const value = els.input.value;
+  const caret = els.input.selectionStart ?? value.length;
+
+  const pre = escapeHtml(value.slice(0, caret));
+  const at = escapeHtml(value.slice(caret, caret + 1) || " "); // caret sits on a char or a blank
+  const post = escapeHtml(value.slice(caret + 1));
+
+  return `<div class="row">${before}${pre}<span class="caret">${at}</span>${post}</div>`;
+}
+
 /**
  * Draw the whole screen grid — quendor owns the screen model (see
- * docs/screen-model.md), so the display is just its cell grid rendered row by
- * row. The v3 status line is a separate string, drawn as a bar over row 0. A
- * pending [More] pause shows a prompt the player acknowledges with any key.
+ * docs/screen-model.md). The v3 status line is a separate string drawn as a bar
+ * over row 0; a pending [More] pause shows a prompt any key acknowledges.
  */
 function renderScreen(m: Machine): void {
   const s = m.screen;
+  const lineReading = isLineReading(m);
+  const cursor = s.lowerCursor;
   const rows: string[] = [];
 
   if (s.statusLine) {
@@ -35,7 +65,11 @@ function renderScreen(m: Machine): void {
 
   const start = s.statusLine ? 1 : 0; // the status bar stands in for grid row 0
   for (let r = start; r < s.grid.length; r++) {
-    rows.push(renderRow(s.grid[r]));
+    rows.push(
+      lineReading && r === cursor.row
+        ? renderInputRow(s.grid[r], cursor.col)
+        : renderRow(s.grid[r]),
+    );
   }
 
   if (m.pendingInputKind === "more") {
@@ -45,15 +79,11 @@ function renderScreen(m: Machine): void {
   els.screen.innerHTML = rows.join("");
 }
 
-/** The line-input box is live only when the game is waiting on a full line. */
+/** Focus the harvester while the game wants a line; disable it otherwise. */
 function syncInput(m: Machine): void {
-  const readingLine =
-    m.state === RunState.WaitingForInput &&
-    m.pendingInputKind !== "more" &&
-    m.pendingInputKind !== "char";
-
-  els.input.disabled = !readingLine;
-  if (readingLine) els.input.focus();
+  const lineReading = isLineReading(m);
+  els.input.disabled = !lineReading;
+  if (lineReading) els.input.focus();
 }
 
 /** Run the engine to its next stopping point (a prompt, [More], or halt). */
@@ -78,6 +108,7 @@ function reset(): void {
   machine.onOutput = (): void => {}; // the grid is the display; output lands there
   machine.onClearScreen = (): void => {}; // erase clears the grid; the render shows it
 
+  els.input.value = "";
   els.screen.textContent = "";
   advance();
 }
@@ -94,10 +125,10 @@ async function onFileChange(): Promise<void> {
 }
 
 function submitInput(): void {
-  if (!machine || machine.state !== RunState.WaitingForInput) return;
+  if (!machine || !isLineReading(machine)) return;
 
   const line = els.input.value;
-  machine.screen.print(line + "\n"); // echo into the grid before the game responds
+  machine.screen.print(line + "\n"); // commit the typed line into the grid, where the caret was
   els.input.value = "";
   machine.provideInput(line);
   advance();
@@ -113,25 +144,28 @@ function deliverCharKey(e: KeyboardEvent, m: Machine): void {
   advance();
 }
 
-/** A keystroke outside the command box jumps into it. */
-function redirectTyping(e: KeyboardEvent): void {
-  if (!shouldRedirectToInput(e, els.input)) return;
-
-  els.input.focus();
-  if (e.key.length === 1) {
-    els.input.value += e.key; // capture the first char, lost to the unfocused window otherwise
-    e.preventDefault();
-  }
-}
-
 els.file.addEventListener("change", () => void onFileChange());
+
+// Mirror the harvested text into the on-screen caret as it changes: `input`
+// covers typing/paste; `keyup` covers caret moves (arrow keys) that don't type.
+els.input.addEventListener("input", () => {
+  if (machine) renderScreen(machine);
+});
+els.input.addEventListener("keyup", () => {
+  if (machine) renderScreen(machine);
+});
 
 els.input.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
-  // Submitting a line can synchronously reach a read_char or [More] prompt; keep
-  // this Enter from bubbling to the window handler and being eaten as that key.
+  // Submitting can synchronously reach a read_char or [More] prompt; keep this
+  // Enter from bubbling to the window handler and being eaten as that key.
   e.stopPropagation();
   submitInput();
+});
+
+// Clicking the game surface refocuses the harvester if focus was lost.
+els.screen.addEventListener("mousedown", () => {
+  if (machine && isLineReading(machine)) setTimeout(() => els.input.focus(), 0);
 });
 
 window.addEventListener("keydown", (e) => {
@@ -147,8 +181,5 @@ window.addEventListener("keydown", (e) => {
 
   if (machine.pendingInputKind === "char") {
     deliverCharKey(e, machine);
-    return;
   }
-
-  redirectTyping(e);
 });

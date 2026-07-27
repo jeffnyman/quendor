@@ -108,22 +108,28 @@ main {
   padding-top: 8px;
 }
 
-#inputrow {
-  width: 100%;
-  max-width: 720px;
-  padding: 8px 16px 16px;
+/* The caret is drawn inline on the cursor row: a block that blinks. */
+.caret {
+  background: var(--accent);
+  color: var(--bg);
+  animation: blink 1.06s step-end infinite;
 }
 
+@keyframes blink {
+  50% {
+    background: transparent;
+    color: inherit;
+  }
+}
+
+/* The real input element is off-screen — it edits, the grid displays. */
 #input {
-  width: 100%;
-  background: var(--panel);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font: inherit;
-}
-
-#input:disabled {
-  opacity: 0.5;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
 }

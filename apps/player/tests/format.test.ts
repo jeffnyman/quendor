@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import type { Cell } from "quendor";
-import { attrCss, escapeHtml, renderRow, zColorCss } from "../web/format.ts";
+import { attrCss, escapeHtml, renderCells, renderRow, zColorCss } from "../web/format.ts";
 
 test("zColorCss maps known Z colours and returns null otherwise", () => {
   expect(zColorCss(2)).toBe("#000000");
@@ -32,6 +32,11 @@ test("attrCss: bold and italic style bits", () => {
 });
 
 const cell = (ch: string, style = 0, fg = 1, bg = 1): Cell => ({ ch, style, fg, bg });
+
+test("renderCells returns inner HTML with no row wrapper (for composing the input row)", () => {
+  expect(renderCells([cell("<"), cell("a"), cell("b")])).toBe("&lt;ab");
+  expect(renderCells([])).toBe("");
+});
 
 test("renderRow coalesces identical adjacent cells and escapes text", () => {
   const row = [cell("<"), cell("a"), cell("b")];

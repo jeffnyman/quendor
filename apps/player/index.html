@@ -18,9 +18,17 @@
 
     <main>
       <div id="screen"></div>
-      <div id="inputrow">
-        <input id="input" type="text" placeholder="type a command and press Enter..." disabled />
-      </div>
+      <!-- Off-screen harvester: it does the text editing (caret, backspace, paste,
+           IME, mobile keyboard); the visible caret is drawn inline on the grid. -->
+      <input
+        id="input"
+        type="text"
+        autocomplete="off"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        aria-label="game input"
+      />
     </main>
   </body>
 </html>

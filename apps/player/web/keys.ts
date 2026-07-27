@@ -30,14 +30,3 @@ export function keyToZscii(e: KeyboardEvent): number | null {
 
   return null;
 }
-
-/**
- * Whether a keystroke should be redirected into the command box: it isn't
- * already aimed there, the box is enabled, and it's a plain key (no modifier /
- * IME composition).
- */
-export function shouldRedirectToInput(e: KeyboardEvent, input: HTMLInputElement): boolean {
-  return (
-    e.target !== input && !input.disabled && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing
-  );
-}

@@ -47,8 +47,8 @@ export function attrCss(style: number, fg: number, bg: number): string[] {
   return css;
 }
 
-/** Render one screen row to HTML, coalescing runs of identical style. */
-export function renderRow(row: Cell[]): string {
+/** Render a run of cells to inner HTML, coalescing runs of identical style. */
+export function renderCells(row: Cell[]): string {
   let html = "";
   let i = 0;
 
@@ -66,5 +66,10 @@ export function renderRow(row: Cell[]): string {
     html += css.length === 0 ? escaped : `<span style="${css.join(";")}">${escaped}</span>`;
   }
 
-  return `<div class="row">${html}</div>`;
+  return html;
+}
+
+/** Render one full screen row as a `<div class="row">`. */
+export function renderRow(row: Cell[]): string {
+  return `<div class="row">${renderCells(row)}</div>`;
 }
