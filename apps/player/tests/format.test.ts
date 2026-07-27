@@ -67,10 +67,12 @@ test("renderRow of an empty row is just the wrapper", () => {
   expect(renderRow([])).toBe(`<div class="row"></div>`);
 });
 
-test("renderCells maps font-3 codes to glyphs, breaking runs on a font change", () => {
-  // both cells are ']' (code 93); only the font differs. Font 3 -> ↓, font 1 -> ']'.
+test("renderCells wraps a font-3 run in a .font3 span (raw char) and breaks on font change", () => {
+  // both cells are ']' (code 93); only the font differs. The font-3 cell keeps
+  // its raw char in a .font3 span (FreeFont3 draws the glyph); the font-1 cell
+  // renders as a plain ']'. If runs didn't break on font, they'd be one span.
   const row = [cell("]", 0, 1, 1, 3), cell("]", 0, 1, 1, 1)];
-  expect(renderCells(row)).toBe("↓]");
+  expect(renderCells(row)).toBe(`<span class="font3">]</span>]`);
 });
 
 test("renderInputRow draws game cells, then the typed line with a caret", () => {

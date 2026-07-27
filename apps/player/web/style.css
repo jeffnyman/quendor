@@ -77,13 +77,29 @@ main {
   align-items: center;
 }
 
-/* The game surface: a centred monospace column holding the screen grid. */
+/* Font 3 — the Z-Machine character-graphics font. FreeFont3 (a GNU FreeFont /
+   FreeMono derivative) draws the real box/compass bitmaps at codepoints 32-126,
+   so font-3 cells render their actual glyphs instead of a Unicode approximation. */
+@font-face {
+  font-family: "Font3";
+  src: url("./FreeFont3.ttf") format("truetype");
+  font-display: block;
+}
+
+.font3 {
+  font-family: "Font3", monospace;
+}
+
+/* The game surface: a centred monospace column holding the screen grid. The grid
+   uses a tight line-height so font-3 box and compass pieces connect vertically
+   between rows (they're designed to tile edge-to-edge). */
 #screen {
   width: 100%;
   max-width: 720px;
   flex: 1;
   overflow: auto;
   padding: 12px 16px;
+  line-height: 1;
 }
 
 .row {

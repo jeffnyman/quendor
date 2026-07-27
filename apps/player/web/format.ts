@@ -1,4 +1,3 @@
-import { font3Char } from "quendor";
 import type { Cell } from "quendor";
 
 // Grid-render helpers for the player: a screen cell grid → HTML. These mirror
@@ -63,15 +62,23 @@ export function renderCells(row: Cell[]): string {
       row[i].bg === bg &&
       row[i].font === font
     ) {
-      // Font 3 is the character-graphics font: map its codes to Unicode glyphs.
-      text += font === 3 ? font3Char(row[i].ch.charCodeAt(0)) : row[i].ch;
+      text += row[i].ch;
       i++;
     }
 
     const escaped = escapeHtml(text);
     const css = attrCss(style, fg, bg);
 
-    html += css.length === 0 ? escaped : `<span style="${css.join(";")}">${escaped}</span>`;
+    // Font 3 is the character-graphics font: render the raw codes in the FreeFont3
+    // web font, which draws the actual box/compass bitmaps. Other text renders
+    // normally, with a colour/style span only when one is needed.
+    if (font === 3) {
+      html += `<span class="font3"${css.length ? ` style="${css.join(";")}"` : ""}>${escaped}</span>`;
+    } else if (css.length) {
+      html += `<span style="${css.join(";")}">${escaped}</span>`;
+    } else {
+      html += escaped;
+    }
   }
 
   return html;
