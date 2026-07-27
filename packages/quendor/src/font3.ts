@@ -1,51 +1,68 @@
 // Font 3, the Z-Machine "character graphics" font (Standard 1.1 §16). It is an
-// 8x8 bitmap font of box-drawing pieces, arrows, and map connectors that games
-// (notably Beyond Zork) switch to with set_font 3. Text hosts can't show the
-// bitmaps, so we map each code to the closest Unicode glyph; the mapping below
-// covers the glyphs Beyond Zork actually uses (its own names, from the game's
-// ZIL constants, are noted alongside each code). Codes with no good Unicode
-// match fall back to the raw character.
+// 8x8 bitmap font of box-drawing pieces, arrows, and compass/map glyphs that
+// games (notably Beyond Zork) switch to with set_font 3. Text hosts can't show
+// the bitmaps, so we map each code to the closest Unicode glyph.
+//
+// The mappings were verified by position against Beyond Zork's on-screen layout
+// (its ZIL constant names are noted alongside each code). The box frame and
+// arrows are exact; the compass-rose pieces are sub-cell pixel shapes with no
+// clean Unicode equivalent, so those are best-effort block/quadrant
+// approximations. Codes with no mapping fall back to the raw character.
 
 const FONT3: Readonly<Record<number, string>> = {
   32: " ",
 
-  // Box frame — corners and edges (BZ: TRCORNER..REDGE, 71-78)
-  71: "┐", // ┐ top-right corner
-  72: "┘", // ┘ bottom-right corner
-  73: "└", // └ bottom-left corner
-  74: "┌", // ┌ top-left corner
-  75: "─", // ─ top edge
-  76: "─", // ─ bottom edge
-  77: "│", // │ left edge
-  78: "│", // │ right edge
+  // Room/window border — corners and edges (BZ: TLC/TRC/BLC/BRC, TOP/BOT/LSID/RSID)
+  47: "┌", // TLC top-left corner
+  48: "┐", // TRC top-right corner
+  46: "└", // BLC bottom-left corner
+  49: "┘", // BRC bottom-right corner
+  39: "─", // TOP horizontal edge
+  38: "─", // BOT horizontal edge
+  41: "│", // RSID vertical edge (left border of the box)
+  40: "│", // LSID vertical edge (right border of the box)
 
-  // Solid / half blocks (BZ: SOLID, BOT, TOP, LSID, RSID, ISOLID)
-  37: "█", // █ solid
-  38: "▄", // ▄ bottom half
-  39: "▀", // ▀ top half
-  40: "▌", // ▌ left half
-  41: "▐", // ▐ right half
-  54: "█", // █ inverse solid
+  // Title/menu box — a second corner + edge set (BZ: TRCORNER..REDGE, 71-78)
+  74: "┌", // TLCORNER
+  71: "┐", // TRCORNER
+  73: "└", // BLCORNER
+  72: "┘", // BRCORNER
+  75: "─", // TOPEDGE
+  76: "─", // BOTEDGE
+  77: "│", // LEDGE
+  78: "│", // REDGE
 
-  // Diagonals and crosses (BZ: RDIAG, LDIAG, XCROSS, HVCROSS)
-  35: "╱", // ╱ right diagonal
-  36: "╲", // ╲ left diagonal
-  90: "╳", // ╳ diagonal cross
-  91: "┼", // ┼ line cross
+  // Solid blocks (BZ: SOLID, ISOLID) and diagonals/crosses (RDIAG/LDIAG/XCROSS/HVCROSS)
+  37: "█", // SOLID
+  54: "▓", // ISOLID (inverse/shaded solid)
+  35: "╱", // RDIAG
+  36: "╲", // LDIAG
+  90: "╳", // XCROSS
+  91: "┼", // HVCROSS
 
-  // Arrows — the menu's "use ↑/↓" hints (BZ: UARROW/DARROW/UDARROW and the
-  // inverse-video IUARROW/IDARROW/IUDARROW, which reuse the same glyph).
-  92: "↑", // ↑ up
-  93: "↓", // ↓ down
-  94: "↕", // ↕ up-down
-  123: "↑", // ↑ up (inverse)
-  124: "↓", // ↓ down (inverse)
-  125: "↕", // ↕ up-down (inverse)
+  // Compass-rose pieces (approximate: sub-cell pixel shapes → nearest block/quadrant)
+  55: "▀", // top
+  56: "▄", // bottom
+  57: "▌", // left
+  58: "▌", // left
+  61: "▐", // right
+  63: "▘", // upper-left
+  65: "▖", // lower-left
+  66: "▝", // upper-right
+  68: "▙", // left + bottom
+
+  // Arrows — menu hints (BZ: UARROW/DARROW/UDARROW and inverse IUARROW/IDARROW/IUDARROW)
+  92: "↑",
+  93: "↓",
+  94: "↕",
+  123: "↑",
+  124: "↓",
+  125: "↕",
 
   // Misc (BZ: SMBOX, QMARK/IQMARK)
-  95: "▪", // ▪ small box
-  96: "?", // question mark
-  126: "?", // question mark (inverse)
+  95: "▪",
+  96: "?",
+  126: "?",
 };
 
 /** Map a font-3 character code to its Unicode approximation (raw char if unmapped). */
