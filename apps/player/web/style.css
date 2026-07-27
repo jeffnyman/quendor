@@ -1,0 +1,135 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #1e1e2e;
+  --fg: #cdd6f4;
+  --accent: #89b4fa;
+  --muted: #7f849c;
+  --panel: #252537;
+  --border: #3b3b55;
+
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+  text-rendering: optimizelegibility;
+}
+
+:where(html, body) {
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.4 ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+
+  .title {
+    font-weight: 700;
+    color: var(--accent);
+    margin-right: 8px;
+  }
+}
+
+.filebtn {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.filebtn:hover {
+  border-color: var(--accent);
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  align-items: center;
+}
+
+/* The game surface: a centred monospace column holding the screen grid. */
+#screen {
+  width: 100%;
+  max-width: 720px;
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.row {
+  white-space: pre;
+}
+
+.statusbar {
+  background: var(--fg);
+  color: var(--bg);
+  padding: 2px 8px;
+  white-space: pre;
+  font-weight: 600;
+}
+
+.more {
+  color: var(--accent);
+  padding-top: 2px;
+}
+
+.fatal {
+  color: #f38ba8;
+  padding-top: 8px;
+}
+
+/* The caret is drawn inline on the cursor row: a block that blinks. */
+.caret {
+  background: var(--accent);
+  color: var(--bg);
+  animation: blink 1.06s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    background: transparent;
+    color: inherit;
+  }
+}
+
+/* The real input element is off-screen — it edits, the grid displays. */
+#input {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
