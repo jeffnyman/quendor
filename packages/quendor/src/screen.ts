@@ -93,6 +93,11 @@ export class Screen {
     return this.grid.slice(0, this.upperHeight);
   }
 
+  /** The lower window's cursor (absolute grid coordinates) — where input is echoed. */
+  get lowerCursor(): { row: number; col: number } {
+    return { row: this.lowerRow, col: this.lowerCol };
+  }
+
   /** Compose the v3 status bar: location on the left, score/time on the right. */
   setStatusLine(left: string, right: string): void {
     const w = this.width;

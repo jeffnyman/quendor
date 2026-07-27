@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
 import { loadStoryFromFile, readCharSync, readLineSync } from "./node.ts";
-import { type Cell, TextStyle } from "./screen.ts";
+import { type Screen, TextStyle } from "./screen.ts";
 import type { Story } from "./story.ts";
 
 const USAGE = `quendor — a terminal Z-Machine interpreter
@@ -92,70 +92,64 @@ export function promptForSaveFile(def: string): string {
   return name.length > 0 ? name : def;
 }
 
-// --- terminal status bar (v4+ upper window) --------------------------------
+// --- curses-style screen renderer ------------------------------------------
 
 const ESC = "\x1b";
 
-/** Reserve the top `height` rows with a DECSTBM scroll region (0 resets to full screen). */
-export function setScrollRegion(height: number): void {
-  const rows = process.stdout.rows;
-
-  if (height > 0 && rows) {
-    // Setting the region homes the cursor as a side effect, so wrap it in
-    // save (ESC 7) / restore (ESC 8) to leave the cursor where the transcript
-    // left it — right after the prompt — instead of moving it.
-    process.stdout.write(`${ESC}7${ESC}[${height + 1};${rows}r${ESC}8`);
-  } else {
-    process.stdout.write(`${ESC}[r`); // reset to the full screen
-  }
-}
-
 /**
- * Redraw the upper window at the top of the screen, preserving the cursor.
- * Each cell is drawn in reverse video only if the game set that style on it, so
- * a full-width reverse row renders a status bar while a game that writes reverse
- * cells over just part of a row (leaving the margins untouched) renders a
- * centered quote box. Adjacent same-style cells are coalesced into one run to
- * keep the escape output compact.
+ * A full-frame redraw of the screen grid to the terminal: each row positioned and
+ * written with reverse-video runs coalesced, then the hardware cursor parked at the
+ * lower window's cursor (where input echoes). quendor owns the whole screen, so
+ * this replaces the old status-bar overlay entirely. See docs/screen-model.md.
  */
-export function drawUpperWindow(grid: Cell[][]): void {
-  process.stdout.write(`${ESC}7`); // save cursor
-  grid.forEach((row, r) => {
-    let line = `${ESC}[${r + 1};1H${ESC}[0m`;
+export function renderFrame(screen: Screen): string {
+  let out = "";
+
+  screen.grid.forEach((row, r) => {
+    out += `${ESC}[${r + 1};1H${ESC}[0m`; // home to the row start, reset attributes
     let reverse = false;
 
     for (const cell of row) {
       const wantReverse = (cell.style & TextStyle.Reverse) !== 0;
 
       if (wantReverse !== reverse) {
-        line += wantReverse ? `${ESC}[7m` : `${ESC}[0m`;
+        out += wantReverse ? `${ESC}[7m` : `${ESC}[0m`;
         reverse = wantReverse;
       }
 
-      line += cell.ch;
+      out += cell.ch;
     }
 
-    process.stdout.write(`${line}${ESC}[0m`);
+    out += `${ESC}[0m`;
   });
-  process.stdout.write(`${ESC}8`); // restore cursor
+
+  const { row, col } = screen.lowerCursor;
+  out += `${ESC}[${row + 1};${col + 1}H`; // park the cursor for input (1-based)
+
+  return out;
 }
 
 /**
- * Wire the machine's host callbacks to the terminal: text output, screen
- * clears, the sound bell, and the save/restore file prompts.
+ * The `[More]` pause: show the screenful, draw the prompt on the bottom line, and
+ * block for a keystroke. The next frame overwrites the prompt.
+ */
+function showMore(screen: Screen): void {
+  process.stdout.write(renderFrame(screen));
+  process.stdout.write(`${ESC}[${screen.height};1H${ESC}[7m[More]${ESC}[0m`);
+  readCharSync();
+}
+
+/**
+ * Wire the machine's host callbacks for interactive play. Output and screen
+ * clears land on the grid (drawn by renderFrame), not straight to the terminal,
+ * so onOutput and onClearScreen are intentionally quiet; frames are drawn at each
+ * settle point rather than per opcode. The sound bell and the save/restore file
+ * prompts remain.
  */
 export function installHostCallbacks(machine: Machine, defaultSave: string): void {
-  machine.onOutput = (text): void => {
-    process.stdout.write(text);
-  };
-
-  // Fired by erase_window on the lower window. Clear from the first lower-window
-  // row to the end of screen, leaving any status bar above it intact. (For
-  // erase_window -1, Screen resets upperHeight to 0 first, so this clears all.)
-  machine.onClearScreen = (): void => {
-    if (!process.stdout.isTTY) return;
-    process.stdout.write(`${ESC}[${machine.screen.upperHeight + 1};1H${ESC}[J`);
-  };
+  machine.onOutput = (): void => {}; // the grid is the display; onOutput is only for transcripts
+  machine.onClearScreen = (): void => {}; // erase_window clears the grid; the next frame shows it
+  machine.onScreenRefresh = (): void => {}; // rendered at settle points, not on every screen op
 
   // sound_effect: bleeps (1 = high, 2 = low) map to the terminal bell; sampled
   // sounds (3+) need audio we don't have yet (Blorb pending), so ignore them.
@@ -189,8 +183,10 @@ export function installHostCallbacks(machine: Machine, defaultSave: string): voi
 }
 
 /**
- * Deliver whatever input the machine is waiting for: a single keystroke (any
- * key) for read_char, or a line for sread/aread. Returns false at end of input.
+ * Deliver whatever input the machine is waiting for: a single keystroke for
+ * read_char, or a line for sread/aread. A line is echoed into the lower window so
+ * the player's typing becomes part of the scrolling transcript (quendor does not
+ * echo reads itself). Returns false at end of input.
  */
 export function deliverInput(machine: Machine): boolean {
   if (machine.awaitingCharInput) {
@@ -200,6 +196,7 @@ export function deliverInput(machine: Machine): boolean {
   } else {
     const line = readLineSync();
     if (line === null) return false;
+    machine.screen.print(line + "\n"); // echo into the grid before the game responds
     machine.provideInput(line);
   }
 
@@ -207,54 +204,31 @@ export function deliverInput(machine: Machine): boolean {
 }
 
 /**
- * Run the fetch/prompt loop until the machine halts or input ends. The v4+
- * upper window (a status line, or a transient quote box) is repainted both at
- * each prompt and mid-run via onScreenRefresh — a quote box is drawn and torn
- * down between prompts, so the prompt-time paint alone would never catch it
- * (repaints are idempotent). Leaves the terminal clean on exit.
+ * Run the fetch/prompt loop until the machine halts or input ends, redrawing the
+ * screen grid after each step. On a TTY it runs on the alternate screen buffer, so
+ * entering and leaving restores the console cleanly — no scrollback ghosts, no
+ * lingering scroll region.
  */
 export function runTerminalLoop(machine: Machine): void {
-  let statusHeight = 0;
+  const tty = process.stdout.isTTY === true;
 
-  const refreshUpperWindow = (): void => {
-    if (!process.stdout.isTTY) return;
+  if (tty) process.stdout.write(`${ESC}[?1049h${ESC}[2J`); // enter the alternate screen
 
-    if (machine.screen.upperHeight !== statusHeight) {
-      statusHeight = machine.screen.upperHeight;
-      setScrollRegion(statusHeight);
-    }
-
-    if (statusHeight > 0) drawUpperWindow(machine.screen.upper);
+  machine.screen.onMore = (): void => {
+    if (tty) showMore(machine.screen);
   };
-  machine.onScreenRefresh = refreshUpperWindow;
 
   for (;;) {
     const state = machine.run();
 
-    if (state !== RunState.WaitingForInput) break; // halted
+    if (tty) process.stdout.write(renderFrame(machine.screen));
 
-    refreshUpperWindow();
+    if (state !== RunState.WaitingForInput) break; // halted
 
     if (!deliverInput(machine)) break; // end of input
   }
 
-  // Leave the terminal clean. Reset the scroll region unconditionally (a no-op
-  // if none was set) so a stray margin can't leave the console scroll-locked,
-  // and erase the reserved status rows so the bar doesn't ghost in the
-  // scrollback. Wrapped in save (ESC 7) / restore (ESC 8): ESC[r and the erases
-  // move the cursor, but we want the shell prompt to resume where the game left
-  // off — below the transcript, not jumped to the top.
-  if (process.stdout.isTTY) {
-    let cleanup = `${ESC}7${ESC}[r`; // save cursor, reset the scroll region to full screen
-
-    for (let row = 1; row <= statusHeight; row++) {
-      cleanup += `${ESC}[${row};1H${ESC}[0m${ESC}[2K`; // home to each frozen status row and erase it
-    }
-
-    cleanup += `${ESC}8`; // restore the cursor to the transcript
-
-    process.stdout.write(cleanup);
-  }
+  if (tty) process.stdout.write(`${ESC}[?1049l`); // leave the alternate screen
 }
 
 // --- acceptance mode (--accept) --------------------------------------------
@@ -443,12 +417,5 @@ export async function main(): Promise<void> {
   });
 
   installHostCallbacks(machine, defaultSaveName(parsed.path));
-
-  // Start on a fresh screen (Std §8: clear on start) so the game isn't drawn
-  // over prior terminal output. TTY only, so piped output stays clean.
-  if (process.stdout.isTTY) {
-    process.stdout.write(`${ESC}[2J${ESC}[H`);
-  }
-
-  runTerminalLoop(machine);
+  runTerminalLoop(machine); // enters/leaves the alternate screen and clears it itself
 }

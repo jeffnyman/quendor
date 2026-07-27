@@ -194,7 +194,7 @@ export class Machine {
 
     this.setupHeaderCapabilities();
 
-    this.screen = new Screen(this.screenWidth);
+    this.screen = new Screen(this.screenWidth, this.screenHeight);
     this.screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void =>
       this.onOutput(text, attrs);
     this.screen.onClearLower = (): void => this.onClearScreen();

@@ -2,21 +2,20 @@ import { afterEach, expect, test, vi } from "vite-plus/test";
 import {
   defaultSaveName,
   deliverInput,
-  drawUpperWindow,
   installHostCallbacks,
   main,
   parseArgs,
   parseSolution,
   promptForSaveFile,
+  renderFrame,
   runAcceptance,
   runAcceptanceMode,
   runTerminalLoop,
-  setScrollRegion,
   solutionKey,
 } from "../src/cli.ts";
 import { loadStoryFromFile, readCharSync, readLineSync } from "../src/node.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { TextStyle, type Cell } from "../src/screen.ts";
+import { TextStyle, type Cell, type Screen } from "../src/screen.ts";
 import { Machine, RunState } from "../src/machine.ts";
 import { Story } from "../src/story.ts";
 import { HeaderOffset } from "../src/header.ts";
@@ -176,7 +175,7 @@ test("promptForSaveFile returns the typed name, trimmed", () => {
   expect(promptForSaveFile("zork1.qzl")).toBe("mysave.qzl");
 });
 
-// --- terminal rendering: setScrollRegion / drawUpperWindow -----------------
+// --- terminal rendering: renderFrame ---------------------------------------
 
 /** Capture everything written to stdout as one string. */
 function captureStdout(): { text: () => string } {
@@ -184,39 +183,18 @@ function captureStdout(): { text: () => string } {
   return { text: () => write.mock.calls.map((c) => String(c[0])).join("") };
 }
 
-test("setScrollRegion resets to the full screen when height is 0", () => {
-  const out = captureStdout();
-
-  setScrollRegion(0);
-
-  expect(out.text()).toBe("\x1b[r");
-});
-
-test("setScrollRegion carves a region below the status rows when the terminal has a height", () => {
-  const out = captureStdout();
-  const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
-  Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
-
-  try {
-    setScrollRegion(2);
-    // cursor save (ESC 7), scroll region rows 3..24, cursor restore (ESC 8)
-    expect(out.text()).toBe("\x1b7\x1b[3;24r\x1b8");
-  } finally {
-    if (rowsDesc) Object.defineProperty(process.stdout, "rows", rowsDesc);
-    else Object.defineProperty(process.stdout, "rows", { value: undefined, configurable: true });
-  }
-});
-
 const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1 });
 
-test("drawUpperWindow coalesces reverse-video runs, bracketed by cursor save/restore", () => {
-  const out = captureStdout();
-
-  // A is normal; B and C are reverse — the two reverse cells coalesce into one run.
-  drawUpperWindow([[cell("A"), cell("B", TextStyle.Reverse), cell("C", TextStyle.Reverse)]]);
-
+test("renderFrame draws each grid row, coalescing reverse-video runs, then parks the cursor", () => {
   const E = "\x1b";
-  expect(out.text()).toBe(`${E}7${E}[1;1H${E}[0mA${E}[7mBC${E}[0m${E}8`);
+  const screen = {
+    // A normal, B/C reverse (coalesced), D normal (reverse turns back off)
+    grid: [[cell("A"), cell("B", TextStyle.Reverse), cell("C", TextStyle.Reverse), cell("D")]],
+    height: 1,
+    lowerCursor: { row: 0, col: 3 },
+  } as unknown as Screen;
+
+  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0mA${E}[7mBC${E}[0mD${E}[0m${E}[1;4H`);
 });
 
 // --- installHostCallbacks --------------------------------------------------
@@ -226,14 +204,24 @@ function hostMachine(): Machine {
   return { screen: { upperHeight: 0 } } as unknown as Machine;
 }
 
-test("installHostCallbacks: onOutput writes text straight to stdout", () => {
+test("installHostCallbacks: onOutput is a no-op (the grid is the display)", () => {
   const out = captureStdout();
   const machine = hostMachine();
 
   installHostCallbacks(machine, "save.qzl");
   machine.onOutput("hello");
 
-  expect(out.text()).toBe("hello");
+  expect(out.text()).toBe(""); // nothing goes straight to stdout in curses mode
+});
+
+test("installHostCallbacks: onScreenRefresh is a no-op (frames render at settle points)", () => {
+  const out = captureStdout();
+  const machine = hostMachine();
+
+  installHostCallbacks(machine, "save.qzl");
+
+  expect(() => machine.onScreenRefresh()).not.toThrow();
+  expect(out.text()).toBe("");
 });
 
 test("installHostCallbacks: onSoundEffect bleeps for 1 and 2, ignores sampled sounds", () => {
@@ -311,7 +299,7 @@ test("installHostCallbacks: onRestore returns null when reading the file throws"
   expect(machine.onRestore()).toBeNull();
 });
 
-test("installHostCallbacks: onClearScreen is a no-op when stdout is not a TTY", () => {
+test("installHostCallbacks: onClearScreen is a no-op (erase_window clears the grid instead)", () => {
   const out = captureStdout();
   const machine = hostMachine();
 
@@ -321,35 +309,20 @@ test("installHostCallbacks: onClearScreen is a no-op when stdout is not a TTY", 
   expect(out.text()).toBe("");
 });
 
-test("installHostCallbacks: onClearScreen clears below the status bar on a TTY", () => {
-  const out = captureStdout();
-  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-
-  const machine = { screen: { upperHeight: 2 } } as unknown as Machine;
-
-  try {
-    installHostCallbacks(machine, "save.qzl");
-    machine.onClearScreen();
-    // clears from the first lower-window row (upperHeight + 1 = 3) to end of screen
-    expect(out.text()).toBe("\x1b[3;1H\x1b[J");
-  } finally {
-    Object.defineProperty(
-      process.stdout,
-      "isTTY",
-      isTTYDesc ?? { value: undefined, configurable: true },
-    );
-  }
-});
-
 // --- deliverInput ----------------------------------------------------------
 
-test("deliverInput reads a line and provides it (line input)", () => {
+test("deliverInput reads a line, echoes it into the grid, and provides it", () => {
   vi.mocked(readLineSync).mockReturnValue("go north");
   const provideInput = vi.fn();
-  const machine = { awaitingCharInput: false, provideInput } as unknown as Machine;
+  const print = vi.fn();
+  const machine = {
+    awaitingCharInput: false,
+    provideInput,
+    screen: { print },
+  } as unknown as Machine;
 
   expect(deliverInput(machine)).toBe(true);
+  expect(print).toHaveBeenCalledWith("go north\n"); // echoed into the lower window
   expect(provideInput).toHaveBeenCalledWith("go north");
 });
 
@@ -389,7 +362,7 @@ function quitStory(): Story {
   return new Story(bytes);
 }
 
-test("main loads the story, wires it up, and runs it to completion (TTY: clears the screen)", async () => {
+test("main loads the story, wires it up, and runs it on the alternate screen (TTY)", async () => {
   process.argv = ["node", "quendor", "game.z3"];
   const out = captureStdout();
   vi.mocked(loadStoryFromFile).mockResolvedValue(quitStory());
@@ -402,7 +375,8 @@ test("main loads the story, wires it up, and runs it to completion (TTY: clears 
 
     expect(loadStoryFromFile).toHaveBeenCalledWith("game.z3");
     expect(process.exitCode).toBeUndefined();
-    expect(out.text()).toContain("\x1b[2J"); // Std §8: clear the screen on start
+    expect(out.text()).toContain("\x1b[?1049h"); // entered the alternate screen
+    expect(out.text()).toContain("\x1b[?1049l"); // ...and left it cleanly on exit
   } finally {
     Object.defineProperty(
       process.stdout,
@@ -421,7 +395,12 @@ test("runTerminalLoop delivers a line at a read prompt, then stops when the game
     .fn()
     .mockReturnValueOnce(RunState.WaitingForInput)
     .mockReturnValueOnce(RunState.Halted);
-  const machine = { run, provideInput, awaitingCharInput: false } as unknown as Machine;
+  const machine = {
+    run,
+    provideInput,
+    awaitingCharInput: false,
+    screen: { print: vi.fn(), onMore: (): void => {} },
+  } as unknown as Machine;
 
   runTerminalLoop(machine);
 
@@ -434,58 +413,19 @@ test("runTerminalLoop stops at end of input", () => {
   vi.mocked(readLineSync).mockReturnValue(null); // EOF
 
   const run = vi.fn().mockReturnValue(RunState.WaitingForInput);
-  const machine = { run, provideInput: vi.fn(), awaitingCharInput: false } as unknown as Machine;
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    screen: { print: vi.fn(), onMore: (): void => {} },
+  } as unknown as Machine;
 
   runTerminalLoop(machine);
 
   expect(run).toHaveBeenCalledTimes(1);
 });
 
-test("runTerminalLoop repaints the upper window and resets the region on a TTY", () => {
-  const out = captureStdout();
-  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-  const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, "rows");
-  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-  Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
-  vi.mocked(readLineSync).mockReturnValue("go");
-
-  const run = vi
-    .fn()
-    .mockReturnValueOnce(RunState.WaitingForInput)
-    .mockReturnValueOnce(RunState.Halted);
-  const machine = {
-    run,
-    provideInput: vi.fn(),
-    awaitingCharInput: false,
-    screen: { upperHeight: 1, upper: [[{ ch: "S", style: 0, fg: 1, bg: 1 }]] },
-  } as unknown as Machine;
-
-  try {
-    runTerminalLoop(machine);
-    const text = out.text();
-
-    expect(text).toContain("\x1b[2;24r"); // setScrollRegion(1): region rows 2..24
-    expect(text).toContain("S"); // drawUpperWindow painted the status cell
-    expect(text).toContain("\x1b[r"); // cleanup reset the region on exit
-    expect(text).toContain("\x1b[1;1H\x1b[0m\x1b[2K"); // cleanup erased the frozen status row
-  } finally {
-    Object.defineProperty(
-      process.stdout,
-      "isTTY",
-      isTTYDesc ?? { value: undefined, configurable: true },
-    );
-    Object.defineProperty(
-      process.stdout,
-      "rows",
-      rowsDesc ?? { value: undefined, configurable: true },
-    );
-  }
-});
-
-test("runTerminalLoop resets the scroll region on exit even without a status bar", () => {
-  // Defensive: a game that never opened an upper window (statusHeight stays 0)
-  // should still reset the region on exit, so a stray margin can't leave the
-  // console scroll-locked. No status rows means nothing to erase.
+test("runTerminalLoop enters/leaves the alternate screen and renders the grid on a TTY", () => {
   const out = captureStdout();
   const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
   Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
@@ -495,15 +435,20 @@ test("runTerminalLoop resets the scroll region on exit even without a status bar
     run,
     provideInput: vi.fn(),
     awaitingCharInput: false,
-    screen: { upperHeight: 0, upper: [] },
+    screen: {
+      grid: [[{ ch: "H", style: 0, fg: 1, bg: 1 }]],
+      height: 1,
+      lowerCursor: { row: 0, col: 0 },
+    },
   } as unknown as Machine;
 
   try {
     runTerminalLoop(machine);
     const text = out.text();
 
-    expect(text).toContain("\x1b[r"); // region reset unconditionally
-    expect(text).not.toContain("\x1b[2K"); // nothing to erase
+    expect(text).toContain("\x1b[?1049h"); // entered the alternate screen
+    expect(text).toContain("H"); // rendered the grid cell
+    expect(text).toContain("\x1b[?1049l"); // left the alternate screen on exit
   } finally {
     Object.defineProperty(
       process.stdout,
@@ -511,6 +456,63 @@ test("runTerminalLoop resets the scroll region on exit even without a status bar
       isTTYDesc ?? { value: undefined, configurable: true },
     );
   }
+});
+
+test("runTerminalLoop's onMore hook renders the [More] prompt and waits for a key on a TTY", () => {
+  const out = captureStdout();
+  const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+  vi.mocked(readCharSync).mockReturnValue(" "); // the key that dismisses [More]
+
+  const screen = {
+    grid: [[{ ch: "X", style: 0, fg: 1, bg: 1 }]],
+    height: 1,
+    lowerCursor: { row: 0, col: 0 },
+    onMore: (): void => {},
+  };
+  const run = vi.fn().mockImplementation((): RunState => {
+    screen.onMore(); // simulate a screenful scrolling by mid-run
+    return RunState.Halted;
+  });
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    screen,
+  } as unknown as Machine;
+
+  try {
+    runTerminalLoop(machine);
+
+    expect(out.text()).toContain("[More]"); // the prompt was drawn
+    expect(readCharSync).toHaveBeenCalled(); // and it blocked for a key
+  } finally {
+    Object.defineProperty(
+      process.stdout,
+      "isTTY",
+      isTTYDesc ?? { value: undefined, configurable: true },
+    );
+  }
+});
+
+test("runTerminalLoop's onMore does not pause when stdout is not a TTY", () => {
+  const out = captureStdout(); // isTTY unset -> not a TTY
+
+  const screen = { onMore: (): void => {}, print: vi.fn() };
+  const run = vi.fn().mockImplementation((): RunState => {
+    screen.onMore(); // a screenful scrolled by, but there's no interactive pause
+    return RunState.Halted;
+  });
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    screen,
+  } as unknown as Machine;
+
+  runTerminalLoop(machine);
+
+  expect(out.text()).not.toContain("[More]"); // no prompt off a TTY
 });
 
 // --- acceptance mode (--accept) --------------------------------------------

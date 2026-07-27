@@ -917,6 +917,59 @@ test("read_char resets the screen's [More] paging counter", () => {
   expect(machine.screen.linesSinceInput).toBe(0);
 });
 
+// --- screen model: the All Roads backdrop pattern (opcodes -> grid) ---------
+//
+// Draw into a tall upper window, then shrink it to one row: the drawing must
+// persist as a backdrop while lower-window text prints separately (Std §8.7.2.1/2).
+// The end-to-end analogue of the All Roads title-page bug — see docs/screen-model.md.
+
+test("a tall split, drawn into and then shrunk, keeps its content while the lower window prints below", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 5;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes.set(
+        [
+          0xea,
+          0x7f,
+          5, // split_window 5   (a tall upper window)
+          0xeb,
+          0x7f,
+          1, // set_window 1     (select upper)
+          0xef,
+          0x5f,
+          3,
+          1, // set_cursor 3 1   (upper row 3, col 1)
+          ...printInsn("box"), // draw the "box" into the upper window
+          0xeb,
+          0x7f,
+          0, // set_window 0     (back to lower)
+          0xea,
+          0x7f,
+          1, // split_window 1   (shrink — the box must survive)
+          ...printInsn("menu"), // lower-window text
+          ...quitInsn(),
+        ],
+        MAIN,
+      );
+    }),
+    { screenWidth: 40, screenHeight: 12 },
+  );
+
+  machine.run();
+
+  const gridRow = (r: number): string =>
+    machine.screen.grid[r]
+      .map((c) => c.ch)
+      .join("")
+      .replace(/\s+$/, "");
+
+  expect(machine.screen.upperHeight).toBe(1); // shrunk back to one row
+  expect(gridRow(2)).toBe("box"); // drawn in the tall window, survived the shrink
+  expect(gridRow(5)).toBe("menu"); // lower-window text, on its own row — no collision
+});
+
 test("provideKey delivers a raw ZSCII code to a pending read_char", () => {
   const machine = new Machine(
     buildStory(0x100, (bytes) => {
