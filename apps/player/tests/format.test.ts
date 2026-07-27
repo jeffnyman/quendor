@@ -29,9 +29,9 @@ test("attrCss: a plain run emits only colours that resolve", () => {
   expect(attrCss(0, 2, 9)).toEqual(["color:#000000", "background:#ffffff"]);
 });
 
-test("attrCss: reverse video swaps fg/bg with theme fallbacks", () => {
-  expect(attrCss(1, 1, 1)).toEqual(["color:var(--bg)", "background:var(--fg)"]);
-  expect(attrCss(1, 2, 9)).toEqual(["color:#ffffff", "background:#000000"]);
+test("attrCss: reverse video is ignored (rendered as plain fg/bg)", () => {
+  expect(attrCss(1, 1, 1)).toEqual([]); // reverse bit set, but default colours → nothing
+  expect(attrCss(1, 2, 9)).toEqual(["color:#000000", "background:#ffffff"]); // no swap
 });
 
 test("attrCss: bold and italic style bits", () => {

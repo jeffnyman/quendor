@@ -33,13 +33,12 @@ export function attrCss(style: number, fg: number, bg: number): string[] {
   const bgc = zColorCss(bg);
   const css: string[] = [];
 
-  if (style & 1) {
-    // reverse video: swap fg/bg (falling back to the theme colours)
-    css.push(`color:${bgc ?? "var(--bg)"}`, `background:${fgc ?? "var(--fg)"}`);
-  } else {
-    if (fgc) css.push(`color:${fgc}`);
-    if (bgc) css.push(`background:${bgc}`);
-  }
+  // Reverse video is deliberately not applied (matching the CLI renderer). Games
+  // build "panels" out of reverse-video text without padding lines to a fixed
+  // width, which leaves ragged gaps; the information they encode with it —
+  // selection highlights, emphasis — they carry with colour instead.
+  if (fgc) css.push(`color:${fgc}`);
+  if (bgc) css.push(`background:${bgc}`);
 
   if (style & 2) css.push("font-weight:700");
   if (style & 4) css.push("font-style:italic");
