@@ -84,6 +84,8 @@ test("v5+ writes the unit screen size and a 1x1 font cell into the header", () =
   expect(machine.memory.readWord(HeaderOffset.ScreenHeightUnits)).toBe(24);
   expect(machine.memory.readByte(HeaderOffset.FontWidth)).toBe(1);
   expect(machine.memory.readByte(HeaderOffset.FontHeight)).toBe(1);
+  // and colour is advertised (Flags 1 bit 0) so colour-gating games use it
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x01).toBe(1);
 });
 
 test("v4 leaves the v5-only unit/font header fields alone", () => {
@@ -96,6 +98,7 @@ test("v4 leaves the v5-only unit/font header fields alone", () => {
 
   expect(machine.memory.readByte(HeaderOffset.FontWidth)).toBe(0);
   expect(machine.memory.readByte(HeaderOffset.FontHeight)).toBe(0);
+  expect(machine.memory.readByte(HeaderOffset.Flags1) & 0x01).toBe(0); // colour bit is v5+
 });
 
 test("shares the story's memory rather than copying it", () => {
