@@ -816,6 +816,8 @@ export class Machine {
     parseBuffer: number,
     storeVariable: number,
   ): void {
+    this.screen.resetPaging(); // the player is getting a turn: start [More] counting fresh
+
     const request = { kind, textBuffer, parseBuffer, storeVariable };
     const queued = this.inputQueue.shift();
 
@@ -909,6 +911,8 @@ export class Machine {
   }
 
   private readChar(storeVariable: number): void {
+    this.screen.resetPaging(); // the player is getting a turn: start [More] counting fresh
+
     // Refill the character buffer from any queued line (with a trailing Enter).
     if (this.charBuffer.length === 0 && this.inputQueue.length > 0) {
       const line = this.inputQueue.shift() ?? "";

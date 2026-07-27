@@ -892,6 +892,31 @@ test("read_char blocks awaiting a single keystroke, and provideChar delivers it"
   expect(machine.memory.readWord(GLOBALS)).toBe("x".charCodeAt(0)); // 'x' = 120
 });
 
+test("sread resets the screen's [More] paging counter (the player is getting a turn)", () => {
+  const machine = new Machine(buildReadProgram());
+  machine.screen.linesSinceInput = 5; // pretend a screenful had scrolled by
+
+  machine.run(); // executes sread -> beginRead -> resetPaging, then blocks
+
+  expect(machine.screen.linesSinceInput).toBe(0);
+});
+
+test("read_char resets the screen's [More] paging counter", () => {
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      bytes.set([0xf6, 0x7f, 0x01, G_FIRST, ...quitInsn()], MAIN); // read_char 1 -> G_FIRST
+    }),
+  );
+  machine.screen.linesSinceInput = 5;
+
+  machine.run(); // read_char -> resetPaging, then blocks
+
+  expect(machine.screen.linesSinceInput).toBe(0);
+});
+
 test("provideKey delivers a raw ZSCII code to a pending read_char", () => {
   const machine = new Machine(
     buildStory(0x100, (bytes) => {
