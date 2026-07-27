@@ -1,0 +1,66 @@
+name: Deploy rezrov to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; let an in-progress run finish rather than
+# cancelling it (a half-published Pages deploy is worse than a queued one).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+          run-install: true
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # rezrov bundles quendor's built `dist` (a workspace package consumed
+      # through its package.json `exports`, not raw source), so the engine
+      # must be built before the app.
+      - name: Build quendor
+        run: vp run quendor#build
+
+      # Bare `vp build` (not `vp run rezrov#build`): the vp-run task cache keys
+      # on source files, not env, so it would happily serve a base-"/" build
+      # cached by ci.yml. Building directly rebuilds with PAGES_BASE every time.
+      - name: Build rezrov
+        run: vp build
+        working-directory: apps/rezrov
+        env:
+          PAGES_BASE: /quendor/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/rezrov/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
