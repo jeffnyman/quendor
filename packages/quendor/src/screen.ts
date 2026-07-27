@@ -192,13 +192,23 @@ export class Screen {
       return;
     }
 
-    if (this.cursorRow >= this.upperHeight) return;
-
-    const row = this.grid[this.cursorRow];
-
     for (const ch of text) {
-      if (ch === "\n" || this.cursorCol >= this.width) break;
-      row[this.cursorCol] = this.cell(ch);
+      if (ch === "\n") {
+        // A newline moves to the start of the next upper-window row — the upper
+        // window never scrolls. Games print multi-line blocks (Beyond Zork's
+        // reverse-video room panel) as one string with embedded newlines and
+        // padding, so stopping at the first newline drops the rest of the panel.
+        this.cursorRow++;
+        this.cursorCol = 0;
+        continue;
+      }
+
+      // Off the bottom of the upper window, or past the right edge: ignore the
+      // character (no scroll, no wrap) — but keep consuming so later newlines
+      // still advance the cursor.
+      if (this.cursorRow >= this.upperHeight || this.cursorCol >= this.width) continue;
+
+      this.grid[this.cursorRow][this.cursorCol] = this.cell(ch);
       this.cursorCol++;
     }
   }
