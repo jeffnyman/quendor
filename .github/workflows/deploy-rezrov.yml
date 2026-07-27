@@ -3,6 +3,15 @@ name: Deploy rezrov to Pages
 on:
   push:
     branches: [main]
+    # Only redeploy when something that ends up in the published page can
+    # change: the app itself, the quendor engine it bundles, the shared
+    # dependency versions, or this workflow. Skips zexplorer/docs-only pushes.
+    # workflow_dispatch below still lets you force a deploy for anything else.
+    paths:
+      - "apps/rezrov/**"
+      - "packages/quendor/**"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/deploy-rezrov.yml"
   workflow_dispatch:
 
 permissions:
