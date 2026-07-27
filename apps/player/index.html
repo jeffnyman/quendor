@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en-US" dir="ltr" class="no-js">
+  <head>
+    <title>Quendor</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A Z-Machine story player" />
+    <script type="module" src="/web/main.ts"></script>
+  </head>
+  <body>
+    <header>
+      <span class="title">Quendor</span>
+      <label class="filebtn">
+        Open a story file
+        <input id="file" type="file" accept=".z1,.z2,.z3,.z4,.z5,.z8,.zblorb,.blorb" hidden />
+      </label>
+    </header>
+
+    <main>
+      <div id="screen"></div>
+      <div id="inputrow">
+        <input id="input" type="text" placeholder="type a command and press Enter..." disabled />
+      </div>
+    </main>
+  </body>
+</html>
