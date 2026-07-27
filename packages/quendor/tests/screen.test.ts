@@ -265,6 +265,10 @@ test("setColor sets fg/bg, treating 0 as 'leave unchanged'", () => {
   screen.setColor(0, 2); // 0 = leave the foreground as it was
   expect(screen.foreground).toBe(4);
   expect(screen.background).toBe(2);
+
+  screen.setColor(7, 0); // 0 = leave the background as it was
+  expect(screen.foreground).toBe(7);
+  expect(screen.background).toBe(2);
 });
 
 test("setFont switches font and returns the previous one; 0 when unavailable", () => {

@@ -666,6 +666,143 @@ test("tokenize lexes a pre-filled text buffer into the parse buffer", () => {
   expect(machine.memory.readByte(PARSEBUF + 9)).toBe(7);
 });
 
+// --- execution: Beyond Zork v5 opcodes -------------------------------------
+//
+// set_color / set_font are display-attribute opcodes — the state lives on the
+// Screen and is stamped into printed cells, like style. copy_table / print_table
+// move and paint bytes. Each is a small hand-assembled v5 program run to a halt.
+
+/** A v5 story with `main` at the initial PC, a globals table, and an optional
+ *  data fill for tables the program reads or writes. */
+function buildV5(main: number[], fill?: (bytes: Uint8Array) => void): Machine {
+  const bytes = new Uint8Array(0x100);
+
+  bytes[HeaderOffset.Version] = 5;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress] = (GLOBALS >> 8) & 0xff;
+  bytes[HeaderOffset.GlobalVariablesTableAddress + 1] = GLOBALS & 0xff;
+
+  bytes.set(main, MAIN);
+  fill?.(bytes);
+
+  return new Machine(new Story(bytes));
+}
+
+test("set_color updates the screen's foreground and background", () => {
+  // long 2OP set_color(0x1b) 4 6 (two small constants); ret 0
+  const machine = buildV5([0x1b, 0x04, 0x06, 0x9b, 0x00]);
+
+  machine.run();
+
+  expect(machine.screen.foreground).toBe(4);
+  expect(machine.screen.background).toBe(6);
+});
+
+test("set_font switches the screen font and stores the previous one", () => {
+  // EXT set_font(0x04) 3, store -> stack (var 0x00)
+  const machine = buildV5([0xbe, 0x04, 0x7f, 0x03, 0x00]);
+
+  machine.step();
+
+  expect(machine.screen.font).toBe(3);
+  expect(machine.getEvalStack().at(-1)).toBe(1); // previous font pushed onto the stack
+});
+
+test("copy_table with second=0 zeroes size bytes of the first table", () => {
+  const src = 0xd0;
+  // VAR copy_table(0x1d) src 0 3 (three small constants); ret 0
+  const machine = buildV5([0xfd, 0x57, src, 0x00, 0x03, 0x9b, 0x00], (b) => {
+    b[src] = 0xaa;
+    b[src + 1] = 0xbb;
+    b[src + 2] = 0xcc;
+  });
+
+  machine.run();
+
+  expect([src, src + 1, src + 2].map((a) => machine.memory.readByte(a))).toEqual([0, 0, 0]);
+});
+
+test("copy_table copies forward when the destination is below the source", () => {
+  const src = 0xd0;
+  const dst = 0xc8; // below src, so a forward copy is safe
+  const machine = buildV5([0xfd, 0x57, src, dst, 0x03, 0x9b, 0x00], (b) => {
+    b[src] = 1;
+    b[src + 1] = 2;
+    b[src + 2] = 3;
+  });
+
+  machine.run();
+
+  expect([dst, dst + 1, dst + 2].map((a) => machine.memory.readByte(a))).toEqual([1, 2, 3]);
+});
+
+test("copy_table treats a negative size as a forced forward copy of |size| bytes", () => {
+  const src = 0xd0;
+  const dst = 0xe0;
+  // size is a large constant 0xfffd (-3); types byte 0x53 = small, small, large
+  const machine = buildV5([0xfd, 0x53, src, dst, 0xff, 0xfd, 0x9b, 0x00], (b) => {
+    b[src] = 4;
+    b[src + 1] = 5;
+    b[src + 2] = 6;
+  });
+
+  machine.run();
+
+  expect([dst, dst + 1, dst + 2].map((a) => machine.memory.readByte(a))).toEqual([4, 5, 6]);
+});
+
+test("copy_table copies backward when the destination overlaps above the source", () => {
+  const src = 0xd0;
+  const dst = 0xd1; // overlaps one byte above src; a forward copy would smear byte 0
+  const machine = buildV5([0xfd, 0x57, src, dst, 0x03, 0x9b, 0x00], (b) => {
+    b[src] = 1;
+    b[src + 1] = 2;
+    b[src + 2] = 3;
+  });
+
+  machine.run();
+
+  expect([dst, dst + 1, dst + 2].map((a) => machine.memory.readByte(a))).toEqual([1, 2, 3]);
+});
+
+test("print_table paints a single row of ZSCII from the table", () => {
+  const addr = 0xd0;
+  // VAR print_table(0x1e) addr 2 (two small constants); ret 0
+  const machine = buildV5([0xfe, 0x5f, addr, 0x02, 0x9b, 0x00], (b) => {
+    b[addr] = 72; // 'H'
+    b[addr + 1] = 105; // 'i'
+  });
+  let out = "";
+  machine.screen.onLowerOutput = (t): void => {
+    out += t;
+  };
+
+  machine.run();
+
+  expect(out).toBe("Hi");
+});
+
+test("print_table paints multiple rows, skipping bytes between them", () => {
+  const addr = 0xd0;
+  // VAR print_table addr width=2 height=2 skip=1 (four small constants); ret 0
+  const machine = buildV5([0xfe, 0x55, addr, 0x02, 0x02, 0x01, 0x9b, 0x00], (b) => {
+    b[addr] = 65; // 'A'
+    b[addr + 1] = 66; // 'B'
+    // addr + 2 is skipped
+    b[addr + 3] = 67; // 'C'
+    b[addr + 4] = 68; // 'D'
+  });
+  let out = "";
+  machine.screen.onLowerOutput = (t): void => {
+    out += t;
+  };
+
+  machine.run();
+
+  expect(out).toBe("ABCD");
+});
+
 // --- execution: quit / restart ---------------------------------------------
 
 /** 0OP `quit` (0xba). */
