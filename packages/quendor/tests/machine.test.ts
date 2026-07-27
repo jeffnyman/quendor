@@ -71,6 +71,33 @@ test("v1-3 leaves the screen-dimension bytes alone (they're a v4+ header field)"
   expect(machine.memory.readByte(HeaderOffset.ScreenHeight)).toBe(0);
 });
 
+test("v5+ writes the unit screen size and a 1x1 font cell into the header", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 5;
+    }),
+    { screenWidth: 80, screenHeight: 24 },
+  );
+
+  // Beyond Zork scales cursor positions by the font size; these must be 1, not 0.
+  expect(machine.memory.readWord(HeaderOffset.ScreenWidthUnits)).toBe(80);
+  expect(machine.memory.readWord(HeaderOffset.ScreenHeightUnits)).toBe(24);
+  expect(machine.memory.readByte(HeaderOffset.FontWidth)).toBe(1);
+  expect(machine.memory.readByte(HeaderOffset.FontHeight)).toBe(1);
+});
+
+test("v4 leaves the v5-only unit/font header fields alone", () => {
+  const machine = new Machine(
+    buildStory(64, (bytes) => {
+      bytes[HeaderOffset.Version] = 4;
+    }),
+    { screenWidth: 80, screenHeight: 24 },
+  );
+
+  expect(machine.memory.readByte(HeaderOffset.FontWidth)).toBe(0);
+  expect(machine.memory.readByte(HeaderOffset.FontHeight)).toBe(0);
+});
+
 test("shares the story's memory rather than copying it", () => {
   const story = buildStory(64, (bytes) => {
     bytes[HeaderOffset.Version] = 3;

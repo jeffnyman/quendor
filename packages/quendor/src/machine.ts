@@ -1408,6 +1408,19 @@ export class Machine {
       this.memory.writeByte(HeaderOffset.ScreenHeight, Math.min(255, this.screenHeight));
       this.memory.writeByte(HeaderOffset.ScreenWidth, Math.min(255, this.screenWidth));
     }
+
+    // v5+: the screen size in "units" and the font cell size. On a character
+    // display a unit is one character, so the unit dimensions equal the char
+    // dimensions and a font cell is 1x1. This matters because games scale cursor
+    // coordinates by the font size (Beyond Zork's DO-CURSET multiplies row/col by
+    // the font height/width): if these are left 0, every set_cursor collapses to
+    // (1,1) and centered text piles onto one line.
+    if (this.version >= 5) {
+      this.memory.writeWord(HeaderOffset.ScreenWidthUnits, Math.min(0xffff, this.screenWidth));
+      this.memory.writeWord(HeaderOffset.ScreenHeightUnits, Math.min(0xffff, this.screenHeight));
+      this.memory.writeByte(HeaderOffset.FontWidth, 1);
+      this.memory.writeByte(HeaderOffset.FontHeight, 1);
+    }
   }
 
   private setupInitialFrame(initialPC: number): Frame {
