@@ -28,3 +28,14 @@ Source (Inform 6): `entharion/zcode-checkers-source/czech/czech.inf`
 The header section of czech's output reports interpreter identity/flags, which
 differ per interpreter and are marked "No tests" — so the conformance tests
 assert czech's own summary line rather than diffing the whole transcript.
+
+### czech.z3.golden.txt (acceptance golden)
+
+A byte-for-byte transcript of czech.z3 played through the acceptance harness
+(`runAcceptance`, seed 1, 80-column screen — czech takes no input, so the solution
+is empty). `czech.test.ts` diffs a live run against it, pinning the _entire_
+transcript, so any drift in opcode output, text encoding, or the RNG shows up as a
+diff — stricter than the summary-line checks above. It's the CI-safe counterpart of
+the local `--accept` playthroughs of commercial games (whose goldens embed
+copyrighted text and are `.gitignore`d, never committed). Regenerate after an
+intentional engine change and re-commit.

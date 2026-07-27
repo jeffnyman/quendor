@@ -3,16 +3,7 @@ import "./style.css";
 // The engine, imported through Quendor's public API (src/index.ts) rather than
 // reaching into individual modules.
 import { Story, Machine, RunState, unwrapStory, dumpAll } from "quendor";
-import type { OutputAttrs } from "quendor";
-import {
-  escapeHtml,
-  hex,
-  outputRunCss,
-  renderUpperRow,
-  resolveAttrs,
-  signed,
-  zColorCss,
-} from "./format.ts";
+import { escapeHtml, hex, renderUpperRow, signed } from "./format.ts";
 import {
   computeLabels,
   currentRoutineAddr,
@@ -42,6 +33,7 @@ const els = {
   icount: $("#icount"),
   screentop: $("#screentop"),
   terminal: $("#terminal"),
+  messages: $("#messages"),
   input: $<HTMLInputElement>("#input"),
   dFollowPC: $<HTMLButtonElement>("#d-followpc"),
   dBack: $<HTMLButtonElement>("#d-back"),
@@ -63,12 +55,6 @@ let memoryBase = 0;
 // Object tree: which objects have their detail (attributes/properties) expanded.
 const expandedObjects = new Set<number>();
 
-// The lower window's current "paper" colors, applied to the whole terminal
-// (not per-span) so a game that runs on, for example, black-on-white reads
-// as a colored page, not as selected/highlighted text.
-let termFg = 1;
-let termBg = 1;
-
 // UI mode: "debug" shows all panels; "play" shows just the game, but it's the
 // SAME Machine — a breakpoint set in debug still fires while playing.
 let mode: "debug" | "play" = "debug";
@@ -78,44 +64,6 @@ let viewRoutine: number | null = null;
 const navHistory: (number | null)[] = [];
 
 let shownWatchHit: object | null = null;
-
-function setTerminalColors(fg: number, bg: number): void {
-  if (fg === termFg && bg === termBg) return;
-
-  termFg = fg;
-  termBg = bg;
-
-  const fgc = zColorCss(fg) ?? "";
-  const bgc = zColorCss(bg) ?? "";
-
-  // Page the whole transcript and the input box together (empty string falls
-  // back to the theme CSS, so default-colour games are untouched).
-  els.terminal.style.color = fgc;
-  els.terminal.style.background = bgc;
-  els.input.style.color = fgc;
-  els.input.style.background = bgc;
-}
-
-function appendOutput(text: string, attrs?: OutputAttrs): void {
-  const { style, fg, bg } = resolveAttrs(attrs);
-
-  // A normal (non-reverse) run defines the page colour for the whole area.
-  if ((style & 1) === 0) setTerminalColors(fg, bg);
-
-  const css = outputRunCss(style, fg, bg, termFg, termBg);
-
-  if (css.length === 0) {
-    els.terminal.append(document.createTextNode(text));
-  } else {
-    const span = document.createElement("span");
-
-    span.style.cssText = css.join(";");
-    span.textContent = text;
-    els.terminal.append(span);
-  }
-
-  els.terminal.scrollTop = els.terminal.scrollHeight;
-}
 
 const lastHtml = new Map<HTMLElement, string>();
 
@@ -138,6 +86,19 @@ function flashPanel(el: HTMLElement): void {
   panel.classList.remove("flash");
   void panel.offsetWidth; // reflow so the animation replays on every change
   panel.classList.add("flash");
+}
+
+/** Surface a debugger note — an error, a watchpoint hit, a breakpoint stop — below the screen. */
+function showMessage(text: string, kind: "error" | "info"): void {
+  const line = document.createElement("div");
+  line.className = `msg ${kind}`;
+  line.textContent = text;
+  els.messages.append(line);
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+function clearMessages(): void {
+  els.messages.textContent = "";
 }
 
 function refresh(): void {
@@ -169,17 +130,28 @@ function renderState(machine: Machine): void {
   els.icount.textContent = `${machine.instructionCount.toLocaleString()} insns`;
 }
 
-/** Render the v3 status bar or the v4+ upper window above the terminal. */
+/**
+ * Render the whole screen grid — the faithful game display. quendor owns the
+ * screen (see docs/screen-model.md), so this draws every row, upper and lower
+ * alike, which is what lets a persistent backdrop (an All Roads title box) and a
+ * scrolling lower window coexist. The v3 status line is a separate string, drawn
+ * as a bar over row 0.
+ */
 function renderScreen(machine: Machine): void {
   const s = machine.screen;
+  const rows: string[] = [];
 
-  if (s.upperHeight > 0) {
-    els.screentop.innerHTML = s.upper.map(renderUpperRow).join("");
-  } else if (s.statusLine) {
-    els.screentop.innerHTML = `<div class="statusbar">${escapeHtml(s.statusLine)}</div>`;
-  } else {
-    els.screentop.innerHTML = "";
+  if (s.statusLine) {
+    rows.push(`<div class="statusbar">${escapeHtml(s.statusLine)}</div>`);
   }
+
+  const start = s.statusLine ? 1 : 0; // the status bar stands in for grid row 0
+  for (let r = start; r < s.grid.length; r++) {
+    rows.push(renderUpperRow(s.grid[r]));
+  }
+
+  els.terminal.innerHTML = rows.join("");
+  els.screentop.innerHTML = "";
 }
 
 function renderDisasm(machine: Machine): void {
@@ -325,13 +297,10 @@ function announceWatchHit(machine: Machine): void {
   if (machine.state !== RunState.Paused || !hit || hit === shownWatchHit) return;
 
   shownWatchHit = hit;
-
-  const msg = document.createElement("span");
-  msg.className = "watchmsg";
-  msg.textContent = `\n[watchpoint ${hex(hit.address)}: ${hex(hit.oldValue, 2)} → ${hex(hit.newValue, 2)}]\n`;
-
-  els.terminal.append(msg);
-  els.terminal.scrollTop = els.terminal.scrollHeight;
+  showMessage(
+    `watchpoint ${hex(hit.address)}: ${hex(hit.oldValue, 2)} → ${hex(hit.newValue, 2)}`,
+    "info",
+  );
 }
 
 function cont(): void {
@@ -340,14 +309,14 @@ function cont(): void {
   try {
     machine.run(20_000_000);
   } catch (err) {
-    appendOutput(`\n[error: ${(err as Error).message}]\n`);
+    showMessage(`error: ${(err as Error).message}`, "error");
   }
 
   announceWatchHit(machine);
 
   // If a breakpoint/watchpoint stopped us mid-play, drop into the debugger.
   if (machine.state === RunState.Paused && mode === "play") {
-    appendOutput("\n[stopped at a breakpoint — switched to Debug view]\n");
+    showMessage("stopped at a breakpoint — switched to Debug view", "info");
     setMode("debug");
 
     return;
@@ -371,10 +340,8 @@ function reset(): void {
   lastHtml.clear();
 
   machine = new Machine(story);
-  machine.onOutput = (text, attrs): void => appendOutput(text, attrs);
-  machine.onClearScreen = (): void => {
-    els.terminal.textContent = "";
-  };
+  machine.onOutput = (): void => {}; // the grid is the display; output lands there
+  machine.onClearScreen = (): void => {}; // erase_window clears the grid; the render shows it
 
   // reapply persisted breakpoints and carry over the previous machine's watchpoints
   for (const a of breakpoints) machine.breakpoints.add(a);
@@ -386,12 +353,7 @@ function reset(): void {
   els.dump.disabled = false;
 
   els.terminal.textContent = "";
-
-  // force setTerminalColors to reapply on the first output
-  termFg = -1;
-
-  // reset to the theme's default page colors
-  setTerminalColors(1, 1);
+  clearMessages();
 
   refresh();
 
@@ -582,7 +544,7 @@ function submitInput(): void {
 
   const line = els.input.value;
 
-  appendOutput(line + "\n");
+  machine.screen.print(line + "\n"); // echo into the grid before the game responds
 
   els.input.value = "";
   machine.provideInput(line);
@@ -670,9 +632,10 @@ function redirectTyping(e: KeyboardEvent): void {
 function handlePlayKeydown(e: KeyboardEvent): void {
   if (!machine) return;
 
-  // [More] prompt: any key pages forward, revealing the next screenful.
+  // [More] prompt: any key acknowledges the pause and pages forward.
   if (machine.pendingInputKind === "more") {
     e.preventDefault();
+    machine.continueFromMore();
     cont();
     return;
   }
