@@ -78,7 +78,11 @@ function advance(): void {
 function reset(): void {
   if (!storyBytes) return;
 
-  machine = new Machine(new Story(storyBytes));
+  // Report as an Amiga (interpreter 4): a colour-capable machine, so games that
+  // pick a palette by host — Beyond Zork's MACHINE-COLORS — use their colour
+  // scheme rather than a monochrome default. The web renders the real font-3
+  // glyphs, so it can carry the full character-graphics experience.
+  machine = new Machine(new Story(storyBytes), { interpreterNumber: 4 });
   machine.onOutput = (): void => {}; // the grid is the display; output lands there
   machine.onClearScreen = (): void => {}; // erase clears the grid; the render shows it
 
