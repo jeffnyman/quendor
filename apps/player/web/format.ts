@@ -73,3 +73,60 @@ export function renderCells(row: Cell[]): string {
 export function renderRow(row: Cell[]): string {
   return `<div class="row">${renderCells(row)}</div>`;
 }
+
+/** The in-progress input line to overlay on the cursor row during a line read. */
+export interface InputOverlay {
+  row: number;
+  col: number;
+  value: string;
+  caret: number;
+}
+
+/**
+ * Render the cursor row with the in-progress input overlaid: the game's cells up
+ * to the cursor column, then the typed text with a caret drawn where the game
+ * actually left the cursor. This is why the player has no input box — you type
+ * at the prompt, exactly as a real interpreter echoes input.
+ */
+export function renderInputRow(row: Cell[], col: number, value: string, caret: number): string {
+  const before = renderCells(row.slice(0, col));
+  const pre = escapeHtml(value.slice(0, caret));
+  const at = escapeHtml(value.slice(caret, caret + 1) || " "); // caret sits on a char or a blank
+  const post = escapeHtml(value.slice(caret + 1));
+
+  return `<div class="row">${before}${pre}<span class="caret">${at}</span>${post}</div>`;
+}
+
+/** Render every grid row from `start`, overlaying the input line on its cursor row. */
+export function renderRows(grid: Cell[][], start: number, overlay: InputOverlay | null): string[] {
+  const rows: string[] = [];
+
+  for (let r = start; r < grid.length; r++) {
+    if (overlay && r === overlay.row) {
+      rows.push(renderInputRow(grid[r], overlay.col, overlay.value, overlay.caret));
+    } else {
+      rows.push(renderRow(grid[r]));
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * Compose the whole screen to HTML: the v3 status line as a bar over row 0, the
+ * grid rows (with the input overlay on the cursor row), and a [More] prompt.
+ */
+export function renderScreenHtml(
+  grid: Cell[][],
+  statusLine: string | null,
+  overlay: InputOverlay | null,
+  showMore: boolean,
+): string {
+  const rows: string[] = [];
+
+  if (statusLine) rows.push(`<div class="statusbar">${escapeHtml(statusLine)}</div>`);
+  rows.push(...renderRows(grid, statusLine ? 1 : 0, overlay));
+  if (showMore) rows.push(`<div class="more">— more — (press any key)</div>`);
+
+  return rows.join("");
+}

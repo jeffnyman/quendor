@@ -3,8 +3,7 @@ import "./style.css";
 // The engine, through Quendor's public API — the same surface rezrov uses, but
 // here with none of the debugger: just load a story and play it.
 import { Story, Machine, RunState, unwrapStory } from "quendor";
-import type { Cell } from "quendor";
-import { escapeHtml, renderCells, renderRow } from "./format.ts";
+import { escapeHtml, renderScreenHtml, type InputOverlay } from "./format.ts";
 import { keyToZscii } from "./keys.ts";
 
 document.documentElement.classList.replace("no-js", "js");
@@ -31,52 +30,27 @@ function isLineReading(m: Machine): boolean {
 }
 
 /**
- * Render the cursor row with the in-progress input line overlaid: the game's
- * cells up to the cursor column, then the typed text with a caret, drawn where
- * the game actually left the cursor. This is why the player has no input box —
- * you type at the prompt, exactly as a real interpreter echoes input.
- */
-function renderInputRow(row: Cell[], col: number): string {
-  const before = renderCells(row.slice(0, col));
-  const value = els.input.value;
-  const caret = els.input.selectionStart ?? value.length;
-
-  const pre = escapeHtml(value.slice(0, caret));
-  const at = escapeHtml(value.slice(caret, caret + 1) || " "); // caret sits on a char or a blank
-  const post = escapeHtml(value.slice(caret + 1));
-
-  return `<div class="row">${before}${pre}<span class="caret">${at}</span>${post}</div>`;
-}
-
-/**
- * Draw the whole screen grid — quendor owns the screen model (see
- * docs/screen-model.md). The v3 status line is a separate string drawn as a bar
- * over row 0; a pending [More] pause shows a prompt any key acknowledges.
+ * Draw the whole screen — quendor owns the screen model (see
+ * docs/screen-model.md); this is a thin adapter that reads the machine and the
+ * harvester's caret, then hands the pure composition to renderScreenHtml.
  */
 function renderScreen(m: Machine): void {
   const s = m.screen;
-  const lineReading = isLineReading(m);
-  const cursor = s.lowerCursor;
-  const rows: string[] = [];
+  const overlay: InputOverlay | null = isLineReading(m)
+    ? {
+        row: s.lowerCursor.row,
+        col: s.lowerCursor.col,
+        value: els.input.value,
+        caret: els.input.selectionStart ?? els.input.value.length,
+      }
+    : null;
 
-  if (s.statusLine) {
-    rows.push(`<div class="statusbar">${escapeHtml(s.statusLine)}</div>`);
-  }
-
-  const start = s.statusLine ? 1 : 0; // the status bar stands in for grid row 0
-  for (let r = start; r < s.grid.length; r++) {
-    rows.push(
-      lineReading && r === cursor.row
-        ? renderInputRow(s.grid[r], cursor.col)
-        : renderRow(s.grid[r]),
-    );
-  }
-
-  if (m.pendingInputKind === "more") {
-    rows.push(`<div class="more">— more — (press any key)</div>`);
-  }
-
-  els.screen.innerHTML = rows.join("");
+  els.screen.innerHTML = renderScreenHtml(
+    s.grid,
+    s.statusLine,
+    overlay,
+    m.pendingInputKind === "more",
+  );
 }
 
 /** Focus the harvester while the game wants a line; disable it otherwise. */

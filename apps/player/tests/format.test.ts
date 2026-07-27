@@ -1,6 +1,15 @@
 import { expect, test } from "vite-plus/test";
 import type { Cell } from "quendor";
-import { attrCss, escapeHtml, renderCells, renderRow, zColorCss } from "../web/format.ts";
+import {
+  attrCss,
+  escapeHtml,
+  renderCells,
+  renderInputRow,
+  renderRow,
+  renderRows,
+  renderScreenHtml,
+  zColorCss,
+} from "../web/format.ts";
 
 test("zColorCss maps known Z colours and returns null otherwise", () => {
   expect(zColorCss(2)).toBe("#000000");
@@ -50,4 +59,42 @@ test("renderRow wraps a styled run in a span and splits on style change", () => 
 
 test("renderRow of an empty row is just the wrapper", () => {
   expect(renderRow([])).toBe(`<div class="row"></div>`);
+});
+
+test("renderInputRow draws game cells, then the typed line with a caret", () => {
+  const row = [cell(">"), cell(" ")]; // a "> " prompt; cursor at col 2
+  expect(renderInputRow(row, 2, "go", 2)).toBe(
+    `<div class="row">&gt; go<span class="caret"> </span></div>`,
+  );
+});
+
+test("renderInputRow puts the caret on the character it sits on", () => {
+  expect(renderInputRow([cell(">")], 1, "abc", 1)).toBe(
+    `<div class="row">&gt;a<span class="caret">b</span>c</div>`,
+  );
+});
+
+test("renderRows overlays the input only on the cursor row", () => {
+  const grid = [[cell("a")], [cell("b")]];
+  const overlay = { row: 1, col: 1, value: "", caret: 0 };
+  expect(renderRows(grid, 0, overlay)).toEqual([
+    `<div class="row">a</div>`,
+    `<div class="row">b<span class="caret"> </span></div>`,
+  ]);
+});
+
+test("renderRows with no overlay renders plain rows", () => {
+  expect(renderRows([[cell("x")]], 0, null)).toEqual([`<div class="row">x</div>`]);
+});
+
+test("renderScreenHtml composes status bar (over row 0), grid rows, and [More]", () => {
+  const grid = [[cell("A")], [cell("B")]];
+  expect(renderScreenHtml(grid, "S", null, true)).toBe(
+    `<div class="statusbar">S</div><div class="row">B</div>` +
+      `<div class="more">— more — (press any key)</div>`,
+  );
+});
+
+test("renderScreenHtml without a status line renders every row from the top", () => {
+  expect(renderScreenHtml([[cell("A")]], null, null, false)).toBe(`<div class="row">A</div>`);
 });
