@@ -183,7 +183,7 @@ function captureStdout(): { text: () => string } {
   return { text: () => write.mock.calls.map((c) => String(c[0])).join("") };
 }
 
-const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1 });
+const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1, font: 1 });
 
 test("renderFrame draws each grid row, coalescing reverse-video runs, then parks the cursor", () => {
   const E = "\x1b";

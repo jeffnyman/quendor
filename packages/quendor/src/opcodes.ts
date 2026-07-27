@@ -92,6 +92,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x18, "mod", F.Store, 1, 8],
   [OpcodeKind.TwoOp, 0x19, "call_2s", F.Call | F.Store, 4, 8],
   [OpcodeKind.TwoOp, 0x1a, "call_2n", F.Call, 5, 8],
+  [OpcodeKind.TwoOp, 0x1b, "set_color", F.None, 5, 8],
 
   // one-operand opcodes
   [OpcodeKind.OneOp, 0x00, "jz", F.Branch, 1, 8],
@@ -158,6 +159,8 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x19, "call_vn", F.Call, 5, 8],
   [OpcodeKind.VarOp, 0x1a, "call_vn2", F.Call | F.DoubleVar, 5, 8],
   [OpcodeKind.VarOp, 0x1b, "tokenize", F.None, 5, 8],
+  [OpcodeKind.VarOp, 0x1d, "copy_table", F.None, 5, 8],
+  [OpcodeKind.VarOp, 0x1e, "print_table", F.None, 5, 8],
   [OpcodeKind.VarOp, 0x1f, "check_arg_count", F.Branch, 5, 8],
 
   // extended opcodes
@@ -165,6 +168,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.Ext, 0x01, "restore", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x02, "log_shift", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x03, "art_shift", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x04, "set_font", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x09, "save_undo", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x0a, "restore_undo", F.Store, 5, 8],
 ];

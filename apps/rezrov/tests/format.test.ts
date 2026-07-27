@@ -77,7 +77,13 @@ test("resolveAttrs applies Z-Machine defaults when attrs is absent", () => {
   });
 });
 
-const cell = (ch: string, style = 0, fg = 1, bg = 1): Cell => ({ ch, style, fg, bg });
+const cell = (ch: string, style = 0, fg = 1, bg = 1, font = 1): Cell => ({
+  ch,
+  style,
+  fg,
+  bg,
+  font,
+});
 
 test("renderUpperRow coalesces identical adjacent cells and escapes text", () => {
   const row = [cell("<"), cell("a"), cell("b")];

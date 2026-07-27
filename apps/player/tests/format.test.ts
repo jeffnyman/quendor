@@ -40,7 +40,13 @@ test("attrCss: bold and italic style bits", () => {
   expect(attrCss(6, 1, 1)).toEqual(["font-weight:700", "font-style:italic"]);
 });
 
-const cell = (ch: string, style = 0, fg = 1, bg = 1): Cell => ({ ch, style, fg, bg });
+const cell = (ch: string, style = 0, fg = 1, bg = 1, font = 1): Cell => ({
+  ch,
+  style,
+  fg,
+  bg,
+  font,
+});
 
 test("renderCells returns inner HTML with no row wrapper (for composing the input row)", () => {
   expect(renderCells([cell("<"), cell("a"), cell("b")])).toBe("&lt;ab");
