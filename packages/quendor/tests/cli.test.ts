@@ -458,34 +458,36 @@ test("runTerminalLoop enters/leaves the alternate screen and renders the grid on
   }
 });
 
-test("runTerminalLoop's onMore hook renders the [More] prompt and waits for a key on a TTY", () => {
+test("runTerminalLoop shows [More] and pages forward on a 'more' yield (TTY)", () => {
   const out = captureStdout();
   const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
   Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-  vi.mocked(readCharSync).mockReturnValue(" "); // the key that dismisses [More]
+  vi.mocked(readCharSync).mockReturnValue(" "); // the key that pages forward
 
-  const screen = {
-    grid: [[{ ch: "X", style: 0, fg: 1, bg: 1 }]],
-    height: 1,
-    lowerCursor: { row: 0, col: 0 },
-    onMore: (): void => {},
-  };
-  const run = vi.fn().mockImplementation((): RunState => {
-    screen.onMore(); // simulate a screenful scrolling by mid-run
-    return RunState.Halted;
-  });
+  const continueFromMore = vi.fn();
+  const run = vi
+    .fn()
+    .mockReturnValueOnce(RunState.WaitingForInput) // a [More] yield
+    .mockReturnValueOnce(RunState.Halted);
   const machine = {
     run,
     provideInput: vi.fn(),
     awaitingCharInput: false,
-    screen,
+    pendingInputKind: "more",
+    continueFromMore,
+    screen: {
+      grid: [[{ ch: "X", style: 0, fg: 1, bg: 1 }]],
+      height: 1,
+      lowerCursor: { row: 0, col: 0 },
+    },
   } as unknown as Machine;
 
   try {
     runTerminalLoop(machine);
 
     expect(out.text()).toContain("[More]"); // the prompt was drawn
-    expect(readCharSync).toHaveBeenCalled(); // and it blocked for a key
+    expect(readCharSync).toHaveBeenCalled(); // it waited for a key
+    expect(continueFromMore).toHaveBeenCalled(); // then paged forward
   } finally {
     Object.defineProperty(
       process.stdout,
@@ -495,24 +497,58 @@ test("runTerminalLoop's onMore hook renders the [More] prompt and waits for a ke
   }
 });
 
-test("runTerminalLoop's onMore does not pause when stdout is not a TTY", () => {
-  const out = captureStdout(); // isTTY unset -> not a TTY
+test("runAcceptance auto-pages a [More] yield without consuming a command", () => {
+  // run() sequence: a [More] yield, then a read prompt, then halt.
+  const states = [RunState.WaitingForInput, RunState.WaitingForInput, RunState.Halted];
+  const kinds = ["more", "line", "line"];
+  let i = -1;
 
-  const screen = { onMore: (): void => {}, print: vi.fn() };
-  const run = vi.fn().mockImplementation((): RunState => {
-    screen.onMore(); // a screenful scrolled by, but there's no interactive pause
-    return RunState.Halted;
-  });
+  const continueFromMore = vi.fn();
+  const provideInput = vi.fn();
+  const machine = {
+    onOutput: (): void => {},
+    awaitingCharInput: false,
+    continueFromMore,
+    provideInput,
+    provideKey: vi.fn(),
+    get pendingInputKind(): string {
+      return kinds[i];
+    },
+    run(): RunState {
+      i++;
+      return states[i];
+    },
+  } as unknown as Machine;
+
+  const result = runAcceptance(machine, ["look"]);
+
+  expect(continueFromMore).toHaveBeenCalledTimes(1); // the [More] paged, not fed a command
+  expect(provideInput).toHaveBeenCalledWith("look"); // the command went to the read, not the pause
+  expect(result.commandsUsed).toBe(1);
+});
+
+test("runTerminalLoop pages a [More] yield without drawing the prompt off a TTY", () => {
+  const out = captureStdout(); // isTTY unset -> not a TTY
+  vi.mocked(readCharSync).mockReturnValue(" ");
+
+  const continueFromMore = vi.fn();
+  const run = vi
+    .fn()
+    .mockReturnValueOnce(RunState.WaitingForInput)
+    .mockReturnValueOnce(RunState.Halted);
   const machine = {
     run,
     provideInput: vi.fn(),
     awaitingCharInput: false,
-    screen,
+    pendingInputKind: "more",
+    continueFromMore,
+    screen: { grid: [], height: 1, lowerCursor: { row: 0, col: 0 } },
   } as unknown as Machine;
 
   runTerminalLoop(machine);
 
   expect(out.text()).not.toContain("[More]"); // no prompt off a TTY
+  expect(continueFromMore).toHaveBeenCalled(); // but it still pages forward
 });
 
 // --- acceptance mode (--accept) --------------------------------------------

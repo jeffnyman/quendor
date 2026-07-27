@@ -199,6 +199,11 @@ export class Machine {
       this.onOutput(text, attrs);
     this.screen.onClearLower = (): void => this.onClearScreen();
     this.screen.onUpperUpdate = (): void => this.onScreenRefresh();
+    // A screenful scrolled by: pause so the host can show a [More] prompt. run()
+    // yields at the next instruction boundary; continueFromMore() resumes.
+    this.screen.onMore = (): void => {
+      this.morePause = true;
+    };
 
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
@@ -432,12 +437,27 @@ export class Machine {
         return this.runState;
       }
 
+      if (this.morePause && (this.runState as RunState) === RunState.Running) {
+        // a screenful scrolled by mid-instruction: yield for a [More] prompt
+        this.runState = RunState.WaitingForInput;
+        return this.runState;
+      }
+
       if (++steps > maxInstructions) {
         throw new Error("instruction limit exceeded (possible infinite loop)");
       }
     }
 
     return this.runState;
+  }
+
+  /** Acknowledge a [More] pause (the player pressed a key): resume and reset the pager. */
+  continueFromMore(): void {
+    if (!this.morePause) return;
+
+    this.morePause = false;
+    this.screen.resetPaging();
+    this.runState = RunState.Running;
   }
 
   /** Provide a line of input to satisfy a pending read, or queue it. */

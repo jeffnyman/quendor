@@ -129,14 +129,9 @@ export function renderFrame(screen: Screen): string {
   return out;
 }
 
-/**
- * The `[More]` pause: show the screenful, draw the prompt on the bottom line, and
- * block for a keystroke. The next frame overwrites the prompt.
- */
-function showMore(screen: Screen): void {
-  process.stdout.write(renderFrame(screen));
-  process.stdout.write(`${ESC}[${screen.height};1H${ESC}[7m[More]${ESC}[0m`);
-  readCharSync();
+/** Draw the `[More]` prompt on the bottom line of the screen (reverse video). */
+function drawMore(screen: Screen): string {
+  return `${ESC}[${screen.height};1H${ESC}[7m[More]${ESC}[0m`;
 }
 
 /**
@@ -214,16 +209,19 @@ export function runTerminalLoop(machine: Machine): void {
 
   if (tty) process.stdout.write(`${ESC}[?1049h${ESC}[2J`); // enter the alternate screen
 
-  machine.screen.onMore = (): void => {
-    if (tty) showMore(machine.screen);
-  };
-
   for (;;) {
     const state = machine.run();
 
     if (tty) process.stdout.write(renderFrame(machine.screen));
 
     if (state !== RunState.WaitingForInput) break; // halted
+
+    if (machine.pendingInputKind === "more") {
+      if (tty) process.stdout.write(drawMore(machine.screen));
+      readCharSync(); // any key pages forward
+      machine.continueFromMore();
+      continue;
+    }
 
     if (!deliverInput(machine)) break; // end of input
   }
@@ -292,6 +290,11 @@ export function runAcceptance(machine: Machine, commands: string[]): AcceptanceR
       const state = machine.run();
 
       if (state !== RunState.WaitingForInput) break; // the game halted
+
+      if (machine.pendingInputKind === "more") {
+        machine.continueFromMore(); // a scripted run pages straight through, no key consumed
+        continue;
+      }
 
       if (used >= commands.length) {
         outcome = "exhausted";

@@ -970,6 +970,26 @@ test("a tall split, drawn into and then shrunk, keeps its content while the lowe
   expect(gridRow(5)).toBe("menu"); // lower-window text, on its own row — no collision
 });
 
+test("a screenful of scrolling yields a [More] pause that continueFromMore resumes", () => {
+  const newLine = 0xbb; // 0OP new_line
+  const machine = new Machine(
+    buildStory(0x100, (bytes) => {
+      bytes[HeaderOffset.Version] = 5;
+      bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+      bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+      // Enough newlines to scroll a 3-row screen past its paging threshold, then quit.
+      bytes.set([newLine, newLine, newLine, newLine, newLine, ...quitInsn()], MAIN);
+    }),
+    { screenWidth: 20, screenHeight: 3 },
+  );
+
+  expect(machine.run()).toBe(RunState.WaitingForInput); // paused mid-run
+  expect(machine.pendingInputKind).toBe("more");
+
+  machine.continueFromMore();
+  expect(machine.run()).toBe(RunState.Halted); // pages on to the end
+});
+
 test("provideKey delivers a raw ZSCII code to a pending read_char", () => {
   const machine = new Machine(
     buildStory(0x100, (bytes) => {

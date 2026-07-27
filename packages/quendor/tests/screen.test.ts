@@ -348,3 +348,17 @@ test("a split pushes the lower cursor below the new upper window", () => {
 
   expect(gridRow(screen, 5)).toBe("X");
 });
+
+test("lowerCursor exposes the lower window's cursor position", () => {
+  const screen = new Screen(10, 4);
+
+  screen.print("ab\ncd"); // "ab" on row 0, newline, "cd" on row 1
+
+  expect(screen.lowerCursor).toEqual({ row: 1, col: 2 });
+});
+
+test("the default onMore is a harmless no-op when a screenful scrolls by", () => {
+  const screen = new Screen(10, 3); // paging threshold of 2 scrolls
+
+  expect(() => screen.print("\n\n\n\n")).not.toThrow(); // 2 scrolls -> default onMore fires
+});

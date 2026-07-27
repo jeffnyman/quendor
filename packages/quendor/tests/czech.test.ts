@@ -2,7 +2,7 @@ import { expect, test } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { loadStoryFromFile } from "../src/node.ts";
-import { Machine } from "../src/machine.ts";
+import { Machine, RunState } from "../src/machine.ts";
 import { runAcceptance } from "../src/cli.ts";
 
 // End-to-end conformance: run the vendored czech suite through the engine and
@@ -31,7 +31,11 @@ for (const { version, file, verdict } of suites) {
       out += text;
     };
 
-    machine.run();
+    // czech prints far more than a screenful, so run() yields at [More] pauses;
+    // page through them (czech takes no input, so every yield is a [More]).
+    for (let state = machine.run(); state === RunState.WaitingForInput; state = machine.run()) {
+      machine.continueFromMore();
+    }
 
     expect(out).toContain(verdict);
   });
