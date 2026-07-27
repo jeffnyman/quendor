@@ -1,3 +1,4 @@
+import { font3Char } from "quendor";
 import type { Cell } from "quendor";
 
 // Grid-render helpers for the player: a screen cell grid → HTML. These mirror
@@ -53,10 +54,17 @@ export function renderCells(row: Cell[]): string {
   let i = 0;
 
   while (i < row.length) {
-    const { style, fg, bg } = row[i];
+    const { style, fg, bg, font } = row[i];
     let text = "";
-    while (i < row.length && row[i].style === style && row[i].fg === fg && row[i].bg === bg) {
-      text += row[i].ch;
+    while (
+      i < row.length &&
+      row[i].style === style &&
+      row[i].fg === fg &&
+      row[i].bg === bg &&
+      row[i].font === font
+    ) {
+      // Font 3 is the character-graphics font: map its codes to Unicode glyphs.
+      text += font === 3 ? font3Char(row[i].ch.charCodeAt(0)) : row[i].ch;
       i++;
     }
 

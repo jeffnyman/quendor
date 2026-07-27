@@ -67,6 +67,12 @@ test("renderRow of an empty row is just the wrapper", () => {
   expect(renderRow([])).toBe(`<div class="row"></div>`);
 });
 
+test("renderCells maps font-3 codes to glyphs, breaking runs on a font change", () => {
+  // both cells are ']' (code 93); only the font differs. Font 3 -> ↓, font 1 -> ']'.
+  const row = [cell("]", 0, 1, 1, 3), cell("]", 0, 1, 1, 1)];
+  expect(renderCells(row)).toBe("↓]");
+});
+
 test("renderInputRow draws game cells, then the typed line with a caret", () => {
   const row = [cell(">"), cell(" ")]; // a "> " prompt; cursor at col 2
   expect(renderInputRow(row, 2, "go", 2)).toBe(
