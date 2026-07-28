@@ -18,6 +18,7 @@ Usage:
   --interpreter-version C  set the interpreter version letter (default A)
   --accept FILE            play a solution file (one command per line) and print the transcript
   --oracle FILE            with --accept, diff the transcript against a saved golden transcript
+  --replay FILE            replay a solution file, then hand you the live prompt to continue
 
   Save/restore prompt for a filename, defaulting to the story name + ".qzl".
 `;
@@ -31,6 +32,7 @@ interface ParsedArgs {
   interpreterVersion?: number;
   accept?: string;
   oracle?: string;
+  replay?: string;
 }
 
 /** Parse an integer argument, yielding undefined for a non-numeric value. */
@@ -62,6 +64,9 @@ export function parseArgs(args: string[]): ParsedArgs {
     },
     "--oracle": (v): void => {
       parsed.oracle = v;
+    },
+    "--replay": (v): void => {
+      parsed.replay = v;
     },
   };
 
@@ -205,8 +210,20 @@ export function installHostCallbacks(machine: Machine, defaultSave: string): voi
  * read_char, or a line for sread/aread. A line is echoed into the lower window so
  * the player's typing becomes part of the scrolling transcript (quendor does not
  * echo reads itself). Returns false at end of input.
+ *
+ * `replay` is an optional command queue (from --replay) drained before stdin: each
+ * queued command is echoed and fed exactly as a typed line/key would be, so the
+ * loop transitions seamlessly to live input once the queue empties.
  */
-export function deliverInput(machine: Machine): boolean {
+export function deliverInput(machine: Machine, replay: string[] = []): boolean {
+  if (replay.length > 0) {
+    const command = replay.shift() as string;
+    machine.screen.print(command + "\n"); // echo it into the grid, as a typed line would be
+    if (machine.awaitingCharInput) machine.provideKey(solutionKey(command));
+    else machine.provideInput(command);
+    return true;
+  }
+
   if (machine.awaitingCharInput) {
     const code = readKeySync(); // arrow-aware: decodes escape sequences to ZSCII 129-132
     if (code === null) return false;
@@ -226,8 +243,12 @@ export function deliverInput(machine: Machine): boolean {
  * screen grid after each step. On a TTY it runs on the alternate screen buffer, so
  * entering and leaving restores the console cleanly — no scrollback ghosts, no
  * lingering scroll region.
+ *
+ * A `replay` queue (from --replay) is fast-forwarded first: while it drains, the
+ * per-frame redraw and [More] pauses are skipped, so the loop rushes silently to
+ * the frontier and only paints once it hands control to live input.
  */
-export function runTerminalLoop(machine: Machine): void {
+export function runTerminalLoop(machine: Machine, replay: string[] = []): void {
   const tty = process.stdout.isTTY === true;
 
   if (tty) process.stdout.write(`${ESC}[?1049h${ESC}[2J`); // enter the alternate screen
@@ -235,18 +256,22 @@ export function runTerminalLoop(machine: Machine): void {
   for (;;) {
     const state = machine.run();
 
-    if (tty) process.stdout.write(renderFrame(machine.screen));
+    // While replaying, fast-forward silently; only paint once we're live.
+    if (tty && replay.length === 0) process.stdout.write(renderFrame(machine.screen));
 
     if (state !== RunState.WaitingForInput) break; // halted
 
     if (machine.pendingInputKind === "more") {
-      if (tty) process.stdout.write(drawMore(machine.screen));
-      readKeySync(); // any key pages forward (consumes a whole escape sequence)
+      if (replay.length === 0) {
+        if (tty) process.stdout.write(drawMore(machine.screen));
+        readKeySync(); // any key pages forward (consumes a whole escape sequence)
+      }
+      // during replay, page straight through — no key consumed
       machine.continueFromMore();
       continue;
     }
 
-    if (!deliverInput(machine)) break; // end of input
+    if (!deliverInput(machine, replay)) break; // end of input
   }
 
   if (tty) process.stdout.write(`${ESC}[?1049l`); // leave the alternate screen
@@ -443,5 +468,10 @@ export async function main(): Promise<void> {
   });
 
   installHostCallbacks(machine, defaultSaveName(parsed.path));
-  runTerminalLoop(machine); // enters/leaves the alternate screen and clears it itself
+
+  // --replay: pre-feed a solution file, then continue live at the prompt.
+  const replay =
+    parsed.replay !== undefined ? parseSolution(readFileSync(parsed.replay, "utf8")) : [];
+
+  runTerminalLoop(machine, replay); // enters/leaves the alternate screen and clears it itself
 }
