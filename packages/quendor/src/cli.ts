@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { Machine, RunState } from "./machine.ts";
-import { loadStoryFromFile, readCharSync, readLineSync } from "./node.ts";
-import { type Screen, TextStyle } from "./screen.ts";
+import { loadStoryFromFile, readKeySync, readLineSync } from "./node.ts";
+import { type Cell, type Screen, TextStyle } from "./screen.ts";
+import { font3Char } from "./font3.ts";
 import type { Story } from "./story.ts";
 
 const USAGE = `quendor — a terminal Z-Machine interpreter
@@ -102,22 +103,44 @@ const ESC = "\x1b";
  * lower window's cursor (where input echoes). quendor owns the whole screen, so
  * this replaces the old status-bar overlay entirely. See docs/screen-model.md.
  */
+/**
+ * The ANSI SGR sequence for a cell's attributes: a reset, then bold/italic/reverse
+ * and any foreground/background colour. Z-Machine colours 2-9 map to the eight
+ * basic ANSI colours (2=black … 9=white); colour 1 ("default") emits nothing.
+ */
+function sgr(cell: Cell): string {
+  const codes = [0];
+
+  if (cell.style & TextStyle.Bold) codes.push(1);
+  if (cell.style & TextStyle.Italic) codes.push(3);
+  // Reverse video is deliberately not applied. Games (Beyond Zork's VT100 mode)
+  // build "panels" out of reverse-video text without padding lines to a fixed
+  // width, which leaves ragged black gaps in a terminal. The information games
+  // actually encode with it — selection highlights, emphasis — they carry with
+  // colour instead (BZ's menu marks the current item white vs. red), so dropping
+  // reverse renders room text as plain colour-on-black, like every other game.
+  if (cell.fg >= 2 && cell.fg <= 9) codes.push(28 + cell.fg); // 30 + (fg - 2)
+  if (cell.bg >= 2 && cell.bg <= 9) codes.push(38 + cell.bg); // 40 + (bg - 2)
+
+  return `${ESC}[${codes.join(";")}m`;
+}
+
 export function renderFrame(screen: Screen): string {
   let out = "";
 
   screen.grid.forEach((row, r) => {
-    out += `${ESC}[${r + 1};1H${ESC}[0m`; // home to the row start, reset attributes
-    let reverse = false;
+    out += `${ESC}[${r + 1};1H`; // home to the row start
+    let lastSgr = "";
 
     for (const cell of row) {
-      const wantReverse = (cell.style & TextStyle.Reverse) !== 0;
-
-      if (wantReverse !== reverse) {
-        out += wantReverse ? `${ESC}[7m` : `${ESC}[0m`;
-        reverse = wantReverse;
+      const s = sgr(cell);
+      if (s !== lastSgr) {
+        out += s;
+        lastSgr = s;
       }
 
-      out += cell.ch;
+      // Font 3 is the character-graphics font: map its codes to Unicode glyphs.
+      out += cell.font === 3 ? font3Char(cell.ch.charCodeAt(0)) : cell.ch;
     }
 
     out += `${ESC}[0m`;
@@ -185,9 +208,9 @@ export function installHostCallbacks(machine: Machine, defaultSave: string): voi
  */
 export function deliverInput(machine: Machine): boolean {
   if (machine.awaitingCharInput) {
-    const ch = readCharSync();
-    if (ch === null) return false;
-    machine.provideChar(ch);
+    const code = readKeySync(); // arrow-aware: decodes escape sequences to ZSCII 129-132
+    if (code === null) return false;
+    machine.provideKey(code);
   } else {
     const line = readLineSync();
     if (line === null) return false;
@@ -218,7 +241,7 @@ export function runTerminalLoop(machine: Machine): void {
 
     if (machine.pendingInputKind === "more") {
       if (tty) process.stdout.write(drawMore(machine.screen));
-      readCharSync(); // any key pages forward
+      readKeySync(); // any key pages forward (consumes a whole escape sequence)
       machine.continueFromMore();
       continue;
     }

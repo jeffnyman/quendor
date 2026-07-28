@@ -74,3 +74,4 @@ export { decodeAiff, type DecodedAudio } from "./aiff.ts";
 
 // --- screen models ---------------------------------------------------------
 export type { OutputAttrs, Cell } from "./screen.ts";
+export { font3Char, hasFont3Glyph } from "./font3.ts";

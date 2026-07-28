@@ -77,7 +77,13 @@ test("resolveAttrs applies Z-Machine defaults when attrs is absent", () => {
   });
 });
 
-const cell = (ch: string, style = 0, fg = 1, bg = 1): Cell => ({ ch, style, fg, bg });
+const cell = (ch: string, style = 0, fg = 1, bg = 1, font = 1): Cell => ({
+  ch,
+  style,
+  fg,
+  bg,
+  font,
+});
 
 test("renderUpperRow coalesces identical adjacent cells and escapes text", () => {
   const row = [cell("<"), cell("a"), cell("b")];
@@ -89,6 +95,14 @@ test("renderUpperRow wraps a styled run in a span and splits on style change", (
   expect(renderUpperRow(row)).toBe(
     `<div class="upperrow">a<span style="font-weight:700">bc</span></div>`,
   );
+});
+
+test("renderUpperRow maps font-3 codes to glyphs, breaking runs on a font change", () => {
+  // both cells are ']' (code 93) with identical style/colour, differing only in
+  // font: font 3 -> ↓ glyph, font 1 -> raw ']'. If runs didn't break on font,
+  // the second ']' would map too and give "↓↓".
+  const row = [cell("]", 0, 1, 1, 3), cell("]", 0, 1, 1, 1)];
+  expect(renderUpperRow(row)).toBe(`<div class="upperrow">↓]</div>`);
 });
 
 test("renderUpperRow of an empty row is just the wrapper", () => {

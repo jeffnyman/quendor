@@ -29,9 +29,9 @@ test("attrCss: a plain run emits only colours that resolve", () => {
   expect(attrCss(0, 2, 9)).toEqual(["color:#000000", "background:#ffffff"]);
 });
 
-test("attrCss: reverse video swaps fg/bg with theme fallbacks", () => {
-  expect(attrCss(1, 1, 1)).toEqual(["color:var(--bg)", "background:var(--fg)"]);
-  expect(attrCss(1, 2, 9)).toEqual(["color:#ffffff", "background:#000000"]);
+test("attrCss: reverse video is ignored (rendered as plain fg/bg)", () => {
+  expect(attrCss(1, 1, 1)).toEqual([]); // reverse bit set, but default colours → nothing
+  expect(attrCss(1, 2, 9)).toEqual(["color:#000000", "background:#ffffff"]); // no swap
 });
 
 test("attrCss: bold and italic style bits", () => {
@@ -40,7 +40,13 @@ test("attrCss: bold and italic style bits", () => {
   expect(attrCss(6, 1, 1)).toEqual(["font-weight:700", "font-style:italic"]);
 });
 
-const cell = (ch: string, style = 0, fg = 1, bg = 1): Cell => ({ ch, style, fg, bg });
+const cell = (ch: string, style = 0, fg = 1, bg = 1, font = 1): Cell => ({
+  ch,
+  style,
+  fg,
+  bg,
+  font,
+});
 
 test("renderCells returns inner HTML with no row wrapper (for composing the input row)", () => {
   expect(renderCells([cell("<"), cell("a"), cell("b")])).toBe("&lt;ab");
@@ -59,6 +65,14 @@ test("renderRow wraps a styled run in a span and splits on style change", () => 
 
 test("renderRow of an empty row is just the wrapper", () => {
   expect(renderRow([])).toBe(`<div class="row"></div>`);
+});
+
+test("renderCells wraps a font-3 run in a .font3 span (raw char) and breaks on font change", () => {
+  // both cells are ']' (code 93); only the font differs. The font-3 cell keeps
+  // its raw char in a .font3 span (FreeFont3 draws the glyph); the font-1 cell
+  // renders as a plain ']'. If runs didn't break on font, they'd be one span.
+  const row = [cell("]", 0, 1, 1, 3), cell("]", 0, 1, 1, 1)];
+  expect(renderCells(row)).toBe(`<span class="font3">]</span>]`);
 });
 
 test("renderInputRow draws game cells, then the typed line with a caret", () => {

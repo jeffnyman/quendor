@@ -7,6 +7,7 @@ export const TextStyle = {
 } as const;
 
 const DEFAULT_COLOR = 1;
+const DEFAULT_FONT = 1;
 const DEFAULT_HEIGHT = 25;
 
 /** Attributes attached to lower-window (transcript) output. */
@@ -22,6 +23,8 @@ export interface Cell {
   /** Z-Machine color numbers (1 = default; 2..12 specific). */
   fg: number;
   bg: number;
+  /** Z-Machine font number (1 = normal, 3 = character graphics, 4 = fixed-pitch). */
+  font: number;
 }
 
 /**
@@ -42,6 +45,7 @@ export class Screen {
   style: number = TextStyle.Roman;
   foreground: number = DEFAULT_COLOR;
   background: number = DEFAULT_COLOR;
+  font: number = DEFAULT_FONT;
 
   /** The whole screen; windows are row-range views into this. */
   grid: Cell[][];
@@ -155,6 +159,26 @@ export class Screen {
     this.cursorCol = col;
   }
 
+  /** set_color: 0 = leave unchanged ("current"), otherwise set. */
+  setColor(foreground: number, background: number): void {
+    if (foreground !== 0) this.foreground = foreground;
+    if (background !== 0) this.background = background;
+  }
+
+  /**
+   * set_font: switch the current font, returning the previous one (0 = the
+   * requested font is unavailable). The grid is inherently monospace, so normal
+   * (1), character graphics (3), and fixed-pitch (4) are all available; the font
+   * is stamped into each printed cell so hosts can map font 3 to its glyphs.
+   */
+  setFont(font: number): number {
+    if (font !== 1 && font !== 3 && font !== 4) return 0;
+
+    const previous = this.font;
+    this.font = font;
+    return previous;
+  }
+
   /**
    * Route printed text to the current window. The lower window (0) is the
    * scrolling transcript: text is streamed to `onLowerOutput` and laid onto the
@@ -196,6 +220,7 @@ export class Screen {
     this.linesSinceInput = 0;
     this.foreground = DEFAULT_COLOR;
     this.background = DEFAULT_COLOR;
+    this.font = DEFAULT_FONT;
     this.statusLine = null;
   }
 
@@ -286,7 +311,7 @@ export class Screen {
   // --- grid helpers ----------------------------------------------------------
 
   private cell(ch: string): Cell {
-    return { ch, style: this.style, fg: this.foreground, bg: this.background };
+    return { ch, style: this.style, fg: this.foreground, bg: this.background, font: this.font };
   }
 
   private blankRow(): Cell[] {
@@ -295,6 +320,7 @@ export class Screen {
       style: 0,
       fg: DEFAULT_COLOR,
       bg: this.background,
+      font: DEFAULT_FONT,
     }));
   }
 

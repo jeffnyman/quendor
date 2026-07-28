@@ -78,7 +78,11 @@ function advance(): void {
 function reset(): void {
   if (!storyBytes) return;
 
-  machine = new Machine(new Story(storyBytes));
+  // Report as a DEC-20 (interpreter 1). A terminal-grade machine: Beyond Zork
+  // offers its clean text display for it (answer "no" to the "Is this a VT220?"
+  // prompt), which reads far better than the character-graphics mode's font-3
+  // approximations — the same choice the CLI makes. Colour still comes through.
+  machine = new Machine(new Story(storyBytes), { interpreterNumber: 1 });
   machine.onOutput = (): void => {}; // the grid is the display; output lands there
   machine.onClearScreen = (): void => {}; // erase clears the grid; the render shows it
 

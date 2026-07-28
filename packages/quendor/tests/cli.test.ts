@@ -13,7 +13,7 @@ import {
   runTerminalLoop,
   solutionKey,
 } from "../src/cli.ts";
-import { loadStoryFromFile, readCharSync, readLineSync } from "../src/node.ts";
+import { loadStoryFromFile, readKeySync, readLineSync } from "../src/node.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { TextStyle, type Cell, type Screen } from "../src/screen.ts";
 import { Machine, RunState } from "../src/machine.ts";
@@ -25,7 +25,7 @@ import { HeaderOffset } from "../src/header.ts";
 vi.mock("../src/node.ts", () => ({
   loadStoryFromFile: vi.fn(),
   readLineSync: vi.fn(),
-  readCharSync: vi.fn(),
+  readKeySync: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
@@ -183,18 +183,62 @@ function captureStdout(): { text: () => string } {
   return { text: () => write.mock.calls.map((c) => String(c[0])).join("") };
 }
 
-const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1 });
+const cell = (ch: string, style = 0): Cell => ({ ch, style, fg: 1, bg: 1, font: 1 });
 
-test("renderFrame draws each grid row, coalescing reverse-video runs, then parks the cursor", () => {
+test("renderFrame ignores reverse video, so a row of it coalesces into one run", () => {
   const E = "\x1b";
   const screen = {
-    // A normal, B/C reverse (coalesced), D normal (reverse turns back off)
+    // reverse video isn't applied (see sgr): B/C get the same default SGR as A/D,
+    // so the whole row is a single run rather than a reverse-video island.
     grid: [[cell("A"), cell("B", TextStyle.Reverse), cell("C", TextStyle.Reverse), cell("D")]],
     height: 1,
     lowerCursor: { row: 0, col: 3 },
   } as unknown as Screen;
 
-  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0mA${E}[7mBC${E}[0mD${E}[0m${E}[1;4H`);
+  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0mABCD${E}[0m${E}[1;4H`);
+});
+
+test("renderFrame emits ANSI colour for non-default fg/bg (2-9)", () => {
+  const E = "\x1b";
+  const colored = (ch: string, fg: number, bg: number): Cell => ({ ch, style: 0, fg, bg, font: 1 });
+  const screen = {
+    grid: [[colored("X", 8, 1), colored("Y", 1, 3)]], // X cyan-on-default, Y default-on-red
+    height: 1,
+    lowerCursor: { row: 0, col: 0 },
+  } as unknown as Screen;
+
+  // cyan fg = 30+(8-2)=36; red bg = 40+(3-2)=41
+  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0;36mX${E}[0;41mY${E}[0m${E}[1;1H`);
+});
+
+test("renderFrame maps font-3 codes to Unicode glyphs", () => {
+  const E = "\x1b";
+  const f3 = (code: number): Cell => ({
+    ch: String.fromCharCode(code),
+    style: 0,
+    fg: 1,
+    bg: 1,
+    font: 3,
+  });
+  const screen = {
+    grid: [[f3(92), f3(93)]], // up arrow, down arrow
+    height: 1,
+    lowerCursor: { row: 0, col: 0 },
+  } as unknown as Screen;
+
+  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0m↑↓${E}[0m${E}[1;1H`);
+});
+
+test("renderFrame emits bold and italic SGR codes", () => {
+  const E = "\x1b";
+  const styled = (ch: string, style: number): Cell => ({ ch, style, fg: 1, bg: 1, font: 1 });
+  const screen = {
+    grid: [[styled("Z", TextStyle.Bold | TextStyle.Italic)]],
+    height: 1,
+    lowerCursor: { row: 0, col: 0 },
+  } as unknown as Screen;
+
+  expect(renderFrame(screen)).toBe(`${E}[1;1H${E}[0;1;3mZ${E}[0m${E}[1;1H`);
 });
 
 // --- installHostCallbacks --------------------------------------------------
@@ -333,18 +377,18 @@ test("deliverInput returns false at end of input (line)", () => {
   expect(deliverInput(machine)).toBe(false);
 });
 
-test("deliverInput reads a single key (read_char) and provides it", () => {
-  vi.mocked(readCharSync).mockReturnValue("x");
-  const provideChar = vi.fn();
-  const machine = { awaitingCharInput: true, provideChar } as unknown as Machine;
+test("deliverInput reads a single key (read_char) and provides its ZSCII code", () => {
+  vi.mocked(readKeySync).mockReturnValue(129); // up arrow, decoded from an escape sequence
+  const provideKey = vi.fn();
+  const machine = { awaitingCharInput: true, provideKey } as unknown as Machine;
 
   expect(deliverInput(machine)).toBe(true);
-  expect(provideChar).toHaveBeenCalledWith("x");
+  expect(provideKey).toHaveBeenCalledWith(129);
 });
 
 test("deliverInput returns false at end of input (read_char)", () => {
-  vi.mocked(readCharSync).mockReturnValue(null);
-  const machine = { awaitingCharInput: true, provideChar: vi.fn() } as unknown as Machine;
+  vi.mocked(readKeySync).mockReturnValue(null);
+  const machine = { awaitingCharInput: true, provideKey: vi.fn() } as unknown as Machine;
 
   expect(deliverInput(machine)).toBe(false);
 });
@@ -462,7 +506,7 @@ test("runTerminalLoop shows [More] and pages forward on a 'more' yield (TTY)", (
   const out = captureStdout();
   const isTTYDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
   Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-  vi.mocked(readCharSync).mockReturnValue(" "); // the key that pages forward
+  vi.mocked(readKeySync).mockReturnValue(32); // the key that pages forward
 
   const continueFromMore = vi.fn();
   const run = vi
@@ -486,7 +530,7 @@ test("runTerminalLoop shows [More] and pages forward on a 'more' yield (TTY)", (
     runTerminalLoop(machine);
 
     expect(out.text()).toContain("[More]"); // the prompt was drawn
-    expect(readCharSync).toHaveBeenCalled(); // it waited for a key
+    expect(readKeySync).toHaveBeenCalled(); // it waited for a key
     expect(continueFromMore).toHaveBeenCalled(); // then paged forward
   } finally {
     Object.defineProperty(
@@ -529,7 +573,7 @@ test("runAcceptance auto-pages a [More] yield without consuming a command", () =
 
 test("runTerminalLoop pages a [More] yield without drawing the prompt off a TTY", () => {
   const out = captureStdout(); // isTTY unset -> not a TTY
-  vi.mocked(readCharSync).mockReturnValue(" ");
+  vi.mocked(readKeySync).mockReturnValue(32);
 
   const continueFromMore = vi.fn();
   const run = vi

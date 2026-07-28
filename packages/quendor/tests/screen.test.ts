@@ -235,6 +235,7 @@ test("reset returns the screen to its initial state", () => {
   screen.style = TextStyle.Bold;
   screen.foreground = 5;
   screen.background = 6;
+  screen.setFont(3);
   screen.setStatusLine("Loc", "Score");
 
   screen.reset();
@@ -247,7 +248,47 @@ test("reset returns the screen to its initial state", () => {
   expect(screen.cursorCol).toBe(0);
   expect(screen.foreground).toBe(1); // back to the default color
   expect(screen.background).toBe(1);
+  expect(screen.font).toBe(1); // back to the normal font
   expect(screen.statusLine).toBeNull();
+});
+
+// set_color / set_font: attribute state that flows into printed cells, exactly
+// like style — the model keeps color and font on the screen, not the machine.
+
+test("setColor sets fg/bg, treating 0 as 'leave unchanged'", () => {
+  const screen = new Screen(10);
+
+  screen.setColor(4, 6);
+  expect(screen.foreground).toBe(4);
+  expect(screen.background).toBe(6);
+
+  screen.setColor(0, 2); // 0 = leave the foreground as it was
+  expect(screen.foreground).toBe(4);
+  expect(screen.background).toBe(2);
+
+  screen.setColor(7, 0); // 0 = leave the background as it was
+  expect(screen.foreground).toBe(7);
+  expect(screen.background).toBe(2);
+});
+
+test("setFont switches font and returns the previous one; 0 when unavailable", () => {
+  const screen = new Screen(10);
+
+  expect(screen.setFont(3)).toBe(1); // was normal, now character graphics
+  expect(screen.font).toBe(3);
+  expect(screen.setFont(4)).toBe(3); // fixed-pitch is available on a monospace grid
+  expect(screen.font).toBe(4);
+  expect(screen.setFont(2)).toBe(0); // font 2 unavailable — font unchanged
+  expect(screen.font).toBe(4);
+});
+
+test("printed cells carry the current font", () => {
+  const screen = new Screen(10, 4);
+
+  screen.setFont(3);
+  screen.print("x"); // lower window
+
+  expect(screen.grid[0][0].font).toBe(3);
 });
 
 // --- grid model: lower window, scrolling, and paging -----------------------

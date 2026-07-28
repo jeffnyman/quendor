@@ -146,12 +146,9 @@ export class Machine {
     stack: number[];
     frames: Frame[];
     pc: number;
-    currentFont: number;
   }[] = [];
 
   private static readonly MAX_UNDO = 25;
-
-  private currentFont = 1;
 
   constructor(
     story: Story,
@@ -736,6 +733,10 @@ export class Machine {
       // --- tables ---
       case "scan_table":
         return this.scanTable(o);
+      case "copy_table":
+        return this.copyTable(o[0], o[1], o[2]);
+      case "print_table":
+        return this.printTable(o);
 
       // --- output ---
       case "print":
@@ -800,6 +801,11 @@ export class Machine {
       case "erase_window":
         this.screen.eraseWindow(toS16(o[0]));
         return;
+      case "set_font":
+        return this.store(this.screen.setFont(o[0]));
+      case "set_color":
+        this.screen.setColor(o[0], o[1]);
+        return;
 
       // --- game state ---
       case "random":
@@ -858,7 +864,6 @@ export class Machine {
       stack: [...this.stack],
       frames: this.frames.map((f) => ({ ...f, locals: [...f.locals] })),
       pc: operandAddr,
-      currentFont: this.currentFont,
     });
 
     if (this.undoStack.length > Machine.MAX_UNDO) {
@@ -884,7 +889,6 @@ export class Machine {
     for (const f of snap.frames) this.frames.push({ ...f, locals: [...f.locals] });
 
     this.current = this.frames[this.frames.length - 1];
-    this.currentFont = snap.currentFont;
     this.applyResult(snap.pc, 2); // resume at the save_undo point with result 2
   }
 
@@ -1404,6 +1408,24 @@ export class Machine {
       this.memory.writeByte(HeaderOffset.ScreenHeight, Math.min(255, this.screenHeight));
       this.memory.writeByte(HeaderOffset.ScreenWidth, Math.min(255, this.screenWidth));
     }
+
+    if (this.version >= 5) {
+      // Advertise colour support (Flags 1, bit 0). Games gate colour on the
+      // interpreter's capabilities — Beyond Zork's SEE-COLOR? checks this bit —
+      // and stay monochrome without it.
+      this.memory.writeByte(HeaderOffset.Flags1, this.memory.readByte(HeaderOffset.Flags1) | 0x01);
+
+      // The screen size in "units" and the font cell size. On a character display
+      // a unit is one character, so the unit dimensions equal the char dimensions
+      // and a font cell is 1x1. This matters because games scale cursor coordinates
+      // by the font size (Beyond Zork's DO-CURSET multiplies row/col by the font
+      // height/width): if these are left 0, every set_cursor collapses to (1,1)
+      // and centered text piles onto one line.
+      this.memory.writeWord(HeaderOffset.ScreenWidthUnits, Math.min(0xffff, this.screenWidth));
+      this.memory.writeWord(HeaderOffset.ScreenHeightUnits, Math.min(0xffff, this.screenHeight));
+      this.memory.writeByte(HeaderOffset.FontWidth, 1);
+      this.memory.writeByte(HeaderOffset.FontHeight, 1);
+    }
   }
 
   private setupInitialFrame(initialPC: number): Frame {
@@ -1497,7 +1519,6 @@ export class Machine {
     // keep restarts reproducible
     this.rngState = this.randomSeed;
 
-    this.currentFont = 1;
     this.memoryStreams.length = 0;
     this.screenStreamEnabled = true;
     this.charBuffer.length = 0;
@@ -1684,6 +1705,42 @@ export class Machine {
       if (offset === 0) this.return_(0);
       else if (offset === 1) this.return_(1);
       else this.pc = next + offset - 2;
+    }
+  }
+
+  private copyTable(first: number, second: number, size: number): void {
+    if (second === 0) {
+      for (let j = 0; j < size; j++) this.memory.writeByte(first + j, 0);
+    } else if (toS16(size) < 0 || first > second) {
+      const n = toS16(size) < 0 ? -toS16(size) : size;
+
+      for (let j = 0; j < n; j++)
+        this.memory.writeByte(second + j, this.memory.readByte(first + j));
+    } else {
+      for (let j = size - 1; j >= 0; j--)
+        this.memory.writeByte(second + j, this.memory.readByte(first + j));
+    }
+  }
+
+  private printTable(o: number[]): void {
+    let addr = o[0];
+    const width = o[1];
+    const height = o.length > 2 ? o[2] : 1;
+    const skip = o.length > 3 ? o[3] : 0;
+    const left = this.screen.cursorCol;
+
+    for (let i = 0; i < height; i++) {
+      if (i !== 0) {
+        this.screen.setCursor(this.screen.cursorRow + 1, left);
+      }
+      let s = "";
+
+      for (let j = 0; j < width; j++) {
+        s += String.fromCharCode(this.memory.readByte(addr++));
+      }
+
+      this.print(s);
+      addr += skip;
     }
   }
 

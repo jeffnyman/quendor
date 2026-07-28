@@ -33,13 +33,12 @@ export function attrCss(style: number, fg: number, bg: number): string[] {
   const bgc = zColorCss(bg);
   const css: string[] = [];
 
-  if (style & 1) {
-    // reverse video: swap fg/bg (falling back to the theme colours)
-    css.push(`color:${bgc ?? "var(--bg)"}`, `background:${fgc ?? "var(--fg)"}`);
-  } else {
-    if (fgc) css.push(`color:${fgc}`);
-    if (bgc) css.push(`background:${bgc}`);
-  }
+  // Reverse video is deliberately not applied (matching the CLI renderer). Games
+  // build "panels" out of reverse-video text without padding lines to a fixed
+  // width, which leaves ragged gaps; the information they encode with it —
+  // selection highlights, emphasis — they carry with colour instead.
+  if (fgc) css.push(`color:${fgc}`);
+  if (bgc) css.push(`background:${bgc}`);
 
   if (style & 2) css.push("font-weight:700");
   if (style & 4) css.push("font-style:italic");
@@ -53,9 +52,15 @@ export function renderCells(row: Cell[]): string {
   let i = 0;
 
   while (i < row.length) {
-    const { style, fg, bg } = row[i];
+    const { style, fg, bg, font } = row[i];
     let text = "";
-    while (i < row.length && row[i].style === style && row[i].fg === fg && row[i].bg === bg) {
+    while (
+      i < row.length &&
+      row[i].style === style &&
+      row[i].fg === fg &&
+      row[i].bg === bg &&
+      row[i].font === font
+    ) {
       text += row[i].ch;
       i++;
     }
@@ -63,7 +68,16 @@ export function renderCells(row: Cell[]): string {
     const escaped = escapeHtml(text);
     const css = attrCss(style, fg, bg);
 
-    html += css.length === 0 ? escaped : `<span style="${css.join(";")}">${escaped}</span>`;
+    // Font 3 is the character-graphics font: render the raw codes in the FreeFont3
+    // web font, which draws the actual box/compass bitmaps. Other text renders
+    // normally, with a colour/style span only when one is needed.
+    if (font === 3) {
+      html += `<span class="font3"${css.length ? ` style="${css.join(";")}"` : ""}>${escaped}</span>`;
+    } else if (css.length) {
+      html += `<span style="${css.join(";")}">${escaped}</span>`;
+    } else {
+      html += escaped;
+    }
   }
 
   return html;

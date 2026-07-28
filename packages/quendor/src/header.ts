@@ -23,6 +23,10 @@ export const HeaderOffset = {
   InterpreterVersion: 0x1f,
   ScreenHeight: 0x20, // v4+: screen height in lines (interpreter-written)
   ScreenWidth: 0x21, // v4+: screen width in characters (interpreter-written)
+  ScreenWidthUnits: 0x22, // v5+: screen width in units (word, interpreter-written)
+  ScreenHeightUnits: 0x24, // v5+: screen height in units (word, interpreter-written)
+  FontWidth: 0x26, // v5: font width in units (v6: font height); interpreter-written
+  FontHeight: 0x27, // v5: font height in units (v6: font width); interpreter-written
   RoutinesOffset: 0x28, // v6/v7; divided by 8 to get the real offset
   StringsOffset: 0x2a, // v6/v7; divided by 8 to get the real offset
   AlphabetTableAddress: 0x34, // v5+; 0 means use the default alphabets
