@@ -299,12 +299,19 @@ const NAMED_KEYS = new Map<string, number>([
   ["RIGHT", 132],
 ]);
 
-/** Parse a solution file into commands: one per line, trimmed, dropping blanks and `#` comments. */
+/**
+ * Parse a solution file into commands: one per line, trimmed, dropping blank
+ * lines and comments. A `#` at the start of a line or after whitespace begins a
+ * comment running to end of line, so both full-line comments and inline
+ * annotations (`go north  # reach the hall`) are stripped before the command
+ * reaches the game — an un-stripped inline `#` would be fed in as input and
+ * corrupt the replay.
+ */
 export function parseSolution(text: string): string[] {
   return text
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("#"));
+    .map((line) => line.replace(/(^|\s)#.*$/, "").trim())
+    .filter((line) => line.length > 0);
 }
 
 /** The ZSCII key a read_char solution token stands for: a named key, or its first character. */

@@ -698,6 +698,15 @@ test("parseSolution handles CRLF line endings", () => {
   expect(parseSolution("look\r\nnorth\r\n")).toEqual(["look", "north"]);
 });
 
+test("parseSolution strips inline comments so annotations aren't fed to the game", () => {
+  const text = 'go north  # reach the hall\nsw. w # stash the loot\nsay "a well"';
+  expect(parseSolution(text)).toEqual(["go north", "sw. w", 'say "a well"']);
+});
+
+test("parseSolution only treats a whitespace-preceded # as a comment (mid-token # is kept)", () => {
+  expect(parseSolution("press button#3")).toEqual(["press button#3"]);
+});
+
 test("solutionKey maps named keys (case-insensitively) and falls back to the first character", () => {
   expect(solutionKey("SPACE")).toBe(32);
   expect(solutionKey("return")).toBe(13);
