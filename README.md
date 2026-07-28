@@ -176,7 +176,7 @@ This project uses pnpm catalogs to pin shared dependency versions in one place. 
 To advance the pin, for example after new material has been added to entharion itself:
 
 ```bash
-git submodule update --remote --recursive --init
+git submodule update --remote --recursive --init --merge
 git add entharion
 git commit -m "chore: update entharion submodule reference"
 ```
