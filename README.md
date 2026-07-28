@@ -173,17 +173,23 @@ This project uses pnpm catalogs to pin shared dependency versions in one place. 
 
 `entharion` is pinned to a specific commit in quendor's history: a plain `git submodule update --init --recursive` (see [Getting Started](#getting-started)) always checks out that exact commit (and entharion's nested submodules at the commits it pins), never whatever's currently on entharion's `main`.
 
+quendor only ever tracks `entharion` as a single pinned commit. `entharion`'s _own_ nested submodules (`frotz`, `ztools`, `reform6`) are advanced inside the entharion repository itself, not from here — so by the time you update the pin below, entharion's `main` should already record the nested-submodule commits you want.
+
 To advance the pin, for example after new material has been added to entharion itself:
 
 ```bash
-git submodule update --remote --recursive --init
+git submodule update --remote entharion   # entharion → its main tip
+git submodule update --init --recursive    # nested submodules → the commits entharion pins
 git add entharion
 git commit -m "chore: update entharion submodule reference"
 ```
 
 That goes through the normal branch/PR workflow like any other change.
 
-To just check whether entharion has new content without committing anything, run the same `git submodule update --remote --recursive --init` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init --recursive`, which snaps back to quendor's actual pinned commit.
+> [!IMPORTANT]
+> Update entharion with `--remote entharion`, **not** `git submodule update --remote --recursive`. Combining `--remote` with `--recursive` pulls entharion's _nested_ submodules to their own remote tips instead of the commits entharion pins, which leaves `entharion` permanently showing as modified.
+
+To just check whether entharion has new content without committing anything, run `git submodule update --remote entharion` on its own. This updates the local checkout only: `git status` will show `entharion` as modified until you either commit it (above) or discard the change with `git submodule update --init --recursive`, which snaps back to quendor's actual pinned commit.
 
 ### AI Coding Assistants
 

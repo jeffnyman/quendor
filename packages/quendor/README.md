@@ -80,6 +80,7 @@ quendor path/to/zork1.z3
 | `--interpreter-version C` | Set the interpreter version letter (default `A`).                                                                             |
 | `--accept FILE`           | Replay a solution file (one command per line) and print the transcript — see [Scripted playthroughs](#scripted-playthroughs). |
 | `--oracle FILE`           | With `--accept`, diff the transcript against a saved one; exit `1` on any difference.                                         |
+| `--replay FILE`           | Replay a solution file, then hand you the live prompt to keep playing — for building a walkthrough incrementally.             |
 | `-h`, `--help`            | Print usage and exit.                                                                                                         |
 
 ### Scripted playthroughs

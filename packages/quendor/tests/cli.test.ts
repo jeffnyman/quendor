@@ -105,6 +105,14 @@ test("drops --interpreter with a non-numeric value", () => {
   expect(parseArgs(["--interpreter", "xyz", "game.z3"]).interpreterNumber).toBeUndefined();
 });
 
+test("reads --replay as a solution file path", () => {
+  expect(parseArgs(["--replay", "walk.txt", "game.z3"])).toEqual({
+    help: false,
+    path: "game.z3",
+    replay: "walk.txt",
+  });
+});
+
 // --- main early exits ------------------------------------------------------
 
 const originalArgv = process.argv;
@@ -393,6 +401,54 @@ test("deliverInput returns false at end of input (read_char)", () => {
   expect(deliverInput(machine)).toBe(false);
 });
 
+// --- deliverInput with a --replay queue ------------------------------------
+
+test("deliverInput drains the replay queue before reading stdin (line)", () => {
+  const provideInput = vi.fn();
+  const print = vi.fn();
+  const machine = {
+    awaitingCharInput: false,
+    provideInput,
+    screen: { print },
+  } as unknown as Machine;
+  const queue = ["open door", "go north"];
+  vi.mocked(readLineSync).mockClear();
+
+  expect(deliverInput(machine, queue)).toBe(true);
+  expect(print).toHaveBeenCalledWith("open door\n"); // echoed like a typed line
+  expect(provideInput).toHaveBeenCalledWith("open door");
+  expect(readLineSync).not.toHaveBeenCalled(); // stdin untouched while replaying
+  expect(queue).toEqual(["go north"]); // consumed exactly one
+});
+
+test("deliverInput feeds a queued command as a key at a read_char prompt", () => {
+  const provideKey = vi.fn();
+  const machine = {
+    awaitingCharInput: true,
+    provideKey,
+    screen: { print: vi.fn() },
+  } as unknown as Machine;
+  vi.mocked(readKeySync).mockClear();
+
+  expect(deliverInput(machine, ["Y"])).toBe(true);
+  expect(provideKey).toHaveBeenCalledWith("Y".charCodeAt(0)); // solutionKey("Y")
+  expect(readKeySync).not.toHaveBeenCalled();
+});
+
+test("deliverInput falls through to stdin once the replay queue is empty", () => {
+  vi.mocked(readLineSync).mockReturnValue("look");
+  const provideInput = vi.fn();
+  const machine = {
+    awaitingCharInput: false,
+    provideInput,
+    screen: { print: vi.fn() },
+  } as unknown as Machine;
+
+  expect(deliverInput(machine, [])).toBe(true); // empty queue -> live stdin
+  expect(readLineSync).toHaveBeenCalled();
+  expect(provideInput).toHaveBeenCalledWith("look");
+});
+
 // --- runTerminalLoop / main's run path -------------------------------------
 
 /** A minimal real story that quits immediately (initial PC -> 0OP quit). */
@@ -428,6 +484,32 @@ test("main loads the story, wires it up, and runs it on the alternate screen (TT
       isTTYDesc ?? { value: undefined, configurable: true },
     );
   }
+});
+
+/** A v3 story that reads one line (sread), then quits. */
+function readThenQuitStory(): Story {
+  const bytes = new Uint8Array(0x100);
+  const MAIN = 0x40;
+  const TEXTBUF = 0x80;
+  bytes[HeaderOffset.Version] = 3;
+  bytes[HeaderOffset.InitialProgramCounter] = (MAIN >> 8) & 0xff;
+  bytes[HeaderOffset.InitialProgramCounter + 1] = MAIN & 0xff;
+  bytes.set([0xe4, 0x5f, TEXTBUF, 0x00, 0xba], MAIN); // sread TEXTBUF 0 ; quit
+  bytes[TEXTBUF] = 20; // text-buffer capacity
+  return new Story(bytes);
+}
+
+test("main --replay pre-feeds the solution file, satisfying the read without stdin", async () => {
+  process.argv = ["node", "quendor", "--replay", "walk.txt", "game.z3"];
+  captureStdout();
+  vi.mocked(loadStoryFromFile).mockResolvedValue(readThenQuitStory());
+  vi.mocked(readFileSync).mockReturnValue("# REQUIRES SEED = 1\nnorth\n");
+  vi.mocked(readLineSync).mockClear();
+
+  await main();
+
+  expect(readFileSync).toHaveBeenCalledWith("walk.txt", "utf8");
+  expect(readLineSync).not.toHaveBeenCalled(); // the queued "north" satisfied the sread
 });
 
 test("runTerminalLoop delivers a line at a read prompt, then stops when the game halts", () => {
@@ -614,6 +696,15 @@ test("parseSolution keeps commands and drops blank lines and # comments", () => 
 
 test("parseSolution handles CRLF line endings", () => {
   expect(parseSolution("look\r\nnorth\r\n")).toEqual(["look", "north"]);
+});
+
+test("parseSolution strips inline comments so annotations aren't fed to the game", () => {
+  const text = 'go north  # reach the hall\nsw. w # stash the loot\nsay "a well"';
+  expect(parseSolution(text)).toEqual(["go north", "sw. w", 'say "a well"']);
+});
+
+test("parseSolution only treats a whitespace-preceded # as a comment (mid-token # is kept)", () => {
+  expect(parseSolution("press button#3")).toEqual(["press button#3"]);
 });
 
 test("solutionKey maps named keys (case-insensitively) and falls back to the first character", () => {

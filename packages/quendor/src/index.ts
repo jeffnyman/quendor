@@ -70,6 +70,7 @@ export type { DecodedQuetzal, QuetzalState, QuetzalFrame } from "./quetzal.ts";
 
 // --- resources (Blorb pictures/sounds) -------------------------------------
 export { describeBlorb, extractBlorb, parseBlorb, unwrapStory } from "./blorb.ts";
+export type { BlorbPicture, BlorbSound, BlorbResources } from "./blorb.ts";
 export { decodeAiff, type DecodedAudio } from "./aiff.ts";
 
 // --- screen models ---------------------------------------------------------

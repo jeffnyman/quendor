@@ -160,3 +160,35 @@ main {
   border: 0;
   opacity: 0;
 }
+
+/* Title-picture overlay: fills the viewport over everything, dismissed on
+   click/keypress. Pixel art (a 320x200 splash) is scaled up crisply. */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #000;
+  cursor: pointer;
+}
+
+#splash[hidden] {
+  display: none;
+}
+
+#splashimg {
+  width: 96vw;
+  height: 82vh;
+  object-fit: contain; /* scale the picture up to fill, preserving its aspect ratio */
+  image-rendering: pixelated;
+}
+
+.splash-hint {
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
