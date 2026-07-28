@@ -11,10 +11,23 @@
     <header>
       <span class="title">Quendor</span>
       <label class="filebtn">
-        Open a story file
-        <input id="file" type="file" accept=".z1,.z2,.z3,.z4,.z5,.z8,.zblorb,.blorb" hidden />
+        Open story files
+        <input
+          id="file"
+          type="file"
+          accept=".z1,.z2,.z3,.z4,.z5,.z8,.zblorb,.blorb,.blb"
+          multiple
+          hidden
+        />
       </label>
     </header>
+
+    <!-- Title picture (e.g. Beyond Zork's splash): shown full-screen on load,
+         dismissed with a click or any key. -->
+    <div id="splash" hidden>
+      <img id="splashimg" alt="title screen" />
+      <div class="splash-hint">click or press any key to begin</div>
+    </div>
 
     <main>
       <div id="screen"></div>

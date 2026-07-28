@@ -2,7 +2,7 @@ import "./style.css";
 
 // The engine, through Quendor's public API — the same surface rezrov uses, but
 // here with none of the debugger: just load a story and play it.
-import { Story, Machine, RunState, unwrapStory } from "quendor";
+import { Story, Machine, RunState, unwrapStory, parseBlorb, type BlorbPicture } from "quendor";
 import { escapeHtml, renderScreenHtml, type InputOverlay } from "./format.ts";
 import { keyToZscii } from "./keys.ts";
 
@@ -15,6 +15,8 @@ const els = {
   screen: $("#screen"),
   // Off-screen; it edits the text, the caret is drawn inline on the grid.
   input: $<HTMLInputElement>("#input"),
+  splash: $("#splash"),
+  splashImg: $<HTMLImageElement>("#splashimg"),
 };
 
 let storyBytes: Uint8Array | null = null;
@@ -96,10 +98,58 @@ async function loadStory(bytes: Uint8Array): Promise<void> {
   reset();
 }
 
-async function onFileChange(): Promise<void> {
-  const f = els.file.files?.[0];
-  if (!f) return;
-  await loadStory(new Uint8Array(await f.arrayBuffer()));
+/**
+ * Take everything the player was handed at once (a multi-select or a drop) and
+ * sort it into a story and, if present, a title picture. A bare `.z*` file isn't
+ * a Blorb; a `.zblorb` bundles the story and may carry pictures; a resource
+ * `.blb` (Beyond Zork's splash) carries pictures and no story. Since the story
+ * and its art often ship as separate files, we just pair whatever came together.
+ */
+async function onFilesSelected(files: FileList): Promise<void> {
+  let story: Uint8Array | null = null;
+  let picture: BlorbPicture | null = null;
+
+  for (const f of files) {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const blorb = parseBlorb(bytes); // null when it isn't a Blorb (a bare story image)
+
+    if (!blorb) {
+      story = bytes;
+      continue;
+    }
+    if (blorb.story) story = blorb.story;
+
+    const cover = [...blorb.pictures.values()].find((p) => p.format !== "rect");
+    picture ??= cover ?? null;
+  }
+
+  if (!story) return; // nothing playable was handed to us
+
+  const bytes = story;
+  if (picture) showSplash(picture, () => void loadStory(bytes));
+  else await loadStory(story);
+}
+
+/** Show a title picture full-screen; a click or any key dismisses it and begins. */
+function showSplash(pic: BlorbPicture, begin: () => void): void {
+  const blob = new Blob([new Uint8Array(pic.data)], { type: `image/${pic.format}` });
+  const url = URL.createObjectURL(blob);
+  els.splashImg.src = url;
+  els.splash.hidden = false;
+
+  let dismissed = false;
+  const dismiss = (): void => {
+    if (dismissed) return;
+    dismissed = true;
+    els.splash.hidden = true;
+    URL.revokeObjectURL(url);
+    els.splash.removeEventListener("click", dismiss);
+    window.removeEventListener("keydown", dismiss);
+    begin();
+  };
+
+  els.splash.addEventListener("click", dismiss);
+  window.addEventListener("keydown", dismiss);
 }
 
 function submitInput(): void {
@@ -122,7 +172,17 @@ function deliverCharKey(e: KeyboardEvent, m: Machine): void {
   advance();
 }
 
-els.file.addEventListener("change", () => void onFileChange());
+els.file.addEventListener("change", () => {
+  if (els.file.files?.length) void onFilesSelected(els.file.files);
+});
+
+// Drop a story (and its resource Blorb) anywhere on the window.
+document.body.addEventListener("dragover", (e) => e.preventDefault());
+document.body.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const files = e.dataTransfer?.files;
+  if (files?.length) void onFilesSelected(files);
+});
 
 // Mirror the harvested text into the on-screen caret as it changes: `input`
 // covers typing/paste; `keyup` covers caret moves (arrow keys) that don't type.
