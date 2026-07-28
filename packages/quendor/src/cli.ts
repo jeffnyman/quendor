@@ -239,6 +239,19 @@ export function deliverInput(machine: Machine, replay: string[] = []): boolean {
 }
 
 /**
+ * Acknowledge a [More] pause and resume. Live, it draws the prompt and waits for a
+ * keypress; during a --replay fast-forward it pages straight through, consuming no
+ * key, so the replay rushes to the frontier without stopping.
+ */
+function acknowledgeMore(machine: Machine, tty: boolean, live: boolean): void {
+  if (live) {
+    if (tty) process.stdout.write(drawMore(machine.screen));
+    readKeySync(); // any key pages forward (consumes a whole escape sequence)
+  }
+  machine.continueFromMore();
+}
+
+/**
  * Run the fetch/prompt loop until the machine halts or input ends, redrawing the
  * screen grid after each step. On a TTY it runs on the alternate screen buffer, so
  * entering and leaving restores the console cleanly — no scrollback ghosts, no
@@ -255,19 +268,15 @@ export function runTerminalLoop(machine: Machine, replay: string[] = []): void {
 
   for (;;) {
     const state = machine.run();
+    const live = replay.length === 0; // once the queue drains, we're at the live prompt
 
-    // While replaying, fast-forward silently; only paint once we're live.
-    if (tty && replay.length === 0) process.stdout.write(renderFrame(machine.screen));
+    // Replay fast-forwards silently; only paint once we're live.
+    if (tty && live) process.stdout.write(renderFrame(machine.screen));
 
     if (state !== RunState.WaitingForInput) break; // halted
 
     if (machine.pendingInputKind === "more") {
-      if (replay.length === 0) {
-        if (tty) process.stdout.write(drawMore(machine.screen));
-        readKeySync(); // any key pages forward (consumes a whole escape sequence)
-      }
-      // during replay, page straight through — no key consumed
-      machine.continueFromMore();
+      acknowledgeMore(machine, tty, live);
       continue;
     }
 
