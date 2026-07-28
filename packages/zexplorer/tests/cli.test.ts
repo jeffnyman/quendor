@@ -372,6 +372,20 @@ test("main run --trace: truncates the file, appends the traced line, and notes t
   expect(stderrWrite).toHaveBeenCalledWith("\n[trace written to trace.log]\n");
 });
 
+test("main run --trace omits the resolved-operands note when there is none", async () => {
+  vi.mocked(loadStoryFromFile).mockResolvedValue(fakeStory(5));
+  vi.mocked(formatInstruction).mockReturnValue("rtrue");
+  vi.mocked(formatResolvedOperands).mockReturnValue(""); // nothing resolved to annotate
+  const machine = fakeMachine([RunState.Halted], true);
+  installMachine(machine);
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  process.argv = ["node", "zexp", "run", "game.z5", "--trace", "trace.log"];
+
+  await main();
+
+  expect(appendFileSync).toHaveBeenCalledWith("trace.log", "0x0100: rtrue\n"); // no "  ; …" suffix
+});
+
 // --- blorb command ---------------------------------------------------------
 
 // A minimal real Blorb (FORM/IFRS with a single ZCOD chunk), so cmdBlorb's real
@@ -432,6 +446,15 @@ test("main blorb --extract on a non-Blorb reports nothing to extract", async () 
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Nothing to extract"));
 });
 
+test("main blorb --extract with no directory defaults to blorb-out", async () => {
+  mockReadFile(blorbWithZcod(new Uint8Array([5, 0, 0])));
+  process.argv = ["node", "zexp", "blorb", "game.zblorb", "--extract"];
+
+  await main();
+
+  expect(mkdirSync).toHaveBeenCalledWith("blorb-out", { recursive: true });
+});
+
 // --- run option parsing ----------------------------------------------------
 
 test("parseArgs collects the path plus the trace, seed, and tandy options", () => {
@@ -458,6 +481,13 @@ test("parseArgs reads --interpreter (number) and --interpreter-version (letter -
 
   expect(opts.interpreterNumber).toBe(11);
   expect(opts.interpreterVersion).toBe(0x54); // 'T'
+});
+
+test("parseArgs drops --interpreter and --interpreter-version with unusable values", () => {
+  expect(parseArgs(["game.z3", "--interpreter", "xx"]).opts.interpreterNumber).toBeUndefined();
+  expect(
+    parseArgs(["game.z3", "--interpreter-version", ""]).opts.interpreterVersion,
+  ).toBeUndefined();
 });
 
 // --- debug command ---------------------------------------------------------
@@ -572,6 +602,36 @@ test("debug: `db` removes a breakpoint", async () => {
   expect(m.breakpoints.size).toBe(0);
 });
 
+test("debug: `db`, `w`, and `dw` with an unparsable address are no-ops", async () => {
+  const m = fakeDebugMachine({ breakpoints: new Set([0x10]) });
+
+  await runDebug(m, ["db zz", "w zz", "dw zz"]);
+
+  expect([...m.breakpoints]).toEqual([0x10]); // nothing deleted
+  expect(m.watchWord).not.toHaveBeenCalled();
+  expect(m.removeWatchpoint).not.toHaveBeenCalled();
+});
+
+test("debug: `s` stops immediately when the machine is already waiting for input", async () => {
+  const m = fakeDebugMachine({ state: "waiting-input" });
+
+  await runDebug(m, ["s 3"]);
+
+  expect(m.step).not.toHaveBeenCalled(); // the waiting-input guard breaks before the first step
+});
+
+test("debug: showState prints no banner for an unrecognized state", async () => {
+  const m = fakeDebugMachine({ state: "running" }); // not halted/waiting/paused
+
+  await runDebug(m, ["c"]);
+
+  const banners = vi
+    .mocked(console.log)
+    .mock.calls.map((c) => String(c[0]))
+    .filter((s) => s.startsWith("["));
+  expect(banners).toEqual([]);
+});
+
 test("debug: `w` watches a word and `dw` removes both bytes", async () => {
   const m = fakeDebugMachine();
 
@@ -599,12 +659,56 @@ test("debug: `x` dumps memory bytes at an address", async () => {
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining("0x0100:  0xab 0xab"));
 });
 
+test("debug: `x` with no address dumps the default 16 bytes from the pc", async () => {
+  const m = fakeDebugMachine({ programCounter: 0x2000, readMemoryByte: vi.fn(() => 0xcd) });
+
+  await runDebug(m, ["x"]);
+
+  const line = vi
+    .mocked(console.log)
+    .mock.calls.map((c) => String(c[0]))
+    .find((s) => s.includes("0x2000:"));
+  expect(line?.match(/0xcd/g)?.length).toBe(16);
+});
+
 test("debug: an unknown command is reported", async () => {
   const m = fakeDebugMachine();
 
   await runDebug(m, ["bogus"]);
 
   expect(console.log).toHaveBeenCalledWith("unknown command: bogus");
+});
+
+test("debug: `b` with no address is a no-op", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, ["b"]);
+
+  expect(m.breakpoints.size).toBe(0);
+});
+
+test("debug: `x` with a non-numeric count falls back to 16 bytes", async () => {
+  const m = fakeDebugMachine({ readMemoryByte: vi.fn(() => 0xab) });
+
+  await runDebug(m, ["x 100 zz"]);
+
+  const line = vi
+    .mocked(console.log)
+    .mock.calls.map((c) => String(c[0]))
+    .find((s) => s.includes("0x0100:"));
+  expect(line?.match(/0xab/g)?.length).toBe(16);
+});
+
+test("debug: a non-Error thrown by a command is still reported", async () => {
+  const m = fakeDebugMachine({
+    readMemoryByte: vi.fn(() => {
+      throw "boom"; // a bare string, not an Error
+    }),
+  });
+
+  await runDebug(m, ["x 0 1"]);
+
+  expect(console.log).toHaveBeenCalledWith("error: boom");
 });
 
 test("debug: a throwing command prints an error and keeps the session alive", async () => {
@@ -667,6 +771,14 @@ test("debug: `globals` prints only the non-zero globals", async () => {
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining("g0x01=0x002a"));
 });
 
+test("debug: `globals` shows (all zero) when every global is zero", async () => {
+  const m = fakeDebugMachine({ getGlobals: vi.fn(() => Array.from({ length: 240 }, () => 0)) });
+
+  await runDebug(m, ["globals"]);
+
+  expect(console.log).toHaveBeenCalledWith("  (all zero)");
+});
+
 test("debug: a watchpoint hit is announced after `c`", async () => {
   const m = fakeDebugMachine();
   m.run = vi.fn(() => {
@@ -676,6 +788,35 @@ test("debug: a watchpoint hit is announced after `c`", async () => {
   await runDebug(m, ["c"]);
 
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining("watchpoint 0x1234"));
+});
+
+test("debug: `c` on a halted machine reports the halt", async () => {
+  const m = fakeDebugMachine({ state: "halted" });
+
+  await runDebug(m, ["c"]);
+
+  expect(console.log).toHaveBeenCalledWith("[halted]");
+});
+
+test("debug: `regs` prints the locals and the eval stack when non-empty", async () => {
+  const m = fakeDebugMachine({
+    getLocals: vi.fn(() => [0x11, 0x22]),
+    getEvalStack: vi.fn(() => [0xaa, 0xbb]),
+  });
+
+  await runDebug(m, ["regs"]);
+
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("locals=[0x0011, 0x0022]"));
+  expect(console.log).toHaveBeenCalledWith(expect.stringContaining("stack=[0x00aa, 0x00bb]"));
+});
+
+test("debug: the machine's output is written straight to stdout", async () => {
+  const m = fakeDebugMachine();
+
+  await runDebug(m, []);
+  m.onOutput?.("you are in a maze");
+
+  expect(stdoutWrite).toHaveBeenCalledWith("you are in a maze");
 });
 
 // --- wireSaveRestore (shared by run and debug) -----------------------------
@@ -701,4 +842,27 @@ test("wireSaveRestore: onRestore reads the blob back, or returns null when absen
   mockReadFile(new Uint8Array([4, 5, 6]));
   expect(machine.onRestore()).toEqual(new Uint8Array([4, 5, 6]));
   expect(existsSync).toHaveBeenCalledWith("game.z3.qzl");
+});
+
+test("wireSaveRestore: onSave returns false when the write fails", () => {
+  const machine = {} as unknown as Machine;
+  wireSaveRestore(machine, "game.z3");
+
+  vi.mocked(writeFileSync).mockImplementationOnce(() => {
+    throw new Error("disk full");
+  });
+
+  expect(machine.onSave(new Uint8Array([1, 2, 3]))).toBe(false);
+});
+
+test("wireSaveRestore: onRestore returns null when the read fails", () => {
+  const machine = {} as unknown as Machine;
+  wireSaveRestore(machine, "game.z3");
+
+  vi.mocked(existsSync).mockReturnValue(true);
+  vi.mocked(readFileSync).mockImplementationOnce(() => {
+    throw new Error("read error");
+  });
+
+  expect(machine.onRestore()).toBeNull();
 });
