@@ -1,11 +1,15 @@
 import { expect, test } from "vite-plus/test";
-import { OperandKind } from "quendor";
-import type { Instruction, Machine, Operand } from "quendor";
+import { OperandKind, Story, Machine } from "quendor";
+import type { Instruction, Operand } from "quendor";
 import {
   callTarget,
   computeLabels,
+  currentRoutineAddr,
+  decodeRoutine,
   disasmEmptyMsg,
+  disasmHtml,
   jumpOrBranchTarget,
+  routineCodeStart,
   routineLabel,
 } from "../web/disasm-model.ts";
 
@@ -89,4 +93,79 @@ test("routineLabel formats the toolbar location text", () => {
 test("disasmEmptyMsg differs for halted vs a non-routine address", () => {
   expect(disasmEmptyMsg(undefined)).toContain("halted");
   expect(disasmEmptyMsg(0x1234)).toContain("not a routine at 0x1234");
+});
+
+// --- functions that decode real instructions, driven by a tiny v5 story ------
+//
+// The entry point at 0x40 is raw code (§5.5, no routine header): call_1n to the
+// routine packed at 0x14 (→ 0x50), an unconditional jump, then rtrue. The routine
+// at 0x50 is `0 locals` + rtrue.
+
+function buildMachine(): Machine {
+  const bytes = new Uint8Array(0x100);
+  bytes[0x00] = 5; // version 5
+  bytes[0x06] = 0x00;
+  bytes[0x07] = 0x40; // initial PC → 0x40
+  bytes[0x0c] = 0x00;
+  bytes[0x0d] = 0x60; // globals → 0x60
+  bytes[0x0e] = 0x01;
+  bytes[0x0f] = 0x00; // static base → 0x100 (all of the above is dynamic)
+
+  bytes.set([0x8f, 0x00, 0x14], 0x40); // call_1n 0x14  (packed → 0x50)
+  bytes.set([0x8c, 0x00, 0x05], 0x43); // jump +5
+  bytes[0x46] = 0xb0; // rtrue
+  bytes.set([0x00, 0xb0], 0x50); // routine: 0 locals, then rtrue
+
+  return new Machine(new Story(bytes));
+}
+
+test("currentRoutineAddr returns the innermost frame's routine, or undefined", () => {
+  const m = buildMachine();
+  expect(currentRoutineAddr(m)).toBe(m.getCallStack()[0]?.routineAddress);
+  expect(currentRoutineAddr(m)).toBeTypeOf("number");
+
+  const halted = { getCallStack: (): unknown[] => [] } as unknown as Machine;
+  expect(currentRoutineAddr(halted)).toBeUndefined();
+});
+
+test("routineCodeStart: undefined, entry point, past the header, and unreadable", () => {
+  const m = buildMachine();
+  expect(routineCodeStart(m, undefined, true)).toBeNull();
+  expect(routineCodeStart(m, 0x40, true)).toBe(0x40); // entry frame (returnPC 0): raw code
+  expect(routineCodeStart(m, 0x50, false)).toBe(0x51); // header path: skip the local-count byte
+  expect(routineCodeStart(m, 0x5000, false)).toBeNull(); // out of range → readRoutineHeader throws
+});
+
+test("decodeRoutine reads instructions until a return-like op", () => {
+  // The unconditional jump ends the linear run (control doesn't fall through),
+  // so decoding stops there — the rtrue past it is never reached this way.
+  const insns = decodeRoutine(buildMachine(), 0x40);
+  expect(insns.map((i) => i.opcode.name)).toEqual(["call_1n", "jump"]);
+});
+
+test("decodeRoutine stops cleanly when an instruction fails to decode", () => {
+  // Starting at the very last byte, the reader runs off the end of memory on its
+  // first read; the catch/break returns whatever was collected (nothing).
+  expect(decodeRoutine(buildMachine(), 0xff)).toEqual([]);
+});
+
+test("disasmHtml renders rows with the PC marker and call/jump nav chips", () => {
+  const m = buildMachine();
+  const insns = decodeRoutine(m, 0x40);
+  const html = disasmHtml(insns, m, new Map(), new Set());
+
+  expect(html).toContain('data-addr="64"'); // 0x40, the first row
+  expect(html).toContain('class="dline pc"'); // first insn sits on the PC
+  expect(html).toContain("data-nav="); // call_1n → routine target chip
+  expect(html).toContain("data-scroll="); // jump → in-routine target chip
+});
+
+test("disasmHtml emits a label before a targeted row and marks breakpoints", () => {
+  const m = buildMachine();
+  const insns = decodeRoutine(m, 0x40);
+  const jumpAddr = insns[1].address;
+  const html = disasmHtml(insns, m, new Map([[jumpAddr, "L1"]]), new Set([jumpAddr]));
+
+  expect(html).toContain('class="dlabel">L1:</div>'); // label row precedes the instruction
+  expect(html).toContain(" bp"); // breakpoint class on that row
 });
