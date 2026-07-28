@@ -99,13 +99,14 @@ async function loadStory(bytes: Uint8Array): Promise<void> {
 }
 
 /**
- * Take everything the player was handed at once (a multi-select or a drop) and
- * sort it into a story and, if present, a title picture. A bare `.z*` file isn't
- * a Blorb; a `.zblorb` bundles the story and may carry pictures; a resource
- * `.blb` (Beyond Zork's splash) carries pictures and no story. Since the story
- * and its art often ship as separate files, we just pair whatever came together.
+ * Sort a batch of handed-over files into a story image and, if present, a title
+ * picture. A bare `.z*` file isn't a Blorb; a `.zblorb` bundles the story and may
+ * carry pictures; a resource `.blb` (Beyond Zork's splash) carries pictures and no
+ * story. The story and its art often ship separately, so we pair whatever came in.
  */
-async function onFilesSelected(files: FileList): Promise<void> {
+async function sortHandedFiles(
+  files: FileList,
+): Promise<{ story: Uint8Array | null; picture: BlorbPicture | null }> {
   let story: Uint8Array | null = null;
   let picture: BlorbPicture | null = null;
 
@@ -115,18 +116,22 @@ async function onFilesSelected(files: FileList): Promise<void> {
 
     if (!blorb) {
       story = bytes;
-      continue;
+    } else {
+      if (blorb.story) story = blorb.story;
+      const cover = [...blorb.pictures.values()].find((p) => p.format !== "rect");
+      picture ??= cover ?? null;
     }
-    if (blorb.story) story = blorb.story;
-
-    const cover = [...blorb.pictures.values()].find((p) => p.format !== "rect");
-    picture ??= cover ?? null;
   }
 
+  return { story, picture };
+}
+
+/** Take everything the player was handed at once (a multi-select or a drop) and play it. */
+async function onFilesSelected(files: FileList): Promise<void> {
+  const { story, picture } = await sortHandedFiles(files);
   if (!story) return; // nothing playable was handed to us
 
-  const bytes = story;
-  if (picture) showSplash(picture, () => void loadStory(bytes));
+  if (picture) showSplash(picture, () => void loadStory(story));
   else await loadStory(story);
 }
 
