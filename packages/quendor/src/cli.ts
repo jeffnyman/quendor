@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { Machine, RunState } from "./machine.ts";
+import { Machine, type PictureLibrary, RunState } from "./machine.ts";
 import { loadStoryFromFile, readKeySync, readLineSync } from "./node.ts";
 import { type Cell, type Screen, TextStyle } from "./screen.ts";
 import { font3Char } from "./font3.ts";
+import { parseBlorb } from "./blorb.ts";
 import type { Story } from "./story.ts";
 
 const USAGE = `quendor — a terminal Z-Machine interpreter
@@ -19,6 +20,8 @@ Usage:
   --accept FILE            play a solution file (one command per line) and print the transcript
   --oracle FILE            with --accept, diff the transcript against a saved golden transcript
   --replay FILE            replay a solution file, then hand you the live prompt to continue
+  --pictures FILE          use this graphics Blorb for a v6 game's pictures (default: a
+                           Blorb sitting next to the story, e.g. zork0.blb)
 
   Save/restore prompt for a filename, defaulting to the story name + ".qzl".
 `;
@@ -33,6 +36,7 @@ interface ParsedArgs {
   accept?: string;
   oracle?: string;
   replay?: string;
+  pictures?: string;
 }
 
 /** Parse an integer argument, yielding undefined for a non-numeric value. */
@@ -67,6 +71,9 @@ export function parseArgs(args: string[]): ParsedArgs {
     },
     "--replay": (v): void => {
       parsed.replay = v;
+    },
+    "--pictures": (v): void => {
+      parsed.pictures = v;
     },
   };
 
@@ -286,6 +293,55 @@ export function runTerminalLoop(machine: Machine, replay: string[] = []): void {
   if (tty) process.stdout.write(`${ESC}[?1049l`); // leave the alternate screen
 }
 
+/**
+ * Run a v6 game as a plain scrolling terminal: the main window's prose streams
+ * to stdout and input is read inline, exactly like a classic text adventure. A v6
+ * game's real display is a grid of positioned pixel windows with pictures, which a
+ * character terminal can't render — so we drop that UI and show only the readable
+ * prose (the web player renders the full v6 screen). No alternate screen, no grid.
+ *
+ * A `replay` queue (from --replay) is fed first, each command echoed, before the
+ * loop hands over to live stdin.
+ */
+export function runStreamingLoop(machine: Machine, replay: string[] = []): void {
+  machine.onOutput = (text): void => {
+    process.stdout.write(text);
+  };
+
+  for (;;) {
+    const state = machine.run();
+
+    if (state !== RunState.WaitingForInput) break; // halted
+
+    // v6 streaming never drives the char grid, so its [More] never fires; page
+    // straight through defensively in case some path still requests one.
+    if (machine.pendingInputKind === "more") {
+      machine.continueFromMore();
+      continue;
+    }
+
+    if (replay.length > 0) {
+      const command = replay.shift() as string;
+      process.stdout.write(`${command}\n`); // show the replayed command in the stream
+      if (machine.awaitingCharInput) machine.provideKey(solutionKey(command));
+      else machine.provideInput(command);
+      continue;
+    }
+
+    // Live input: the terminal echoes the user's typing itself (cooked mode), so
+    // unlike the grid loop we don't echo it back.
+    if (machine.awaitingCharInput) {
+      const code = readKeySync();
+      if (code === null) break;
+      machine.provideKey(code);
+    } else {
+      const line = readLineSync();
+      if (line === null) break;
+      machine.provideInput(line);
+    }
+  }
+}
+
 // --- acceptance mode (--accept) --------------------------------------------
 //
 // Non-interactively replay a "solution" file — one command per line — through a
@@ -453,6 +509,53 @@ export function runAcceptanceMode(
   }
 }
 
+/**
+ * Build a picture library from a graphics Blorb file, or undefined if it can't
+ * be read/parsed or holds no pictures. v6 games lay their screen out around
+ * picture dimensions — Zork Zero reads picture #2's size to size its text window
+ * — so without them the game's layout math underflows (a runaway newline
+ * "clear"). The terminal can't draw the images, but the dimensions alone drive
+ * the layout correctly. A file that can't be read must not stop the game, so
+ * failures collapse to undefined (play without pictures).
+ */
+export function loadPictureFile(path: string): PictureLibrary | undefined {
+  let res;
+  try {
+    res = parseBlorb(new Uint8Array(readFileSync(path)));
+  } catch {
+    return undefined;
+  }
+  if (!res || res.pictures.size === 0) return undefined;
+
+  return {
+    count: res.pictures.size,
+    release: res.pictureRelease,
+    dimensions: (n): { width: number; height: number } | undefined => {
+      const p = res.pictures.get(n);
+      return p ? { width: p.width, height: p.height } : undefined;
+    },
+  };
+}
+
+/**
+ * Find and load pictures from a Blorb sitting next to the story (zork0.z6 ->
+ * zork0.blb / .blorb) — the default when no explicit `--pictures` file is given.
+ * Returns undefined when there's no readable sibling with pictures.
+ */
+export function loadSiblingPictures(storyPath: string): PictureLibrary | undefined {
+  const base = storyPath.slice(0, storyPath.length - extname(storyPath).length);
+
+  for (const ext of [".blb", ".blorb"]) {
+    const path = base + ext;
+    if (!existsSync(path)) continue;
+
+    const lib = loadPictureFile(path);
+    if (lib) return lib;
+  }
+
+  return undefined;
+}
+
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
 
@@ -481,6 +584,11 @@ export async function main(): Promise<void> {
     interpreterVersion: parsed.interpreterVersion,
     screenWidth: process.stdout.columns, // undefined off a TTY -> engine default (80)
     screenHeight: process.stdout.rows,
+    // An explicit --pictures Blorb wins; otherwise auto-detect one beside the story.
+    pictures:
+      parsed.pictures !== undefined
+        ? loadPictureFile(parsed.pictures)
+        : loadSiblingPictures(parsed.path),
   });
 
   installHostCallbacks(machine, defaultSaveName(parsed.path));
@@ -489,5 +597,11 @@ export async function main(): Promise<void> {
   const replay =
     parsed.replay !== undefined ? parseSolution(readFileSync(parsed.replay, "utf8")) : [];
 
-  runTerminalLoop(machine, replay); // enters/leaves the alternate screen and clears it itself
+  // v6 games drive a pixel/window display the terminal can't render; stream their
+  // prose instead. v1-5 use the full character-grid renderer on the alt screen.
+  if (machine.v6win) {
+    runStreamingLoop(machine, replay);
+  } else {
+    runTerminalLoop(machine, replay); // enters/leaves the alternate screen and clears it itself
+  }
 }

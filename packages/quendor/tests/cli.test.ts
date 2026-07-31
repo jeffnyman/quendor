@@ -3,6 +3,8 @@ import {
   defaultSaveName,
   deliverInput,
   installHostCallbacks,
+  loadPictureFile,
+  loadSiblingPictures,
   main,
   parseArgs,
   parseSolution,
@@ -484,6 +486,30 @@ test("main loads the story, wires it up, and runs it on the alternate screen (TT
       isTTYDesc ?? { value: undefined, configurable: true },
     );
   }
+});
+
+test("loadSiblingPictures returns undefined when no sibling Blorb exists", () => {
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  expect(loadSiblingPictures("game.z6")).toBeUndefined();
+  expect(existsSync).toHaveBeenCalledWith("game.blb");
+  expect(existsSync).toHaveBeenCalledWith("game.blorb");
+});
+
+test("loadPictureFile survives an unreadable/corrupt Blorb (plays without pictures)", () => {
+  vi.mocked(readFileSync).mockImplementation(() => {
+    throw new Error("read error");
+  });
+
+  // A Blorb that can't be read must not throw — it just means no pictures.
+  expect(loadPictureFile("game.blb")).toBeUndefined();
+});
+
+test("parseArgs reads the --pictures Blorb path", () => {
+  expect(parseArgs(["--pictures", "art.blb", "game.z6"])).toMatchObject({
+    pictures: "art.blb",
+    path: "game.z6",
+  });
 });
 
 /** A v3 story that reads one line (sread), then quits. */
