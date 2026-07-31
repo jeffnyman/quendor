@@ -441,6 +441,12 @@ export class Machine {
     () => {};
 
   /**
+   * Draw picture `number` at pixel (y, x) in the current window. `y`/`x` are
+   * undefined when the game omits them (draw at the current cursor).
+   */
+  onDrawPicture: (number: number, y: number | undefined, x: number | undefined) => void = () => {};
+
+  /**
    * Run until the machine halts, blocks on input, or hits a breakpoint.
    * Returns the resulting state. Safe to call again to resume from Paused.
    */
@@ -717,6 +723,10 @@ export class Machine {
         return this.return_(this.readVariable(0));
       case "check_arg_count":
         return this.branchOn(o[0] <= this.current.argumentCount);
+      case "throw":
+        return this.throwTo(o[0], o[1]);
+      case "catch":
+        return this.store(this.frames.length);
 
       // --- load / store / memory ---
       case "load":
@@ -734,6 +744,18 @@ export class Machine {
       case "push":
         return this.writeVariable(0, o[0]);
       case "pull":
+        // v6: pull -> result pops the game stack; pull stack -> result pops a
+        // user stack (table). v1-5: pull (variable) pops the game stack into it.
+        if (this.version === 6) {
+          if (o.length === 0) return this.store(this.readVariable(0));
+
+          const stack = o[0];
+          const count = this.memory.readWord(stack);
+          this.memory.writeWord(stack, (count + 1) & 0xffff);
+
+          return this.store(this.memory.readWord((stack + 2 * (count + 1)) & 0xffff));
+        }
+
         return this.writeVariableIndirect(o[0], this.readVariable(0));
       case "pop":
         this.readVariable(0);
@@ -847,7 +869,12 @@ export class Machine {
         this.screen.splitWindow(o[0], this.version <= 3);
         return;
       case "set_window":
-        this.screen.setWindow(o[0]);
+        // v6 selects among eight positioned windows; the char screen only models
+        // the v3-style 0/1 split, so in v6 the selection drives v6win instead. This
+        // also gates the window-0 transcript mirror correctly — without it every
+        // window's text (status bar included) leaks into the main prose stream.
+        if (this.v6win) this.v6win.current = o[0] & 0x7;
+        else this.screen.setWindow(o[0]);
         return;
       case "set_cursor":
         if (toS16(o[0]) < 0) return;
@@ -866,8 +893,69 @@ export class Machine {
       case "window_size":
         this.v6win?.windowSize(toS16(o[0]), o[1], o[2]);
         return;
+      case "set_margins":
+        // set_margins left right [window] — the window is the LAST operand
+        // (unlike move_window/window_size), defaulting to the current window.
+        this.v6win?.setMargins(o.length >= 3 ? toS16(o[2]) : -3, o[0], o[1]);
+        return;
+      case "picture_data":
+        return this.doPictureData(o[0], o[1]);
+      case "draw_picture":
+        // Resolve the picture's absolute pixel position (window origin + offset,
+        // 0 = current cursor) so the renderer gets a screen-space coordinate.
+        if (this.pictures && this.v6win) {
+          const [ay, ax] = this.v6win.picturePosition(o[1] ?? 0, o[2] ?? 0);
+
+          // Record it in the window model so it scrolls/clears with the text it
+          // sits beside (drop-caps, inline vignettes); the renderer replays it.
+          const dims = this.pictures.dimensions(o[0]);
+
+          this.v6win.addPicture(o[0], ay, ax, dims?.width ?? 0, dims?.height ?? 0);
+          this.onDrawPicture(o[0], ay, ax);
+        } else if (this.pictures) {
+          this.onDrawPicture(o[0], o[1], o[2]);
+        }
+
+        return;
+      case "move_window":
+        this.v6win?.moveWindow(toS16(o[0]), o[1], o[2]);
+        return;
+      case "get_wind_prop":
+        if (this.v6win) return this.store(this.v6win.getProp(toS16(o[0]), o[1]));
+        return this.store(this.getWindowProp(o[1]));
+      case "put_wind_prop":
+        this.v6win?.putProp(toS16(o[0]), o[1], o[2]);
+        return;
+      case "picture_table": // preload hint — nothing to prefetch here
+        return; // no observable effect without a fuller graphical model
       case "mouse_window":
         return;
+      case "push_stack": {
+        // Push onto a user stack (table); branch on success.
+        const value = o[0];
+        const stack = o[1];
+        const count = this.memory.readWord(stack);
+
+        if (count === 0) return this.branchOn(false);
+
+        this.memory.writeWord((stack + 2 * count) & 0xffff, value);
+        this.memory.writeWord(stack, count - 1);
+
+        return this.branchOn(true);
+      }
+      case "pop_stack": {
+        // Discard `items` from a user stack, or from the game stack if none.
+        const items = o[0];
+
+        if (o.length > 1) {
+          const stack = o[1];
+          this.memory.writeWord(stack, (this.memory.readWord(stack) + items) & 0xffff);
+        } else {
+          for (let k = 0; k < items; k++) this.readVariable(0);
+        }
+
+        return;
+      }
 
       // --- game state ---
       case "random":
@@ -896,6 +984,38 @@ export class Machine {
             ` (operands: ${o.map((v) => "0x" + v.toString(16).padStart(4, "0")).join(", ")})`,
         );
     }
+  }
+
+  /**
+   * v6 window properties (best-effort, text model). Real values would come from
+   * a pixel window model; we return plausible sizes/fonts so layout math in v6
+   * games doesn't produce garbage from zeros.
+   */
+  private getWindowProp(prop: number): number {
+    switch (prop) {
+      case 2:
+        return 25; // y size (height, lines) — 200px / 8
+      case 3:
+        return 40; // x size (width, chars) — 320px / 8
+      case 12:
+        return 1; // font number
+      case 13:
+        return 0x0808; // font size: 8x8 pixels (height, width)
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * throw: unwind the call stack to the frame captured by a matching `catch`
+   * (the frame count it returned), then return `value` from that routine.
+   */
+  private throwTo(value: number, frameToken: number): void {
+    while (this.frames.length > frameToken && this.frames.length > 1) {
+      this.frames.pop();
+    }
+
+    this.return_(value);
   }
 
   private beginRead(
@@ -952,6 +1072,35 @@ export class Machine {
 
     this.current = this.frames[this.frames.length - 1];
     this.applyResult(snap.pc, 2); // resume at the save_undo point with result 2
+  }
+
+  /**
+   * picture_data picture-number array ?(label)
+   *
+   * With picture 0: write [count, release] into the array and branch if any
+   * pictures exist. Otherwise: write [height, width] and branch if the picture
+   * exists. Without a picture library, nothing is available — branch false, so
+   * the game takes its text path.
+   */
+  private doPictureData(picture: number, array: number): void {
+    const lib = this.pictures;
+
+    if (!lib) return this.branchOn(false);
+
+    if (picture === 0) {
+      this.memory.writeWord(array, lib.count);
+      this.memory.writeWord((array + 2) & 0xffff, lib.release);
+      return this.branchOn(lib.count > 0);
+    }
+
+    const dims = lib.dimensions(picture);
+
+    if (!dims) return this.branchOn(false);
+
+    this.memory.writeWord(array, dims.height);
+    this.memory.writeWord((array + 2) & 0xffff, dims.width);
+
+    return this.branchOn(true);
   }
 
   /** tokenize: lexically analyse a text buffer into a parse buffer. */

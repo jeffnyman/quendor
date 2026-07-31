@@ -199,6 +199,49 @@ export class V6Screen {
     return w;
   }
 
+  picturePosition(y: number, x: number): [number, number] {
+    const w = this.windows[this.current];
+    const absY = (y === 0 ? w[WindowProp.YCursor] : y) + w[WindowProp.YPos] - 1;
+    const absX = (x === 0 ? w[WindowProp.XCursor] : x) + w[WindowProp.XPos] - 1;
+
+    return [absY, absX];
+  }
+
+  /**
+   * Record a picture drawn at an absolute pixel position, tied to the current
+   * window so it scrolls and clears with that window's text (see `PictureOp`).
+   */
+  addPicture(n: number, absY: number, absX: number, w: number, h: number): void {
+    this.pictures.push({ n, x: absX, y: absY, w, h, win: this.current });
+    if (this.pictures.length > 400) this.pictures.shift(); // bound long sessions
+  }
+
+  setMargins(win: number, left: number, right: number): void {
+    const w = this.win(win);
+
+    w[WindowProp.LeftMargin] = left & 0xffff;
+    w[WindowProp.RightMargin] = right & 0xffff;
+  }
+
+  getProp(win: number, prop: number): number {
+    if (prop < 0 || prop >= PROP_COUNT) return 0;
+
+    return this.win(win)[prop] & 0xffff;
+  }
+
+  putProp(win: number, prop: number, value: number): void {
+    if (prop < 0 || prop >= PROP_COUNT) return;
+
+    this.win(win)[prop] = value & 0xffff;
+  }
+
+  moveWindow(win: number, y: number, x: number): void {
+    const w = this.win(win);
+
+    w[WindowProp.YPos] = y & 0xffff;
+    w[WindowProp.XPos] = x & 0xffff;
+  }
+
   /** Lay text into the display (spans), honouring [More] (buffering the rest). */
   private displayText(text: string): void {
     if (this.needsMore) {

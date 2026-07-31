@@ -93,6 +93,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.TwoOp, 0x19, "call_2s", F.Call | F.Store, 4, 8],
   [OpcodeKind.TwoOp, 0x1a, "call_2n", F.Call, 5, 8],
   [OpcodeKind.TwoOp, 0x1b, "set_color", F.None, 5, 8],
+  [OpcodeKind.TwoOp, 0x1c, "throw", F.None, 5, 8],
 
   // one-operand opcodes
   [OpcodeKind.OneOp, 0x00, "jz", F.Branch, 1, 8],
@@ -125,6 +126,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.ZeroOp, 0x07, "restart", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x08, "ret_popped", F.Return, 1, 8],
   [OpcodeKind.ZeroOp, 0x09, "pop", F.None, 1, 4],
+  [OpcodeKind.ZeroOp, 0x09, "catch", F.Store, 5, 8],
   [OpcodeKind.ZeroOp, 0x0a, "quit", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0b, "new_line", F.None, 1, 8],
   [OpcodeKind.ZeroOp, 0x0c, "show_status", F.None, 3, 3],
@@ -144,6 +146,7 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.VarOp, 0x07, "random", F.Store, 1, 8],
   [OpcodeKind.VarOp, 0x08, "push", F.None, 1, 8],
   [OpcodeKind.VarOp, 0x09, "pull", F.FirstOpByRef, 1, 5],
+  [OpcodeKind.VarOp, 0x09, "pull", F.Store, 6, 6],
   [OpcodeKind.VarOp, 0x0a, "split_window", F.None, 3, 8],
   [OpcodeKind.VarOp, 0x0b, "set_window", F.None, 3, 8],
   [OpcodeKind.VarOp, 0x0c, "call_vs2", F.Call | F.Store | F.DoubleVar, 4, 8],
@@ -169,10 +172,19 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.Ext, 0x02, "log_shift", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x03, "art_shift", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x04, "set_font", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x05, "draw_picture", F.None, 6, 8],
+  [OpcodeKind.Ext, 0x06, "picture_data", F.Branch, 6, 8],
+  [OpcodeKind.Ext, 0x08, "set_margins", F.None, 6, 8],
   [OpcodeKind.Ext, 0x09, "save_undo", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x0a, "restore_undo", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x10, "move_window", F.None, 6, 8],
   [OpcodeKind.Ext, 0x11, "window_size", F.None, 6, 8],
+  [OpcodeKind.Ext, 0x13, "get_wind_prop", F.Store, 6, 8],
+  [OpcodeKind.Ext, 0x15, "pop_stack", F.None, 6, 8],
   [OpcodeKind.Ext, 0x17, "mouse_window", F.None, 6, 8],
+  [OpcodeKind.Ext, 0x18, "push_stack", F.Branch, 6, 8],
+  [OpcodeKind.Ext, 0x19, "put_wind_prop", F.None, 6, 8],
+  [OpcodeKind.Ext, 0x1c, "picture_table", F.None, 6, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;
