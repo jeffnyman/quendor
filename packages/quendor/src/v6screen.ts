@@ -261,36 +261,47 @@ export class V6Screen {
 
       if (ch === "\r") continue;
 
-      // Whether laying out this character filled a scrolling window and tripped a
-      // [More] pause. flushWord/newline report this back rather than only setting
-      // this.needsMore, so the "hold the rest" decision below is visibly driven by
-      // what just happened (not a side effect the reader has to infer).
-      let filled = false;
-
-      if (ch === "\n") {
-        const flushed = this.flushWord(this.current);
-
-        filled = this.newline(w) || flushed;
-      } else if (wrap) {
-        if (ch === " ") {
-          filled = this.flushWord(this.current);
-
-          if (w[WindowProp.XCursor] > 1 + w[WindowProp.LeftMargin]) {
-            w[WindowProp.XCursor] = w[WindowProp.XCursor] + this.charWidth(32);
-          }
-        } else {
-          this.pending[this.current] += ch;
-        }
-      } else {
-        this.placeChar(w, ch); // positioned window: place immediately
-      }
-
-      // A scroll may have filled the window — hold the rest behind a [More].
-      if (filled) {
+      // layoutChar reports whether this character filled a scrolling window and
+      // tripped a [More] pause; if so, hold the rest of the text behind it.
+      if (this.layoutChar(w, ch, wrap)) {
         this.moreBuffer += chars.slice(i + 1).join("");
         return;
       }
     }
+  }
+
+  /**
+   * Lay out a single character into window `w`. Returns true if doing so filled a
+   * scrolling window and tripped a [More] pause (propagated from flushWord/newline
+   * rather than only setting this.needsMore, so the caller's "hold the rest"
+   * decision is visibly driven by what just happened).
+   */
+  private layoutChar(w: number[], ch: string, wrap: boolean): boolean {
+    if (ch === "\n") {
+      const flushed = this.flushWord(this.current);
+
+      return this.newline(w) || flushed;
+    }
+
+    if (!wrap) {
+      this.placeChar(w, ch); // positioned window: place immediately
+
+      return false;
+    }
+
+    if (ch !== " ") {
+      this.pending[this.current] += ch;
+
+      return false;
+    }
+
+    const filled = this.flushWord(this.current);
+
+    if (w[WindowProp.XCursor] > 1 + w[WindowProp.LeftMargin]) {
+      w[WindowProp.XCursor] = w[WindowProp.XCursor] + this.charWidth(32);
+    }
+
+    return filled;
   }
 
   /** Place a single character at the cursor (non-wrapping / positioned window). */

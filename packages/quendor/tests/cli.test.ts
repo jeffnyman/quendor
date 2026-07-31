@@ -12,6 +12,7 @@ import {
   renderFrame,
   runAcceptance,
   runAcceptanceMode,
+  runStreamingLoop,
   runTerminalLoop,
   solutionKey,
 } from "../src/cli.ts";
@@ -573,6 +574,51 @@ test("runTerminalLoop stops at end of input", () => {
   } as unknown as Machine;
 
   runTerminalLoop(machine);
+
+  expect(run).toHaveBeenCalledTimes(1);
+});
+
+test("runStreamingLoop streams output and feeds a replayed command, then halts", () => {
+  const writes: string[] = [];
+  vi.spyOn(process.stdout, "write").mockImplementation((s): boolean => {
+    writes.push(String(s));
+    return true;
+  });
+
+  const provideInput = vi.fn();
+  const run = vi
+    .fn()
+    .mockReturnValueOnce(RunState.WaitingForInput)
+    .mockReturnValueOnce(RunState.Halted);
+  const machine = {
+    run,
+    provideInput,
+    awaitingCharInput: false,
+    pendingInputKind: "line",
+    onOutput: (): void => {},
+  } as unknown as Machine;
+
+  runStreamingLoop(machine, ["look"]);
+
+  expect(provideInput).toHaveBeenCalledWith("look");
+  expect(writes.join("")).toContain("look\n"); // the replayed command is echoed into the stream
+  expect(run).toHaveBeenCalledTimes(2);
+});
+
+test("runStreamingLoop stops at end of live input", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue(null); // EOF
+
+  const run = vi.fn().mockReturnValue(RunState.WaitingForInput);
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    pendingInputKind: "line",
+    onOutput: (): void => {},
+  } as unknown as Machine;
+
+  runStreamingLoop(machine);
 
   expect(run).toHaveBeenCalledTimes(1);
 });

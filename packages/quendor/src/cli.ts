@@ -320,26 +320,36 @@ export function runStreamingLoop(machine: Machine, replay: string[] = []): void 
       continue;
     }
 
-    if (replay.length > 0) {
-      const command = replay.shift() as string;
-      process.stdout.write(`${command}\n`); // show the replayed command in the stream
-      if (machine.awaitingCharInput) machine.provideKey(solutionKey(command));
-      else machine.provideInput(command);
-      continue;
-    }
-
-    // Live input: the terminal echoes the user's typing itself (cooked mode), so
-    // unlike the grid loop we don't echo it back.
-    if (machine.awaitingCharInput) {
-      const code = readKeySync();
-      if (code === null) break;
-      machine.provideKey(code);
-    } else {
-      const line = readLineSync();
-      if (line === null) break;
-      machine.provideInput(line);
-    }
+    if (!deliverStreamInput(machine, replay)) break; // end of input
   }
+}
+
+/**
+ * Deliver input for the streaming loop: drain the --replay queue first (echoing
+ * each command into the stream), then read live from stdin. Unlike the grid
+ * loop's deliverInput, live typing is not echoed back — the terminal is in cooked
+ * mode and echoes it itself. Returns false at end of input.
+ */
+function deliverStreamInput(machine: Machine, replay: string[]): boolean {
+  if (replay.length > 0) {
+    const command = replay.shift() as string;
+    process.stdout.write(`${command}\n`); // show the replayed command in the stream
+    if (machine.awaitingCharInput) machine.provideKey(solutionKey(command));
+    else machine.provideInput(command);
+    return true;
+  }
+
+  if (machine.awaitingCharInput) {
+    const code = readKeySync();
+    if (code === null) return false;
+    machine.provideKey(code);
+  } else {
+    const line = readLineSync();
+    if (line === null) return false;
+    machine.provideInput(line);
+  }
+
+  return true;
 }
 
 // --- acceptance mode (--accept) --------------------------------------------

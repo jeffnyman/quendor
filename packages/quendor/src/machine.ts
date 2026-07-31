@@ -219,38 +219,47 @@ export class Machine {
     this.screenHeight = options.screenHeight ?? 24;
 
     this.setupHeaderCapabilities();
+    this.screen = this.createScreen();
+    this.v6win = this.createV6Window();
 
-    this.screen = new Screen(this.screenWidth, this.screenHeight);
-    this.screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void =>
-      this.onOutput(text, attrs);
-    this.screen.onClearLower = (): void => this.onClearScreen();
-    this.screen.onUpperUpdate = (): void => this.onScreenRefresh();
+    this.current = this.setupInitialFrame(this.initialProgramCounter);
+  }
+
+  /** Build the character-grid screen and wire its host-notification callbacks. */
+  private createScreen(): Screen {
+    const screen = new Screen(this.screenWidth, this.screenHeight);
+
+    screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void => this.onOutput(text, attrs);
+    screen.onClearLower = (): void => this.onClearScreen();
+    screen.onUpperUpdate = (): void => this.onScreenRefresh();
     // A screenful scrolled by: pause so the host can show a [More] prompt. run()
     // yields at the next instruction boundary; continueFromMore() resumes.
-    this.screen.onMore = (): void => {
+    screen.onMore = (): void => {
       this.morePause = true;
     };
 
-    // v6 window geometry model, sized to the header's pixel/font fields.
-    this.v6win =
-      this.version === 6
-        ? new V6Screen(
-            this.memory.readWord(0x22) || 320,
-            this.memory.readWord(0x24) || 200,
-            this.memory.readByte(0x27) || 8,
-            this.memory.readByte(0x26) || 8,
-          )
-        : null;
+    return screen;
+  }
 
-    if (this.v6win) {
-      // Main-window (0) text is mirrored to the transcript sink so the CLI,
-      // headless runs, and tests still see the game's prose; windows 1-7 (the
-      // positioned UI) live only in the grid.
-      this.v6win.onLowerText = (text: string, attrs?: OutputAttrs): void =>
-        this.onOutput(text, attrs);
-    }
+  /**
+   * Build the v6 window-geometry model (null for v1-5), sized to the header's
+   * pixel/font fields. Main-window (0) text is mirrored to the transcript sink so
+   * the CLI, headless runs, and tests still see the game's prose; windows 1-7 (the
+   * positioned UI) live only in the grid.
+   */
+  private createV6Window(): V6Screen | null {
+    if (this.version !== 6) return null;
 
-    this.current = this.setupInitialFrame(this.initialProgramCounter);
+    const win = new V6Screen(
+      this.memory.readWord(0x22) || 320,
+      this.memory.readWord(0x24) || 200,
+      this.memory.readByte(0x27) || 8,
+      this.memory.readByte(0x26) || 8,
+    );
+
+    win.onLowerText = (text: string, attrs?: OutputAttrs): void => this.onOutput(text, attrs);
+
+    return win;
   }
 
   /** Current execution state. */
