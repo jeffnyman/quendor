@@ -237,6 +237,24 @@ test("assorted v5 opcodes (EXT, piracy, call_vn, sound, guards) execute and halt
   expect(m.run()).toBe(RunState.Halted);
 });
 
+test("sound_effect: bleeps always fire; real effects are gated on sound availability", () => {
+  const fire = (number: number, soundAvailable: boolean): number => {
+    const m = new Machine(buildV(5, [...opV(0x15, [number, 2]), ...QUIT]), { soundAvailable });
+    let calls = 0;
+    m.onSoundEffect = (n): void => {
+      calls++;
+      expect(n).toBe(number);
+    };
+    m.run();
+    return calls;
+  };
+
+  expect(fire(1, false)).toBe(1); // high bleep: always available
+  expect(fire(2, false)).toBe(1); // low bleep: always available
+  expect(fire(3, false)).toBe(0); // sampled effect: suppressed when no sound
+  expect(fire(3, true)).toBe(1); // sampled effect: fires when sound is available
+});
+
 // --- object-0 guards (no object table needed; every guard returns early) ----
 
 test("object opcodes with object 0 no-op instead of touching the (absent) table", () => {

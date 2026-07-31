@@ -171,6 +171,8 @@ const ENTRIES: Entry[] = [
   [OpcodeKind.Ext, 0x04, "set_font", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x09, "save_undo", F.Store, 5, 8],
   [OpcodeKind.Ext, 0x0a, "restore_undo", F.Store, 5, 8],
+  [OpcodeKind.Ext, 0x11, "window_size", F.None, 6, 8],
+  [OpcodeKind.Ext, 0x17, "mouse_window", F.None, 6, 8],
 ];
 
 export const isReturn = (o: Opcode): boolean => (o.flags & OpcodeFlags.Return) !== 0;

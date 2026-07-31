@@ -6,6 +6,20 @@ import type { Story } from "./story.ts";
 import { ObjectTable } from "./objects.ts";
 import { decodeQuetzal, encodeQuetzal } from "./quetzal.ts";
 import { Screen, type OutputAttrs } from "./screen.ts";
+import { V6Screen } from "./v6screen.ts";
+
+/**
+ * A set of picture resources the interpreter can query and draw. Backed by a
+ * graphics Blorb; kept minimal so `machine.ts` stays free of Blorb/IFF details.
+ */
+export interface PictureLibrary {
+  /** Number of pictures available. */
+  count: number;
+  /** Picture-set release number. */
+  release: number;
+  /** Intrinsic pixel dimensions of a picture, or undefined if it doesn't exist. */
+  dimensions(number: number): { width: number; height: number } | undefined;
+}
 
 /** The execution status of the machine, as seen by a debugger driver. */
 export const RunState = {
@@ -63,6 +77,7 @@ export class Machine {
   readonly text: ZText;
   readonly objects: ObjectTable;
   readonly screen: Screen;
+  readonly v6win: V6Screen | null;
 
   /** Header interpreter number (0x1e) — defaults to 6 (IBM PC). */
   readonly interpreterNumber: number;
@@ -140,6 +155,15 @@ export class Machine {
   private readonly screenWidth: number;
   private readonly screenHeight: number;
 
+  readonly soundAvailable: boolean;
+
+  /**
+   * Picture resources (from a paired graphics Blorb), or undefined for a
+   * text-only run. When present, the v6 "pictures available" capability bit is
+   * advertised and the picture opcodes become active.
+   */
+  readonly pictures: PictureLibrary | undefined;
+
   // In-memory undo history for save_undo / restore_undo (bounded).
   private readonly undoStack: {
     dynamicMemory: Uint8Array;
@@ -159,6 +183,8 @@ export class Machine {
       interpreterVersion?: number;
       screenWidth?: number;
       screenHeight?: number;
+      pictures?: PictureLibrary;
+      soundAvailable?: boolean;
     } = {},
   ) {
     this.memory = story.memory;
@@ -174,6 +200,9 @@ export class Machine {
     this.dictionaryAddress = story.header.dictionaryAddress;
     this.headerChecksum = story.header.checksum;
     this.computedChecksum = story.computedChecksum();
+
+    this.soundAvailable = options.soundAvailable ?? false;
+    this.pictures = options.pictures;
 
     this.objects = new ObjectTable(this.memory, this.version, story.header.objectTableAddress);
 
@@ -201,6 +230,25 @@ export class Machine {
     this.screen.onMore = (): void => {
       this.morePause = true;
     };
+
+    // v6 window geometry model, sized to the header's pixel/font fields.
+    this.v6win =
+      this.version === 6
+        ? new V6Screen(
+            this.memory.readWord(0x22) || 320,
+            this.memory.readWord(0x24) || 200,
+            this.memory.readByte(0x27) || 8,
+            this.memory.readByte(0x26) || 8,
+          )
+        : null;
+
+    if (this.v6win) {
+      // Main-window (0) text is mirrored to the transcript sink so the CLI,
+      // headless runs, and tests still see the game's prose; windows 1-7 (the
+      // positioned UI) live only in the grid.
+      this.v6win.onLowerText = (text: string, attrs?: OutputAttrs): void =>
+        this.onOutput(text, attrs);
+    }
 
     this.current = this.setupInitialFrame(this.initialProgramCounter);
   }
@@ -760,9 +808,16 @@ export class Machine {
         );
       case "output_stream":
         return this.outputStream(o);
-      case "sound_effect":
-        this.onSoundEffect(o[0], o[1], o.length > 2 ? o[2] : 0, o.length > 3 ? o[3] : 0);
+      case "sound_effect": {
+        // Bleeps (number 1 = high, 2 = low) are always available. "Real" sound
+        // effects (3+, samples/music) only play when the interpreter can supply
+        // sound; without it they're a no-op (§9.2), matching the header's cleared
+        // "game wants sound" bit.
+        const number = o[0];
+        if (number >= 3 && !this.soundAvailable) return;
+        this.onSoundEffect(number, o[1], o.length > 2 ? o[2] : 0, o.length > 3 ? o[3] : 0);
         return;
+      }
 
       // --- input ---
       case "sread":
@@ -805,6 +860,13 @@ export class Machine {
         return this.store(this.screen.setFont(o[0]));
       case "set_color":
         this.screen.setColor(o[0], o[1]);
+        return;
+
+      // --- v6 graphics / windows (not yet modelled) ---
+      case "window_size":
+        this.v6win?.windowSize(toS16(o[0]), o[1], o[2]);
+        return;
+      case "mouse_window":
         return;
 
       // --- game state ---
@@ -1040,10 +1102,27 @@ export class Machine {
         stream.count++;
       }
 
+      // v6: accumulate the printed text's pixel width into TWID (0x30). Games
+      // print to stream 3 purely to measure a string's proportional width so
+      // they can centre it; without this they read 0 and mis-position text.
+      if (this.v6win) {
+        let twid = this.memory.readWord(0x30);
+
+        for (let i = 0; i < text.length; i++) {
+          twid += this.v6win.charWidth(text.charCodeAt(i));
+        }
+
+        this.memory.writeWord(0x30, twid & 0xffff);
+      }
+
       return;
     }
 
-    if (this.screenStreamEnabled) this.screen.print(text);
+    if (this.v6win) {
+      this.v6win.print(text);
+    } else {
+      if (this.screenStreamEnabled) this.screen.print(text);
+    }
   }
 
   private putProp(objNum: number, propNum: number, value: number): void {
@@ -1402,9 +1481,13 @@ export class Machine {
       this.memory.writeByte(HeaderOffset.Flags1, this.tandy ? flags1 | 0x08 : flags1 & 0xf7);
     }
 
-    // v4+: report the screen size so games lay out correctly (Trinity refuses
-    // to start otherwise). Interpreter-owned, so it survives restart/restore.
+    // v4+: advertise the text styles we support (Flags 1: bold=2, italic=3,
+    // fixed-space=4) and report the screen size so games lay out correctly
+    // (Trinity refuses to start otherwise). Sound (bit 5) and pictures (bit 1)
+    // are v6-only capabilities, added in the v6 block. Interpreter-owned, so
+    // all of this survives restart/restore (both re-run this method).
     if (this.version >= 4) {
+      this.memory.writeByte(HeaderOffset.Flags1, 0x1c);
       this.memory.writeByte(HeaderOffset.ScreenHeight, Math.min(255, this.screenHeight));
       this.memory.writeByte(HeaderOffset.ScreenWidth, Math.min(255, this.screenWidth));
     }
@@ -1414,6 +1497,14 @@ export class Machine {
       // interpreter's capabilities — Beyond Zork's SEE-COLOR? checks this bit —
       // and stay monochrome without it.
       this.memory.writeByte(HeaderOffset.Flags1, this.memory.readByte(HeaderOffset.Flags1) | 0x01);
+
+      // Flags 2 bit 7 = "game wants sound effects" (v5+). It's game-set; the
+      // interpreter's only job is to clear it when it can't supply sound (§9.2).
+      // We never set it — leaving the game's request untouched when we can.
+      if (!this.soundAvailable) {
+        const flags2 = this.memory.readWord(HeaderOffset.Flags2);
+        this.memory.writeWord(HeaderOffset.Flags2, flags2 & ~0x0080);
+      }
 
       // The screen size in "units" and the font cell size. On a character display
       // a unit is one character, so the unit dimensions equal the char dimensions
@@ -1425,6 +1516,41 @@ export class Machine {
       this.memory.writeWord(HeaderOffset.ScreenHeightUnits, Math.min(0xffff, this.screenHeight));
       this.memory.writeByte(HeaderOffset.FontWidth, 1);
       this.memory.writeByte(HeaderOffset.FontHeight, 1);
+    }
+
+    if (this.version >= 6) {
+      // v6 (YZIP) screen geometry. The games work in a 320×200 logical pixel
+      // screen (matching the Blorb Reso chunk and what Frotz uses), with an
+      // 8×8 font → a 40×25 character grid. Windows/cursor are addressed in
+      // *characters* (SCRV lines, SCRH cols); pictures in *pixels*; the two are
+      // bridged by the font size (FWRD) and pixel screen size (HWRD/VWRD).
+      // Reporting a real font size here is essential: a 1×1 font (the old
+      // default) starves the games' char→pixel math and mislocates pictures.
+      this.memory.writeByte(HeaderOffset.ScreenHeight, 25); // SCRV: screen height in lines
+      this.memory.writeByte(HeaderOffset.ScreenWidth, 40); // SCRH: screen width in chars
+      this.memory.writeWord(HeaderOffset.ScreenWidthUnits, 320); // HWRD: screen width in pixels
+      this.memory.writeWord(HeaderOffset.ScreenHeightUnits, 200); // VWRD: screen height in pixels
+      this.memory.writeByte(HeaderOffset.FontWidth, 8); // FWRD hi: font height in pixels (FNTV)
+      this.memory.writeByte(HeaderOffset.FontHeight, 8); // FWRD lo: font width in pixels (FNTH)
+
+      // Flags 1: advertise the v6-only capabilities we can actually provide —
+      // sound effects (bit 5) and picture displaying (bit 1). Bit 5 is v6-only:
+      // the spec (§9.2) notes Infocom's MS-DOS interpreters set it in all
+      // circumstances, which is incorrect for a standard interpreter.
+      let flags1 = this.memory.readByte(HeaderOffset.Flags1);
+      if (this.soundAvailable) flags1 |= 0x20;
+      if (this.pictures) flags1 |= 0x02;
+      this.memory.writeByte(HeaderOffset.Flags1, flags1);
+
+      // Flags 2 bit 3 = "game wants pictures". Game-set; the interpreter only
+      // clears it when it can't supply pictures (leaving the graceful text
+      // fallback) and otherwise leaves the game's request untouched. Leaving it
+      // set when we can't would steer the game down its graphical path with no
+      // images.
+      if (!this.pictures) {
+        const flags2 = this.memory.readWord(HeaderOffset.Flags2);
+        this.memory.writeWord(HeaderOffset.Flags2, flags2 & ~0x0008);
+      }
     }
   }
 
