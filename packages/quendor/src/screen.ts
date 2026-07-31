@@ -6,7 +6,7 @@ export const TextStyle = {
   FixedPitch: 8,
 } as const;
 
-const DEFAULT_COLOR = 1;
+export const DEFAULT_COLOR = 1;
 const DEFAULT_FONT = 1;
 const DEFAULT_HEIGHT = 25;
 
