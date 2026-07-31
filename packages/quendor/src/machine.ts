@@ -6,6 +6,20 @@ import type { Story } from "./story.ts";
 import { ObjectTable } from "./objects.ts";
 import { decodeQuetzal, encodeQuetzal } from "./quetzal.ts";
 import { Screen, type OutputAttrs } from "./screen.ts";
+import { V6Screen } from "./v6screen.ts";
+
+/**
+ * A set of picture resources the interpreter can query and draw. Backed by a
+ * graphics Blorb; kept minimal so `machine.ts` stays free of Blorb/IFF details.
+ */
+export interface PictureLibrary {
+  /** Number of pictures available. */
+  count: number;
+  /** Picture-set release number. */
+  release: number;
+  /** Intrinsic pixel dimensions of a picture, or undefined if it doesn't exist. */
+  dimensions(number: number): { width: number; height: number } | undefined;
+}
 
 /** The execution status of the machine, as seen by a debugger driver. */
 export const RunState = {
@@ -63,6 +77,7 @@ export class Machine {
   readonly text: ZText;
   readonly objects: ObjectTable;
   readonly screen: Screen;
+  readonly v6win: V6Screen | null;
 
   /** Header interpreter number (0x1e) — defaults to 6 (IBM PC). */
   readonly interpreterNumber: number;
@@ -140,6 +155,15 @@ export class Machine {
   private readonly screenWidth: number;
   private readonly screenHeight: number;
 
+  readonly soundAvailable: boolean;
+
+  /**
+   * Picture resources (from a paired graphics Blorb), or undefined for a
+   * text-only run. When present, the v6 "pictures available" capability bit is
+   * advertised and the picture opcodes become active.
+   */
+  readonly pictures: PictureLibrary | undefined;
+
   // In-memory undo history for save_undo / restore_undo (bounded).
   private readonly undoStack: {
     dynamicMemory: Uint8Array;
@@ -159,6 +183,8 @@ export class Machine {
       interpreterVersion?: number;
       screenWidth?: number;
       screenHeight?: number;
+      pictures?: PictureLibrary;
+      soundAvailable?: boolean;
     } = {},
   ) {
     this.memory = story.memory;
@@ -175,6 +201,9 @@ export class Machine {
     this.headerChecksum = story.header.checksum;
     this.computedChecksum = story.computedChecksum();
 
+    this.soundAvailable = options.soundAvailable ?? false;
+    this.pictures = options.pictures;
+
     this.objects = new ObjectTable(this.memory, this.version, story.header.objectTableAddress);
 
     // Snapshot pristine dynamic memory before we mutate any header bytes.
@@ -190,19 +219,47 @@ export class Machine {
     this.screenHeight = options.screenHeight ?? 24;
 
     this.setupHeaderCapabilities();
+    this.screen = this.createScreen();
+    this.v6win = this.createV6Window();
 
-    this.screen = new Screen(this.screenWidth, this.screenHeight);
-    this.screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void =>
-      this.onOutput(text, attrs);
-    this.screen.onClearLower = (): void => this.onClearScreen();
-    this.screen.onUpperUpdate = (): void => this.onScreenRefresh();
+    this.current = this.setupInitialFrame(this.initialProgramCounter);
+  }
+
+  /** Build the character-grid screen and wire its host-notification callbacks. */
+  private createScreen(): Screen {
+    const screen = new Screen(this.screenWidth, this.screenHeight);
+
+    screen.onLowerOutput = (text: string, attrs?: OutputAttrs): void => this.onOutput(text, attrs);
+    screen.onClearLower = (): void => this.onClearScreen();
+    screen.onUpperUpdate = (): void => this.onScreenRefresh();
     // A screenful scrolled by: pause so the host can show a [More] prompt. run()
     // yields at the next instruction boundary; continueFromMore() resumes.
-    this.screen.onMore = (): void => {
+    screen.onMore = (): void => {
       this.morePause = true;
     };
 
-    this.current = this.setupInitialFrame(this.initialProgramCounter);
+    return screen;
+  }
+
+  /**
+   * Build the v6 window-geometry model (null for v1-5), sized to the header's
+   * pixel/font fields. Main-window (0) text is mirrored to the transcript sink so
+   * the CLI, headless runs, and tests still see the game's prose; windows 1-7 (the
+   * positioned UI) live only in the grid.
+   */
+  private createV6Window(): V6Screen | null {
+    if (this.version !== 6) return null;
+
+    const win = new V6Screen(
+      this.memory.readWord(0x22) || 320,
+      this.memory.readWord(0x24) || 200,
+      this.memory.readByte(0x27) || 8,
+      this.memory.readByte(0x26) || 8,
+    );
+
+    win.onLowerText = (text: string, attrs?: OutputAttrs): void => this.onOutput(text, attrs);
+
+    return win;
   }
 
   /** Current execution state. */
@@ -391,6 +448,12 @@ export class Machine {
 
   onSoundEffect: (number: number, effect: number, volume: number, routine: number) => void =
     () => {};
+
+  /**
+   * Draw picture `number` at pixel (y, x) in the current window. `y`/`x` are
+   * undefined when the game omits them (draw at the current cursor).
+   */
+  onDrawPicture: (number: number, y: number | undefined, x: number | undefined) => void = () => {};
 
   /**
    * Run until the machine halts, blocks on input, or hits a breakpoint.
@@ -669,6 +732,10 @@ export class Machine {
         return this.return_(this.readVariable(0));
       case "check_arg_count":
         return this.branchOn(o[0] <= this.current.argumentCount);
+      case "throw":
+        return this.throwTo(o[0], o[1]);
+      case "catch":
+        return this.store(this.frames.length);
 
       // --- load / store / memory ---
       case "load":
@@ -686,6 +753,18 @@ export class Machine {
       case "push":
         return this.writeVariable(0, o[0]);
       case "pull":
+        // v6: pull -> result pops the game stack; pull stack -> result pops a
+        // user stack (table). v1-5: pull (variable) pops the game stack into it.
+        if (this.version === 6) {
+          if (o.length === 0) return this.store(this.readVariable(0));
+
+          const stack = o[0];
+          const count = this.memory.readWord(stack);
+          this.memory.writeWord(stack, (count + 1) & 0xffff);
+
+          return this.store(this.memory.readWord((stack + 2 * (count + 1)) & 0xffff));
+        }
+
         return this.writeVariableIndirect(o[0], this.readVariable(0));
       case "pop":
         this.readVariable(0);
@@ -760,9 +839,16 @@ export class Machine {
         );
       case "output_stream":
         return this.outputStream(o);
-      case "sound_effect":
-        this.onSoundEffect(o[0], o[1], o.length > 2 ? o[2] : 0, o.length > 3 ? o[3] : 0);
+      case "sound_effect": {
+        // Bleeps (number 1 = high, 2 = low) are always available. "Real" sound
+        // effects (3+, samples/music) only play when the interpreter can supply
+        // sound; without it they're a no-op (§9.2), matching the header's cleared
+        // "game wants sound" bit.
+        const number = o[0];
+        if (number >= 3 && !this.soundAvailable) return;
+        this.onSoundEffect(number, o[1], o.length > 2 ? o[2] : 0, o.length > 3 ? o[3] : 0);
         return;
+      }
 
       // --- input ---
       case "sread":
@@ -792,7 +878,12 @@ export class Machine {
         this.screen.splitWindow(o[0], this.version <= 3);
         return;
       case "set_window":
-        this.screen.setWindow(o[0]);
+        // v6 selects among eight positioned windows; the char screen only models
+        // the v3-style 0/1 split, so in v6 the selection drives v6win instead. This
+        // also gates the window-0 transcript mirror correctly — without it every
+        // window's text (status bar included) leaks into the main prose stream.
+        if (this.v6win) this.v6win.current = o[0] & 0x7;
+        else this.screen.setWindow(o[0]);
         return;
       case "set_cursor":
         if (toS16(o[0]) < 0) return;
@@ -806,6 +897,74 @@ export class Machine {
       case "set_color":
         this.screen.setColor(o[0], o[1]);
         return;
+
+      // --- v6 graphics / windows (not yet modelled) ---
+      case "window_size":
+        this.v6win?.windowSize(toS16(o[0]), o[1], o[2]);
+        return;
+      case "set_margins":
+        // set_margins left right [window] — the window is the LAST operand
+        // (unlike move_window/window_size), defaulting to the current window.
+        this.v6win?.setMargins(o.length >= 3 ? toS16(o[2]) : -3, o[0], o[1]);
+        return;
+      case "picture_data":
+        return this.doPictureData(o[0], o[1]);
+      case "draw_picture":
+        // Resolve the picture's absolute pixel position (window origin + offset,
+        // 0 = current cursor) so the renderer gets a screen-space coordinate.
+        if (this.pictures && this.v6win) {
+          const [ay, ax] = this.v6win.picturePosition(o[1] ?? 0, o[2] ?? 0);
+
+          // Record it in the window model so it scrolls/clears with the text it
+          // sits beside (drop-caps, inline vignettes); the renderer replays it.
+          const dims = this.pictures.dimensions(o[0]);
+
+          this.v6win.addPicture(o[0], ay, ax, dims?.width ?? 0, dims?.height ?? 0);
+          this.onDrawPicture(o[0], ay, ax);
+        } else if (this.pictures) {
+          this.onDrawPicture(o[0], o[1], o[2]);
+        }
+
+        return;
+      case "move_window":
+        this.v6win?.moveWindow(toS16(o[0]), o[1], o[2]);
+        return;
+      case "get_wind_prop":
+        if (this.v6win) return this.store(this.v6win.getProp(toS16(o[0]), o[1]));
+        return this.store(this.getWindowProp(o[1]));
+      case "put_wind_prop":
+        this.v6win?.putProp(toS16(o[0]), o[1], o[2]);
+        return;
+      case "picture_table": // preload hint — nothing to prefetch here
+        return; // no observable effect without a fuller graphical model
+      case "mouse_window":
+        return;
+      case "push_stack": {
+        // Push onto a user stack (table); branch on success.
+        const value = o[0];
+        const stack = o[1];
+        const count = this.memory.readWord(stack);
+
+        if (count === 0) return this.branchOn(false);
+
+        this.memory.writeWord((stack + 2 * count) & 0xffff, value);
+        this.memory.writeWord(stack, count - 1);
+
+        return this.branchOn(true);
+      }
+      case "pop_stack": {
+        // Discard `items` from a user stack, or from the game stack if none.
+        const items = o[0];
+
+        if (o.length > 1) {
+          const stack = o[1];
+          this.memory.writeWord(stack, (this.memory.readWord(stack) + items) & 0xffff);
+        } else {
+          for (let k = 0; k < items; k++) this.readVariable(0);
+        }
+
+        return;
+      }
 
       // --- game state ---
       case "random":
@@ -834,6 +993,38 @@ export class Machine {
             ` (operands: ${o.map((v) => "0x" + v.toString(16).padStart(4, "0")).join(", ")})`,
         );
     }
+  }
+
+  /**
+   * v6 window properties (best-effort, text model). Real values would come from
+   * a pixel window model; we return plausible sizes/fonts so layout math in v6
+   * games doesn't produce garbage from zeros.
+   */
+  private getWindowProp(prop: number): number {
+    switch (prop) {
+      case 2:
+        return 25; // y size (height, lines) — 200px / 8
+      case 3:
+        return 40; // x size (width, chars) — 320px / 8
+      case 12:
+        return 1; // font number
+      case 13:
+        return 0x0808; // font size: 8x8 pixels (height, width)
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * throw: unwind the call stack to the frame captured by a matching `catch`
+   * (the frame count it returned), then return `value` from that routine.
+   */
+  private throwTo(value: number, frameToken: number): void {
+    while (this.frames.length > frameToken && this.frames.length > 1) {
+      this.frames.pop();
+    }
+
+    this.return_(value);
   }
 
   private beginRead(
@@ -890,6 +1081,35 @@ export class Machine {
 
     this.current = this.frames[this.frames.length - 1];
     this.applyResult(snap.pc, 2); // resume at the save_undo point with result 2
+  }
+
+  /**
+   * picture_data picture-number array ?(label)
+   *
+   * With picture 0: write [count, release] into the array and branch if any
+   * pictures exist. Otherwise: write [height, width] and branch if the picture
+   * exists. Without a picture library, nothing is available — branch false, so
+   * the game takes its text path.
+   */
+  private doPictureData(picture: number, array: number): void {
+    const lib = this.pictures;
+
+    if (!lib) return this.branchOn(false);
+
+    if (picture === 0) {
+      this.memory.writeWord(array, lib.count);
+      this.memory.writeWord((array + 2) & 0xffff, lib.release);
+      return this.branchOn(lib.count > 0);
+    }
+
+    const dims = lib.dimensions(picture);
+
+    if (!dims) return this.branchOn(false);
+
+    this.memory.writeWord(array, dims.height);
+    this.memory.writeWord((array + 2) & 0xffff, dims.width);
+
+    return this.branchOn(true);
   }
 
   /** tokenize: lexically analyse a text buffer into a parse buffer. */
@@ -1040,10 +1260,27 @@ export class Machine {
         stream.count++;
       }
 
+      // v6: accumulate the printed text's pixel width into TWID (0x30). Games
+      // print to stream 3 purely to measure a string's proportional width so
+      // they can centre it; without this they read 0 and mis-position text.
+      if (this.v6win) {
+        let twid = this.memory.readWord(0x30);
+
+        for (let i = 0; i < text.length; i++) {
+          twid += this.v6win.charWidth(text.charCodeAt(i));
+        }
+
+        this.memory.writeWord(0x30, twid & 0xffff);
+      }
+
       return;
     }
 
-    if (this.screenStreamEnabled) this.screen.print(text);
+    if (this.v6win) {
+      this.v6win.print(text);
+    } else {
+      if (this.screenStreamEnabled) this.screen.print(text);
+    }
   }
 
   private putProp(objNum: number, propNum: number, value: number): void {
@@ -1402,9 +1639,13 @@ export class Machine {
       this.memory.writeByte(HeaderOffset.Flags1, this.tandy ? flags1 | 0x08 : flags1 & 0xf7);
     }
 
-    // v4+: report the screen size so games lay out correctly (Trinity refuses
-    // to start otherwise). Interpreter-owned, so it survives restart/restore.
+    // v4+: advertise the text styles we support (Flags 1: bold=2, italic=3,
+    // fixed-space=4) and report the screen size so games lay out correctly
+    // (Trinity refuses to start otherwise). Sound (bit 5) and pictures (bit 1)
+    // are v6-only capabilities, added in the v6 block. Interpreter-owned, so
+    // all of this survives restart/restore (both re-run this method).
     if (this.version >= 4) {
+      this.memory.writeByte(HeaderOffset.Flags1, 0x1c);
       this.memory.writeByte(HeaderOffset.ScreenHeight, Math.min(255, this.screenHeight));
       this.memory.writeByte(HeaderOffset.ScreenWidth, Math.min(255, this.screenWidth));
     }
@@ -1414,6 +1655,14 @@ export class Machine {
       // interpreter's capabilities — Beyond Zork's SEE-COLOR? checks this bit —
       // and stay monochrome without it.
       this.memory.writeByte(HeaderOffset.Flags1, this.memory.readByte(HeaderOffset.Flags1) | 0x01);
+
+      // Flags 2 bit 7 = "game wants sound effects" (v5+). It's game-set; the
+      // interpreter's only job is to clear it when it can't supply sound (§9.2).
+      // We never set it — leaving the game's request untouched when we can.
+      if (!this.soundAvailable) {
+        const flags2 = this.memory.readWord(HeaderOffset.Flags2);
+        this.memory.writeWord(HeaderOffset.Flags2, flags2 & ~0x0080);
+      }
 
       // The screen size in "units" and the font cell size. On a character display
       // a unit is one character, so the unit dimensions equal the char dimensions
@@ -1425,6 +1674,41 @@ export class Machine {
       this.memory.writeWord(HeaderOffset.ScreenHeightUnits, Math.min(0xffff, this.screenHeight));
       this.memory.writeByte(HeaderOffset.FontWidth, 1);
       this.memory.writeByte(HeaderOffset.FontHeight, 1);
+    }
+
+    if (this.version >= 6) {
+      // v6 (YZIP) screen geometry. The games work in a 320×200 logical pixel
+      // screen (matching the Blorb Reso chunk and what Frotz uses), with an
+      // 8×8 font → a 40×25 character grid. Windows/cursor are addressed in
+      // *characters* (SCRV lines, SCRH cols); pictures in *pixels*; the two are
+      // bridged by the font size (FWRD) and pixel screen size (HWRD/VWRD).
+      // Reporting a real font size here is essential: a 1×1 font (the old
+      // default) starves the games' char→pixel math and mislocates pictures.
+      this.memory.writeByte(HeaderOffset.ScreenHeight, 25); // SCRV: screen height in lines
+      this.memory.writeByte(HeaderOffset.ScreenWidth, 40); // SCRH: screen width in chars
+      this.memory.writeWord(HeaderOffset.ScreenWidthUnits, 320); // HWRD: screen width in pixels
+      this.memory.writeWord(HeaderOffset.ScreenHeightUnits, 200); // VWRD: screen height in pixels
+      this.memory.writeByte(HeaderOffset.FontWidth, 8); // FWRD hi: font height in pixels (FNTV)
+      this.memory.writeByte(HeaderOffset.FontHeight, 8); // FWRD lo: font width in pixels (FNTH)
+
+      // Flags 1: advertise the v6-only capabilities we can actually provide —
+      // sound effects (bit 5) and picture displaying (bit 1). Bit 5 is v6-only:
+      // the spec (§9.2) notes Infocom's MS-DOS interpreters set it in all
+      // circumstances, which is incorrect for a standard interpreter.
+      let flags1 = this.memory.readByte(HeaderOffset.Flags1);
+      if (this.soundAvailable) flags1 |= 0x20;
+      if (this.pictures) flags1 |= 0x02;
+      this.memory.writeByte(HeaderOffset.Flags1, flags1);
+
+      // Flags 2 bit 3 = "game wants pictures". Game-set; the interpreter only
+      // clears it when it can't supply pictures (leaving the graceful text
+      // fallback) and otherwise leaves the game's request untouched. Leaving it
+      // set when we can't would steer the game down its graphical path with no
+      // images.
+      if (!this.pictures) {
+        const flags2 = this.memory.readWord(HeaderOffset.Flags2);
+        this.memory.writeWord(HeaderOffset.Flags2, flags2 & ~0x0008);
+      }
     }
   }
 

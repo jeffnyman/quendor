@@ -3,6 +3,8 @@ import {
   defaultSaveName,
   deliverInput,
   installHostCallbacks,
+  loadPictureFile,
+  loadSiblingPictures,
   main,
   parseArgs,
   parseSolution,
@@ -10,6 +12,7 @@ import {
   renderFrame,
   runAcceptance,
   runAcceptanceMode,
+  runStreamingLoop,
   runTerminalLoop,
   solutionKey,
 } from "../src/cli.ts";
@@ -486,6 +489,30 @@ test("main loads the story, wires it up, and runs it on the alternate screen (TT
   }
 });
 
+test("loadSiblingPictures returns undefined when no sibling Blorb exists", () => {
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  expect(loadSiblingPictures("game.z6")).toBeUndefined();
+  expect(existsSync).toHaveBeenCalledWith("game.blb");
+  expect(existsSync).toHaveBeenCalledWith("game.blorb");
+});
+
+test("loadPictureFile survives an unreadable/corrupt Blorb (plays without pictures)", () => {
+  vi.mocked(readFileSync).mockImplementation(() => {
+    throw new Error("read error");
+  });
+
+  // A Blorb that can't be read must not throw — it just means no pictures.
+  expect(loadPictureFile("game.blb")).toBeUndefined();
+});
+
+test("parseArgs reads the --pictures Blorb path", () => {
+  expect(parseArgs(["--pictures", "art.blb", "game.z6"])).toMatchObject({
+    pictures: "art.blb",
+    path: "game.z6",
+  });
+});
+
 /** A v3 story that reads one line (sread), then quits. */
 function readThenQuitStory(): Story {
   const bytes = new Uint8Array(0x100);
@@ -547,6 +574,51 @@ test("runTerminalLoop stops at end of input", () => {
   } as unknown as Machine;
 
   runTerminalLoop(machine);
+
+  expect(run).toHaveBeenCalledTimes(1);
+});
+
+test("runStreamingLoop streams output and feeds a replayed command, then halts", () => {
+  const writes: string[] = [];
+  vi.spyOn(process.stdout, "write").mockImplementation((s): boolean => {
+    writes.push(String(s));
+    return true;
+  });
+
+  const provideInput = vi.fn();
+  const run = vi
+    .fn()
+    .mockReturnValueOnce(RunState.WaitingForInput)
+    .mockReturnValueOnce(RunState.Halted);
+  const machine = {
+    run,
+    provideInput,
+    awaitingCharInput: false,
+    pendingInputKind: "line",
+    onOutput: (): void => {},
+  } as unknown as Machine;
+
+  runStreamingLoop(machine, ["look"]);
+
+  expect(provideInput).toHaveBeenCalledWith("look");
+  expect(writes.join("")).toContain("look\n"); // the replayed command is echoed into the stream
+  expect(run).toHaveBeenCalledTimes(2);
+});
+
+test("runStreamingLoop stops at end of live input", () => {
+  vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  vi.mocked(readLineSync).mockReturnValue(null); // EOF
+
+  const run = vi.fn().mockReturnValue(RunState.WaitingForInput);
+  const machine = {
+    run,
+    provideInput: vi.fn(),
+    awaitingCharInput: false,
+    pendingInputKind: "line",
+    onOutput: (): void => {},
+  } as unknown as Machine;
+
+  runStreamingLoop(machine);
 
   expect(run).toHaveBeenCalledTimes(1);
 });
