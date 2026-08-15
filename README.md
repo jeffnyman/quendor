@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> Worth noting that this project is now likely superseded by my [Voxam](https://github.com/jeffnyman/voxam) project, which I have made much more headway on. Voxam is Python-based rather than JavaScript, which I found improved just about everything.
+
 <h1 align="center">
   <img src="assets/quendor-title.png" alt="Quendor">
 </h1>
